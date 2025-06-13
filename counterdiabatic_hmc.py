@@ -110,13 +110,34 @@ def make_cd_leapfrog_step(T, V, A_ansatz, theta, lam, lam_next, dot_lam, dot_lam
 # =============================================================================
 # 6) SImuLATION: NAÏVE HMC VS CD WITH ONLINE FITTING
 # =============================================================================
+def generate_initial_samples(M, make_T, make_V, lam, key, num_steps=5000, eps=0.05):
+    """Generate M samples from the distribution at the given temperature using HMC."""
+    # Start from random positions
+    key, sub = jax.random.split(key)
+    q = jax.random.normal(sub, (M,))
+    key, sub = jax.random.split(key)
+    p = jax.random.normal(sub, (M,)) * jnp.sqrt(m)
+
+    # Run HMC for a while to get to equilibrium
+    T = make_T(lam)
+    V = make_V(lam)
+    step = make_leapfrog_step(T, V)
+    
+    for _ in range(num_steps):
+        q, p = jax.vmap(lambda q, p: step(q, p, eps))(q, p)
+        # Randomize momenta periodically
+        if _ % 20 == 0:
+            key, sub = jax.random.split(key)
+            p = jax.random.normal(sub, (M,)) * jnp.sqrt(m)
+    
+    return q, p
+
 def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, fit_gauge_potential, model):
     key = jax.random.PRNGKey(0)
-    key, sub = jax.random.split(key)
-    q_naive = jax.random.normal(sub, (M,))
-    key, sub = jax.random.split(key)
-    p_naive = jax.random.normal(sub, (M,)) * jnp.sqrt(m)
-
+    
+    # Generate initial samples from the correct distribution
+    initial_lam = float(lam_fn(0.0))
+    q_naive, p_naive = generate_initial_samples(M, make_T, make_V, initial_lam, key)
     q_cd = q_naive.copy()
     p_cd = p_naive.copy()
 
@@ -124,6 +145,7 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, 
 
     loss_histories = []
     snapshots = {'naive': [], 'cd': [], 'lam': []}
+    theta_history = []  # Track parameter history
 
     for k in range(N_steps + 1):
         t_k = k * delta_t
@@ -135,14 +157,17 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, 
             snapshots['naive'].append(np.array(q_naive))
             snapshots['cd'].append(np.array(q_cd))
             snapshots['lam'].append(lam_k)
+            # Record parameters
+            if isinstance(theta, PolynomialAnsatz):
+                theta_history.append(np.array(theta.params))
 
         # Re-fit A every 10 steps
-        if (k % 10 == 0) and (k < N_steps):
+        if (k % 1 == 0) and (k < N_steps):
             samples = np.stack([np.array(q_cd), np.array(p_cd)], axis=1)
             theta, loss_history = fit_gauge_potential(lam_k, samples, init_params=theta,
                                         make_T=make_T, make_V=make_V,
                                         A_ansatz=A_ansatz,
-                                        num_iters=1000, lr=0.01)
+                                        num_iters=10000, lr=0.0005)
             loss_histories.append(loss_history)
 
         # Randomize momenta for naive HMC every momentum_refresh_interval steps
@@ -172,56 +197,124 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, 
         cd_step = jax.vmap(lambda q, p: make_cd_leapfrog_step(make_T(lam_k), make_V(lam_k), A_ansatz, theta, lam_k, lam_k1, dot_lam_k, dot_lam_k1)(q, p, eps))
         q_cd, p_cd = cd_step(q_cd, p_cd)
 
-    return theta, snapshots, loss_histories
+    return theta, snapshots, loss_histories, theta_history
 
-def plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_fn):
-    fig, axes = plt.subplots(3, 6, figsize=(28, 14))
+def plot_learned_ansatz(ax, theta, A_ansatz, q_range=(-3, 3), p_range=(-3, 3), n_points=50):
+    """Plot the learned ansatz function A(q,p) as a 2D surface."""
+    q = np.linspace(q_range[0], q_range[1], n_points)
+    p = np.linspace(p_range[0], p_range[1], n_points)
+    Q, P = np.meshgrid(q, p)
+    
+    # Create ansatz instance with current parameters
+    ansatz = PolynomialAnsatz(theta)
+    
+    # Evaluate A(q,p) at each point
+    A_values = np.zeros_like(Q)
+    for i in range(n_points):
+        for j in range(n_points):
+            A_values[i,j] = float(ansatz(Q[i,j], P[i,j]))
+    
+    # Plot the surface
+    im = ax.imshow(A_values, extent=[q_range[0], q_range[1], p_range[0], p_range[1]], 
+                   origin='lower', aspect='auto', cmap='RdBu')
+    ax.set_xlabel('q')
+    ax.set_ylabel('p')
+    plt.colorbar(im, ax=ax, label='A(q,p)')
+
+def plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_fn, param_history=None):
+    # Create two figures: one for distributions and one for the learned ansatz
+    fig1, axes1 = plt.subplots(3, 6, figsize=(28, 14))
+    fig2, axes2 = plt.subplots(3, 6, figsize=(28, 14))
     times = np.arange(len(snapshots['naive'])) * delta_t * 10  # *10 because we record every 10 steps
-    axes = axes.flatten()
+    axes1 = axes1.flatten()
+    axes2 = axes2.flatten()
     
     # Plot loss histories
-    axes[0].set_title("Loss during optimization")
-    axes[0].set_xlabel("Optimization iteration")
-    axes[0].set_ylabel("Loss")
+    axes1[0].set_title("Loss during optimization")
+    axes1[0].set_xlabel("Optimization iteration")
+    axes1[0].set_ylabel("Loss")
     for i, loss_history in enumerate(loss_histories):
-        axes[0].plot(loss_history, label=f'Fit {i+1}')
-    axes[0].legend()
-    # axes[0].set_yscale('log')
+        axes1[0].plot(loss_history, label=f'Fit {i+1}')
+    axes1[0].legend()
 
-    num_hist_axes = 15
+    # Plot parameter history if available
+    if param_history is not None:
+        param_times = np.arange(len(param_history)) * delta_t * 10
+        axes1[1].set_title("Learned parameters over time")
+        axes1[1].set_xlabel("t")
+        axes1[1].set_ylabel("θ value")
+        for i in range(param_history[0].shape[0]):
+            axes1[1].plot(param_times, [p[i] for p in param_history], label=f'θ{i+1}')
+        axes1[1].legend()
+
+    num_hist_axes = 13  # Reduced to make room for parameter plot
     num_snaps = len(snapshots['naive'])
     if num_snaps > num_hist_axes:
         selected_indices = np.linspace(0, num_snaps - 1, num_hist_axes, dtype=int)
     else:
         selected_indices = np.arange(num_snaps)
 
+    # Find global min and max for consistent x-axis
+    all_qs = np.concatenate([snapshots['naive'][i] for i in selected_indices] + 
+                           [snapshots['cd'][i] for i in selected_indices])
+    x_min = np.min(all_qs) - 0.5
+    x_max = np.max(all_qs) + 0.5
+
     for plot_idx, snap_idx in enumerate(selected_indices):
-        ax = axes[plot_idx + 1]  # +1 because we only have one plot at the start now
+        # Plot distributions
+        ax1 = axes1[plot_idx + 2]  # +2 because we have loss and parameter plots at the start
         naive_snap = snapshots['naive'][snap_idx]
         cd_snap = snapshots['cd'][snap_idx]
         lam_val = snapshots['lam'][snap_idx]
 
         sns.histplot(naive_snap, bins=50, stat='density',
-                     color='C0', alpha=0.4, label='Naïve', ax=ax)
+                     color='C0', alpha=0.4, label='Naïve', ax=ax1)
         sns.histplot(cd_snap, bins=50, stat='density',
-                     color='C1', alpha=0.4, label='CD', ax=ax)
-        xs = np.linspace(lam_val - 4, lam_val + 4, 400)
+                     color='C1', alpha=0.4, label='CD', ax=ax1)
+        xs = np.linspace(x_min, x_max, 400)
         rho = np.array(jax.vmap(lambda x: jnp.exp(-make_V(lam_val)(x)))(xs))
-        rho /= np.trapz(rho, xs)
-        ax.plot(xs, rho, 'r-', lw=2, label='True')
-        ax.set_title(f"t={snap_idx*10*delta_t:.2f}, lam={lam_val:.2f}")
-        ax.set_xlabel("q")
-        ax.set_ylabel("Density")
-        x_min = min(-2, lam_val - 4)
-        x_max = max(5, lam_val + 4)
-        ax.set_xlim(x_min, x_max)
-        ax.legend()
+        rho /= np.trapezoid(rho, xs)
+        ax1.plot(xs, rho, 'r-', lw=2, label='True')
+        ax1.set_title(f"t={snap_idx*10*delta_t:.2f}, lam={lam_val:.2f}")
+        ax1.set_xlabel("q")
+        ax1.set_ylabel("Density")
+        ax1.set_xlim(x_min, x_max)
+        ax1.legend()
 
+        # Plot learned ansatz
+        ax2 = axes2[plot_idx + 2]
+        if param_history is not None and snap_idx < len(param_history):
+            theta = param_history[snap_idx]
+            plot_learned_ansatz(ax2, theta, lambda x: x, q_range=(x_min, x_max), p_range=(-3, 3))
+            ax2.set_title(f"Learned A(q,p) at t={snap_idx*10*delta_t:.2f}")
+
+    plt.figure(fig1.number)
     plt.tight_layout()
-    plt.savefig("counterdiabatic.png")
+    plt.savefig("counterdiabatic_distributions.png")
+    
+    plt.figure(fig2.number)
+    plt.tight_layout()
+    plt.savefig("counterdiabatic_ansatz.png")
 
 
-class MLP(eqx.Module):
+class A_ansatz(eqx.Module):
+    """Base class for gauge potential ansatz."""
+    def __call__(self, q, p):
+        raise NotImplementedError
+
+class PolynomialAnsatz(A_ansatz):
+    """Polynomial ansatz for the gauge potential."""
+    params: jnp.ndarray
+
+    def __init__(self, params):
+        self.params = params
+
+    def __call__(self, q, p):
+        θ1, θ2, θ3, θ4, θ5, θ6 = self.params
+        return θ1 * p + θ2 * (q * p) + θ3 * (q ** 2) + θ4 * (p * q**2) + θ5 * (p**2) + θ6 * (q**2 * p**2)
+
+class NeuralNetworkAnsatz(A_ansatz):
+    """Neural network ansatz for the gauge potential."""
     layers: list
 
     def __init__(self, dims, key):
@@ -232,26 +325,24 @@ class MLP(eqx.Module):
             for i in range(len(dims) - 1)
         ]
 
-    def __call__(self, x):
+    def __call__(self, q, p):
+        # Stack q and p for input to MLP
+        x = jnp.stack([q, p], axis=-1)
         for layer in self.layers[:-1]:
             x = (layer)(x)
             x = jax.nn.relu(x)
         x = (self.layers[-1])(x)
-        return x
-
-def A_ansatz(params):
-    def A(q, p):
-        # Stack q and p for input to MLP
-        inputs = jnp.stack([q, p], axis=-1)
-        # Get MLP output
-        output = params(inputs)
-        return output.squeeze()
-    return A
+        return x.squeeze()
 
 def main():
+
+    # todos
+    # 1. see the function that gets learned
+    # 2. understand delta_t vs eps
+
     # Define all routines and parameters here
     M = 3000
-    N_steps = 100
+    N_steps = 20
     eps = 0.05
     delta_t = eps # should this even be a parameter?
     momentum_refresh_interval = 20
@@ -264,17 +355,22 @@ def main():
     def make_V(lam):
         # return lambda q: (1-lam)*0.5*(q**2) + lam*(q**2 - 3)**2
         # return lambda q: 0.5*((q-lam)**2 -1)**2
-        return lambda q: 0.5 * (q - lam) ** 2
+        # return lambda q: 0.5 * (q - lam) ** 2
+        return lambda q: 0.5 * (lam + 0.1) * (q ** 2)
     
-    # Initialize MLP with appropriate architecture
+    # Initialize ansatz (either neural network or polynomial)
     key = jax.random.PRNGKey(0)
-    mlp = MLP([2, 64, 32, 1], key)  # 2 inputs (q,p), 2 hidden layers, 1 output
+    # For neural network:
+    d = 1
+    # ansatz = NeuralNetworkAnsatz([2*d, 32, 32, 32, 32, 32, 32, d], key)
+    # For polynomial:
+    ansatz = PolynomialAnsatz(jnp.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
     
-    theta_history, snapshots, loss_histories = run_simulation(
+    theta_history, snapshots, loss_histories, param_history = run_simulation(
         M, N_steps, delta_t, eps, momentum_refresh_interval,
-        make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, fit_gauge_potential, mlp
+        make_T, make_V, lambda x: x, lam_fn, dot_lam_fn, fit_gauge_potential, ansatz
     )
-    plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_fn)
+    plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_fn, param_history)
 
 if __name__ == '__main__':
     main()
