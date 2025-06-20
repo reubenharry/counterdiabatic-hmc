@@ -48,13 +48,17 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
         lam_k = float(lam_fn(t_k))
         dot_lam_k = float(dot_lam_fn(t_k))
 
+        # Update lambda parameter for analytic ansatz
+        if isinstance(A_ansatz, AnalyticAnsatz):
+            A_ansatz = eqx.tree_at(lambda m: m.params, A_ansatz, jnp.array([lam_k]))
+
         # Re-fit A every fit_every steps
         if not isinstance(A_ansatz, AnalyticAnsatz) and (k % fit_every == 0) and (k < N_steps):
             samples = np.stack([np.array(q_cd), np.array(p_cd)], axis=1)
             A_ansatz, loss_history = fit_gauge_potential(lam_k, samples,
                                         make_T=make_T, make_V=make_V,
                                         A_ansatz=A_ansatz,
-                                        num_iters=2000, lr=1e-3)
+                                        num_iters=10000, lr=1e-4)
             loss_histories.append(loss_history)
 
         # Record snapshots and parameters every 10 steps
@@ -73,6 +77,8 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
                         params.append(np.array(layer.weight))
                         params.append(np.array(layer.bias))
                 param_history.append(tuple(params))
+            elif isinstance(A_ansatz, AnalyticAnsatz):
+                param_history.append(np.array(A_ansatz.params))
 
         # Randomize momenta for naive HMC every momentum_refresh_interval steps
         if (k % momentum_refresh_interval == 0) and (k < N_steps):

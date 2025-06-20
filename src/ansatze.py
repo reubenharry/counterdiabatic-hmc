@@ -59,18 +59,37 @@ class PolynomialAnsatz(A_ansatz):
         return descriptions
 
 class AnalyticAnsatz(A_ansatz):
-    """An ansatz with a fixed analytical form from a screenshot."""
-    sigma: float
+    """
+    An ansatz with a fixed analytical form from a screenshot.
+    NOTE: This formula is specifically for a 'gaussian_annealing' potential
+    of the form V(q) = 0.5 * L * q^2, where L is the potential's coefficient.
+    The parameter `lam` in the original formula corresponds to L.
+    """
+    params: jnp.ndarray  # Will store the current schedule lambda value
     ansatz_type: str = eqx.static_field()
 
-    def __init__(self, sigma=1.0):
-        self.sigma = sigma
+    def __init__(self):
+        self.params = jnp.array([0.0])  # Initialize with schedule lambda = 0
         self.ansatz_type = 'analytic'
 
     def __call__(self, q, p):
-        # A(q, p) = - (sigma * p^2 + q^2 / sigma) / 2 * arctan(p * sigma / q)
+        lam_schedule = self.params[0]  # Get current schedule lambda value
+
+        # return p
+        
+        # For the 'gaussian_annealing' system, V(q) = 0.5 * (lam_schedule + 0.1) * q^2.
+        # The parameter in the analytic formula corresponds to the coefficient of 0.5*q^2.
+        potential_param = lam_schedule + 0.001
+        
+        # Formula from screenshot: A = (p^2 + L*q^2) / (4*L*sqrt(L)) * arctan(p / (q*sqrt(L)))
+        # where L is the potential parameter.
+        numerator = p**2 + potential_param * q**2
+        denominator = 4 * potential_param**(1.5)
+        
         # Use arctan2 to handle q=0 case
-        return - (self.sigma * p**2 + q**2 / self.sigma) / 2 * jnp.arctan2(p * self.sigma, q)
+        arctan_term = jnp.arctan2(p, jnp.sqrt(potential_param) * q)
+        
+        return (numerator / denominator) * arctan_term
 
 class NeuralNetworkAnsatz(A_ansatz):
     """Neural network ansatz for the gauge potential."""

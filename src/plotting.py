@@ -38,7 +38,8 @@ def plot_learned_ansatz(ax, theta, ansatz, q_range=(-3, 3), p_range=(-3, 3), n_p
                 current_ansatz = eqx.tree_at(lambda m: m.layers[i].bias, current_ansatz, theta[param_idx + 1])
                 param_idx += 2
     elif ansatz.ansatz_type == 'analytic':
-        current_ansatz = ansatz  # No parameters to update
+        # For the analytic ansatz, theta contains the lambda value for this timestep.
+        current_ansatz = eqx.tree_at(lambda m: m.params, ansatz, theta)
     else:
         raise ValueError(f"Unknown ansatz type: {ansatz.ansatz_type}")
 
@@ -80,31 +81,37 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
     axes2 = axes2.flatten()
     
     # Plot loss histories
-    axes1[0].set_title("Loss during optimization")
-    axes1[0].set_xlabel("Optimization iteration")
-    axes1[0].set_ylabel("Loss")
-    for i, loss_history in enumerate(loss_histories):
-        axes1[0].plot(loss_history, label=f'Fit {i+1}')
-    axes1[0].legend()
+    if loss_histories:
+        axes1[0].set_title("Loss during optimization")
+        axes1[0].set_xlabel("Optimization iteration")
+        axes1[0].set_ylabel("Loss")
+        for i, loss_history in enumerate(loss_histories):
+            axes1[0].plot(loss_history, label=f'Fit {i+1}')
+        axes1[0].legend()
+    else:
+        axes1[0].set_title("No Loss Data")
+        axes1[0].text(0.5, 0.5, "Fitting not performed\n(e.g., Analytic Ansatz)", 
+                      horizontalalignment='center', verticalalignment='center', 
+                      transform=axes1[0].transAxes)
 
-    # Plot parameter history if available (only for polynomial ansatz)
-    if param_history is not None and len(param_history) > 0 and isinstance(ansatz, PolynomialAnsatz):
+    # Plot parameter history if available
+    if param_history is not None and len(param_history) > 0:
         param_times = np.arange(len(param_history)) * delta_t * 10
-        axes1[1].set_title("Learned parameters over time")
+        axes1[1].set_title("Parameters over time")
         axes1[1].set_xlabel("t")
-        axes1[1].set_ylabel("θ value")
-        
-        # Get term descriptions for legend labels
-        term_descriptions = ansatz.get_term_description()
-        term_labels = []
-        for desc in term_descriptions:
-            # Extract just the term part (e.g., "pq", "q²", etc.)
-            term_part = desc.split(": ")[1]
-            term_labels.append(term_part)
-        
-        for i in range(param_history[0].shape[0]):
-            axes1[1].plot(param_times, [p[i] for p in param_history], label=term_labels[i])
-        axes1[1].legend()
+        axes1[1].set_ylabel("Value")
+
+        if isinstance(ansatz, PolynomialAnsatz):
+            # Get term descriptions for legend labels
+            term_descriptions = ansatz.get_term_description()
+            term_labels = [desc.split(": ")[1] for desc in term_descriptions]
+            for i in range(param_history[0].shape[0]):
+                axes1[1].plot(param_times, [p[i] for p in param_history], label=term_labels[i])
+            axes1[1].legend()
+        elif isinstance(ansatz, AnalyticAnsatz):
+            axes1[1].plot(param_times, [p[0] for p in param_history], label="λ")
+            axes1[1].legend()
+        # Note: Plotting for NN params is not implemented due to complexity
 
     num_hist_axes = 13  # Reduced to make room for parameter plot
     num_snaps = len(snapshots['naive'])
@@ -131,7 +138,11 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
         sns.histplot(cd_snap, bins=50, stat='density',
                      color='C1', alpha=0.4, label='CD', ax=ax1)
         xs = np.linspace(x_min, x_max, 400)
-        rho = np.array(jax.vmap(lambda x: jnp.exp(-make_V(lam_val)(x)))(xs))
+        
+        # Correctly get the potential function for the current lambda
+        potential_fn = make_V(lam_val)
+        rho = np.array(jax.vmap(lambda x: jnp.exp(-potential_fn(x)))(xs))
+        
         rho /= np.trapezoid(rho, xs)
         ax1.plot(xs, rho, 'r-', lw=2, label='True')
         ax1.set_title(f"t={snap_idx*10*delta_t:.2f}, lam={lam_val:.2f}")
@@ -142,14 +153,13 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
 
         # Plot learned ansatz
         ax2 = axes2[plot_idx + 2]
-        if isinstance(ansatz, AnalyticAnsatz):
-            plot_learned_ansatz(ax2, None, ansatz, q_range=(x_min, x_max), p_range=(-3, 3))
-            ax2.set_title(f"Analytic A(q,p) at t={snap_idx*10*delta_t:.2f}")
-
-        elif param_history is not None and snap_idx < len(param_history):
+        if param_history is not None and snap_idx < len(param_history):
             theta = param_history[snap_idx]
             plot_learned_ansatz(ax2, theta, ansatz, q_range=(x_min, x_max), p_range=(-3, 3))
-            ax2.set_title(f"Learned A(q,p) at t={snap_idx*10*delta_t:.2f}")
+            if isinstance(ansatz, AnalyticAnsatz):
+                ax2.set_title(f"Analytic A(q,p) at t={snap_idx*10*delta_t:.2f}")
+            else:
+                ax2.set_title(f"Learned A(q,p) at t={snap_idx*10*delta_t:.2f}")
 
     # Save figures with potential information in filename
     plt.figure(fig1.number)
