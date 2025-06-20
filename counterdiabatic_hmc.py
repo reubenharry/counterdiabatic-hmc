@@ -108,7 +108,7 @@ def make_cd_leapfrog_step(T, V, A_ansatz, theta, lam, lam_next, dot_lam, dot_lam
 
 
 # =============================================================================
-# 6) SImuLATION: NAÏVE HMC VS CD WITH ONLINE FITTING
+# 6) SIMULATION: NAÏVE HMC VS CD WITH ONLINE FITTING
 # =============================================================================
 def generate_initial_samples(M, make_T, make_V, lam, key, num_steps=5000, eps=0.05):
     """Generate M samples from the distribution at the given temperature using HMC."""
@@ -152,6 +152,17 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, 
         lam_k = float(lam_fn(t_k))
         dot_lam_k = float(dot_lam_fn(t_k))
 
+
+        # Re-fit A every 10 steps
+        if (k % 10 == 0) and (k < N_steps):
+            samples = np.stack([np.array(q_cd), np.array(p_cd)], axis=1)
+            theta, loss_history = fit_gauge_potential(lam_k, samples, init_params=theta,
+                                        make_T=make_T, make_V=make_V,
+                                        A_ansatz=A_ansatz,
+                                        num_iters=5000, lr=1e-3)
+        
+            if k % 10 == 0:
+                loss_histories.append(loss_history)
         # Record histograms every 10 steps
         if k % 10 == 0:
             snapshots['naive'].append(np.array(q_naive))
@@ -160,15 +171,14 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, 
             # Record parameters
             if isinstance(theta, PolynomialAnsatz):
                 theta_history.append(np.array(theta.params))
-
-        # Re-fit A every 10 steps
-        if (k % 1 == 0) and (k < N_steps):
-            samples = np.stack([np.array(q_cd), np.array(p_cd)], axis=1)
-            theta, loss_history = fit_gauge_potential(lam_k, samples, init_params=theta,
-                                        make_T=make_T, make_V=make_V,
-                                        A_ansatz=A_ansatz,
-                                        num_iters=10000, lr=0.0005)
-            loss_histories.append(loss_history)
+            elif isinstance(theta, NeuralNetworkAnsatz):
+                # Store just the parameters as a tuple of arrays
+                params = []
+                for layer in theta.layers:
+                    if isinstance(layer, eqx.nn.Linear):
+                        params.append(np.array(layer.weight))
+                        params.append(np.array(layer.bias))
+                theta_history.append(tuple(params))
 
         # Randomize momenta for naive HMC every momentum_refresh_interval steps
         if (k % momentum_refresh_interval == 0) and (k < N_steps):
@@ -199,14 +209,38 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, 
 
     return theta, snapshots, loss_histories, theta_history
 
-def plot_learned_ansatz(ax, theta, A_ansatz, q_range=(-3, 3), p_range=(-3, 3), n_points=50):
-    """Plot the learned ansatz function A(q,p) as a 2D surface."""
+def plot_learned_ansatz(ax, theta, ansatz, q_range=(-3, 3), p_range=(-3, 3), n_points=50):
+    """Plot the learned ansatz function A(q,p) as a 2D surface.
+    
+    Args:
+        ax: matplotlib axis to plot on
+        theta: parameters for the ansatz
+        ansatz: the ansatz object (either PolynomialAnsatz or NeuralNetworkAnsatz)
+        q_range: tuple of (min_q, max_q)
+        p_range: tuple of (min_p, max_p)
+        n_points: number of points in each dimension for the grid
+    """
     q = np.linspace(q_range[0], q_range[1], n_points)
     p = np.linspace(p_range[0], p_range[1], n_points)
     Q, P = np.meshgrid(q, p)
     
-    # Create ansatz instance with current parameters
-    ansatz = PolynomialAnsatz(theta)
+    # # Update the ansatz with the saved parameters
+    # if ansatz.ansatz_type == 'polynomial':
+    #     # For polynomial, theta is the parameters directly
+    #     current_ansatz = PolynomialAnsatz(theta)
+    # elif ansatz.ansatz_type == 'neural':
+    #     # For neural network, create a new network with the saved parameters
+    #     key = jax.random.PRNGKey(0)
+    #     current_ansatz = NeuralNetworkAnsatz([2, 16, 16, 1], key)
+    #     # Update each layer's parameters using eqx.tree_at
+    #     param_idx = 0
+    #     for i, layer in enumerate(current_ansatz.layers):
+    #         if isinstance(layer, eqx.nn.Linear):
+    #             current_ansatz = eqx.tree_at(lambda x: x.layers[i].weight, current_ansatz, theta[param_idx])
+    #             current_ansatz = eqx.tree_at(lambda x: x.layers[i].bias, current_ansatz, theta[param_idx + 1])
+    #             param_idx += 2
+    # else:
+    #     raise ValueError(f"Unknown ansatz type: {ansatz.ansatz_type}")
     
     # Evaluate A(q,p) at each point
     A_values = np.zeros_like(Q)
@@ -221,7 +255,7 @@ def plot_learned_ansatz(ax, theta, A_ansatz, q_range=(-3, 3), p_range=(-3, 3), n
     ax.set_ylabel('p')
     plt.colorbar(im, ax=ax, label='A(q,p)')
 
-def plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_fn, param_history=None):
+def plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_fn, param_history=None, ansatz=None, ansatz_type=None):
     # Create two figures: one for distributions and one for the learned ansatz
     fig1, axes1 = plt.subplots(3, 6, figsize=(28, 14))
     fig2, axes2 = plt.subplots(3, 6, figsize=(28, 14))
@@ -237,8 +271,8 @@ def plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_
         axes1[0].plot(loss_history, label=f'Fit {i+1}')
     axes1[0].legend()
 
-    # Plot parameter history if available
-    if param_history is not None:
+    # Plot parameter history if available (only for polynomial ansatz)
+    if param_history is not None and len(param_history) > 0 and ansatz_type == 'polynomial':
         param_times = np.arange(len(param_history)) * delta_t * 10
         axes1[1].set_title("Learned parameters over time")
         axes1[1].set_xlabel("t")
@@ -285,16 +319,16 @@ def plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_
         ax2 = axes2[plot_idx + 2]
         if param_history is not None and snap_idx < len(param_history):
             theta = param_history[snap_idx]
-            plot_learned_ansatz(ax2, theta, lambda x: x, q_range=(x_min, x_max), p_range=(-3, 3))
+            plot_learned_ansatz(ax2, theta, ansatz, q_range=(x_min, x_max), p_range=(-3, 3))
             ax2.set_title(f"Learned A(q,p) at t={snap_idx*10*delta_t:.2f}")
 
     plt.figure(fig1.number)
     plt.tight_layout()
-    plt.savefig("counterdiabatic_distributions.png")
+    plt.savefig(f"counterdiabatic_distributions_{ansatz_type}.png")
     
     plt.figure(fig2.number)
     plt.tight_layout()
-    plt.savefig("counterdiabatic_ansatz.png")
+    plt.savefig(f"counterdiabatic_ansatz_{ansatz_type}.png")
 
 
 class A_ansatz(eqx.Module):
@@ -302,16 +336,57 @@ class A_ansatz(eqx.Module):
     def __call__(self, q, p):
         raise NotImplementedError
 
+def generate_polynomial_terms(max_degree):
+    """Generate all polynomial terms up to max_degree in p and q.
+    
+    Returns a list of tuples (coeff_name, q_power, p_power) representing terms like:
+    - (θ1, 0, 1) for p
+    - (θ2, 1, 1) for p*q
+    - (θ3, 2, 0) for q^2
+    etc.
+    """
+    terms = []
+    term_idx = 1
+    
+    for total_degree in range(max_degree + 1):
+        for q_power in range(total_degree + 1):
+            p_power = total_degree - q_power
+            terms.append((f"θ{term_idx}", q_power, p_power))
+            term_idx += 1
+    
+    return terms
+
+max_degree = 3
+
 class PolynomialAnsatz(A_ansatz):
     """Polynomial ansatz for the gauge potential."""
     params: jnp.ndarray
+    # terms: list
 
-    def __init__(self, params):
-        self.params = params
+    def __init__(self):
+        # self.terms = 
+        # Initialize parameters to zero
+        self.params = jnp.zeros(len(generate_polynomial_terms(max_degree)))
 
     def __call__(self, q, p):
-        θ1, θ2, θ3, θ4, θ5, θ6 = self.params
-        return θ1 * p + θ2 * (q * p) + θ3 * (q ** 2) + θ4 * (p * q**2) + θ5 * (p**2) + θ6 * (q**2 * p**2)
+        result = 0.0
+        for i, (_, q_power, p_power) in enumerate(generate_polynomial_terms(max_degree)):
+            result += self.params[i] * (q ** q_power) * (p ** p_power)
+        return result
+
+    def get_term_description(self):
+        """Return a description of what each parameter represents."""
+        descriptions = []
+        for coeff_name, q_power, p_power in generate_polynomial_terms(max_degree):
+            term_str = ""
+            if q_power > 0:
+                term_str += f"q^{q_power}" if q_power > 1 else "q"
+            if p_power > 0:
+                term_str += f"p^{p_power}" if p_power > 1 else "p"
+            if not term_str:
+                term_str = "1"
+            descriptions.append(f"{coeff_name}: {term_str}")
+        return descriptions
 
 class NeuralNetworkAnsatz(A_ansatz):
     """Neural network ansatz for the gauge potential."""
@@ -362,15 +437,24 @@ def main():
     key = jax.random.PRNGKey(0)
     # For neural network:
     d = 1
-    # ansatz = NeuralNetworkAnsatz([2*d, 32, 32, 32, 32, 32, 32, d], key)
+    # ansatz = NeuralNetworkAnsatz([2*d, 128, 256, 128, d], key)
+    # ansatz_type = 'neural_network'
     # For polynomial:
-    ansatz = PolynomialAnsatz(jnp.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
+    ansatz = PolynomialAnsatz()
+    ansatz_type = 'polynomial'
+    
+    # Print polynomial terms if using polynomial ansatz
+    if ansatz_type == 'polynomial':
+        print("Polynomial terms:")
+        for desc in ansatz.get_term_description():
+            print(f"  {desc}")
+        print(f"Total number of parameters: {len(ansatz.params)}")
     
     theta_history, snapshots, loss_histories, param_history = run_simulation(
         M, N_steps, delta_t, eps, momentum_refresh_interval,
         make_T, make_V, lambda x: x, lam_fn, dot_lam_fn, fit_gauge_potential, ansatz
     )
-    plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_fn, param_history)
+    plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_fn, param_history, ansatz, ansatz_type)
 
 if __name__ == '__main__':
     main()
