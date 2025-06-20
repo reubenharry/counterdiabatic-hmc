@@ -26,43 +26,45 @@ def poisson_bracket_fn(f, g):
 # =============================================================================
 #  FIT FUNCTION USING GENERAL POISSON BRACKET
 # =============================================================================
-def fit_gauge_potential(lam, samples, init_params, make_T, make_V, A_ansatz, num_iters=200, lr=0.01):
+def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters=200, lr=0.01):
     """
     Fit A(q,p; θ) by minimizing mean_{samples}[ ( {A,H} - ∂H/∂μ )^2 ].
     Returns both the optimized parameters and the loss history.
     """
+
+
     qp_batch = jnp.array(samples)  # shape (N,2)
-    params = init_params
+    # params = init_params
 
     H = lambda lam: lambda q, p: make_T(lam)(p) + make_V(lam)(q)
     H_fixed = H(lam)
     dH_fixed = lambda q, p: (jax.grad(lambda q, p, lam: H(lam)(q, p), argnums=2)(q, p, lam))
 
-    def R(params, q, p):
-        return poisson_bracket_fn(A_ansatz(params), H_fixed)(q, p) - dH_fixed(q, p)
+    def R(A_ansatz, q, p):
+        return poisson_bracket_fn(A_ansatz, H_fixed)(q, p) - dH_fixed(q, p)
 
-    def loss_fn(params, qp_batch):
+    def loss_fn(A_ansatz, qp_batch):
         qs = qp_batch[:, 0]
         ps = qp_batch[:, 1]
-        R_vals = jax.vmap(lambda qr, pr, θ: R(θ, qr, pr), in_axes=(0, 0, None))(qs, ps, params)
+        R_vals = jax.vmap(lambda qr, pr, A_ansatz: R(A_ansatz, qr, pr), in_axes=(0, 0, None))(qs, ps, A_ansatz)
         return jnp.mean(R_vals ** 2)
 
     optimizer = optax.adam(lr)
-    opt_state = optimizer.init(eqx.filter(params, eqx.is_array))
+    opt_state = optimizer.init(eqx.filter(A_ansatz, eqx.is_array))
 
     @jax.jit
-    def update(params, opt_state, qp_batch):
-        loss, grads = jax.value_and_grad(loss_fn)(params, qp_batch)
+    def update(A_ansatz, opt_state, qp_batch):
+        loss, grads = jax.value_and_grad(loss_fn)(A_ansatz, qp_batch)
         updates, opt_state = optimizer.update(eqx.filter(grads, eqx.is_array), opt_state)
-        params = eqx.apply_updates(params, updates)
-        return params, opt_state, loss
+        A_ansatz = eqx.apply_updates(A_ansatz, updates)
+        return A_ansatz, opt_state, loss
 
     loss_history = []
     for _ in range(num_iters):
-        params, opt_state, loss = update(params, opt_state, qp_batch)
+        A_ansatz, opt_state, loss = update(A_ansatz, opt_state, qp_batch)
         loss_history.append(float(loss))
 
-    return params, loss_history
+    return A_ansatz, loss_history
 
 
 make_p_update = lambda V: lambda q, p, eps: p - eps * jax.grad(V)(q)
@@ -94,15 +96,15 @@ def make_leapfrog_step(T, V):
 # Create the step function and vectorized version for naive HMC
 
 
-def make_cd_leapfrog_step(T, V, A_ansatz, theta, lam, lam_next, dot_lam, dot_lam_next):
-    p_update = make_p_update(V)
-    x_update = make_x_update(T)
-    dA_dq_scalar = lambda θ: jax.grad(A_ansatz(θ), argnums=0)
-    dA_dp_scalar = lambda θ: jax.grad(A_ansatz(θ), argnums=1)
+def make_cd_leapfrog_step(T, V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next):
+    # p_update = make_p_update(V)
+    # x_update = make_x_update(T)
+    dA_dq_scalar = jax.grad(A_ansatz, argnums=0)
+    dA_dp_scalar = jax.grad(A_ansatz, argnums=1)
     def cd_leapfrog(q, p, eps):
-        p_half = p - 0.5 * eps * (jax.grad(V)(q) + dot_lam * dA_dq_scalar(theta)(q, p))
-        q_new = q + eps * (jax.grad(T)(p_half) + dot_lam * dA_dp_scalar(theta)(q, p_half))
-        p_new = p_half - 0.5 * eps * (jax.grad(V)(q_new) + dot_lam * dA_dq_scalar(theta)(q_new, p_half))
+        p_half = p - 0.5 * eps * (jax.grad(V)(q) + dot_lam * dA_dq_scalar(q, p))
+        q_new = q + eps * (jax.grad(T)(p_half) + dot_lam * dA_dp_scalar(q, p_half))
+        p_new = p_half - 0.5 * eps * (jax.grad(V)(q_new) + dot_lam * dA_dq_scalar(q_new, p_half))
         return q_new, p_new
     return cd_leapfrog
 
@@ -132,8 +134,11 @@ def generate_initial_samples(M, make_T, make_V, lam, key, num_steps=5000, eps=0.
     
     return q, p
 
-def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, fit_gauge_potential, model):
-    key = jax.random.PRNGKey(0)
+def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, key):
+    # key = jax.random.PRNGKey(0)
+
+    # print(A_ansatz(model.params), "what?")
+    # raise Exception("stop")
     
     # Generate initial samples from the correct distribution
     initial_lam = float(lam_fn(0.0))
@@ -141,7 +146,7 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, 
     q_cd = q_naive.copy()
     p_cd = p_naive.copy()
 
-    theta = model
+    # theta = model
 
     loss_histories = []
     snapshots = {'naive': [], 'cd': [], 'lam': []}
@@ -153,28 +158,28 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, 
         dot_lam_k = float(dot_lam_fn(t_k))
 
 
-        # Re-fit A every 10 steps
-        if (k % 1 == 0) and (k < N_steps):
+        # Re-fit A every 1 steps
+        # print(A_ansatz(A.params), "what 1?")
+        if not isinstance(A_ansatz, AnalyticAnsatz) and (k % 1 == 0) and (k < N_steps):
             samples = np.stack([np.array(q_cd), np.array(p_cd)], axis=1)
-            theta, loss_history = fit_gauge_potential(lam_k, samples, init_params=theta,
+            A_ansatz, loss_history = fit_gauge_potential(lam_k, samples,
                                         make_T=make_T, make_V=make_V,
                                         A_ansatz=A_ansatz,
-                                        num_iters=5000, lr=1e-3)
-        
-            if k % 1 == 0:
-                loss_histories.append(loss_history)
+                                        num_iters=2000, lr=1e-3)
+            loss_histories.append(loss_history)
+
         # Record histograms every 10 steps
         if k % 10 == 0:
             snapshots['naive'].append(np.array(q_naive))
             snapshots['cd'].append(np.array(q_cd))
             snapshots['lam'].append(lam_k)
             # Record parameters
-            if isinstance(theta, PolynomialAnsatz):
-                theta_history.append(np.array(theta.params))
-            elif isinstance(theta, NeuralNetworkAnsatz):
+            if isinstance(A_ansatz, PolynomialAnsatz):
+                theta_history.append(np.array(A_ansatz.params))
+            elif isinstance(A_ansatz, NeuralNetworkAnsatz):
                 # Store just the parameters as a tuple of arrays
                 params = []
-                for layer in theta.layers:
+                for layer in A_ansatz.layers:
                     if isinstance(layer, eqx.nn.Linear):
                         params.append(np.array(layer.weight))
                         params.append(np.array(layer.bias))
@@ -204,17 +209,17 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, 
             print(f"Warning: NaNs detected in p_naive at step {k} (count: {jnp.isnan(p_naive).sum()})")
 
         # --- CD step ---
-        cd_step = jax.vmap(lambda q, p: make_cd_leapfrog_step(make_T(lam_k), make_V(lam_k), A_ansatz, theta, lam_k, lam_k1, dot_lam_k, dot_lam_k1)(q, p, eps))
+        cd_step = jax.vmap(lambda q, p: make_cd_leapfrog_step(make_T(lam_k), make_V(lam_k), A_ansatz, lam_k, lam_k1, dot_lam_k, dot_lam_k1)(q, p, eps))
         q_cd, p_cd = cd_step(q_cd, p_cd)
 
-    return theta, snapshots, loss_histories, theta_history
+    return A_ansatz, snapshots, loss_histories, theta_history
 
 def plot_learned_ansatz(ax, theta, ansatz, q_range=(-3, 3), p_range=(-3, 3), n_points=50):
     """Plot the learned ansatz function A(q,p) as a 2D surface.
     
     Args:
         ax: matplotlib axis to plot on
-        theta: parameters for the ansatz
+        theta: parameters for the ansatz. For analytic ansatz, this is None.
         ansatz: the ansatz object (either PolynomialAnsatz or NeuralNetworkAnsatz)
         q_range: tuple of (min_q, max_q)
         p_range: tuple of (min_p, max_p)
@@ -224,29 +229,29 @@ def plot_learned_ansatz(ax, theta, ansatz, q_range=(-3, 3), p_range=(-3, 3), n_p
     p = np.linspace(p_range[0], p_range[1], n_points)
     Q, P = np.meshgrid(q, p)
     
-    # # Update the ansatz with the saved parameters
-    # if ansatz.ansatz_type == 'polynomial':
-    #     # For polynomial, theta is the parameters directly
-    #     current_ansatz = PolynomialAnsatz(theta)
-    # elif ansatz.ansatz_type == 'neural':
-    #     # For neural network, create a new network with the saved parameters
-    #     key = jax.random.PRNGKey(0)
-    #     current_ansatz = NeuralNetworkAnsatz([2, 16, 16, 1], key)
-    #     # Update each layer's parameters using eqx.tree_at
-    #     param_idx = 0
-    #     for i, layer in enumerate(current_ansatz.layers):
-    #         if isinstance(layer, eqx.nn.Linear):
-    #             current_ansatz = eqx.tree_at(lambda x: x.layers[i].weight, current_ansatz, theta[param_idx])
-    #             current_ansatz = eqx.tree_at(lambda x: x.layers[i].bias, current_ansatz, theta[param_idx + 1])
-    #             param_idx += 2
-    # else:
-    #     raise ValueError(f"Unknown ansatz type: {ansatz.ansatz_type}")
-    
+    # Create an ansatz instance with the parameters for the current timestep
+    if isinstance(ansatz, PolynomialAnsatz):
+        # Create a new ansatz object and update its parameters
+        current_ansatz = eqx.tree_at(lambda m: m.params, ansatz, theta)
+    elif isinstance(ansatz, NeuralNetworkAnsatz):
+        # Create a new ansatz and update its parameters layer by layer
+        current_ansatz = ansatz
+        param_idx = 0
+        for i, layer in enumerate(ansatz.layers):
+            if isinstance(layer, eqx.nn.Linear):
+                current_ansatz = eqx.tree_at(lambda m: m.layers[i].weight, current_ansatz, theta[param_idx])
+                current_ansatz = eqx.tree_at(lambda m: m.layers[i].bias, current_ansatz, theta[param_idx + 1])
+                param_idx += 2
+    elif isinstance(ansatz, AnalyticAnsatz):
+        current_ansatz = ansatz  # No parameters to update
+    else:
+        raise ValueError(f"Unknown ansatz type: {ansatz.ansatz_type}")
+
     # Evaluate A(q,p) at each point
     A_values = np.zeros_like(Q)
     for i in range(n_points):
         for j in range(n_points):
-            A_values[i,j] = float(ansatz(Q[i,j], P[i,j]))
+            A_values[i,j] = float(current_ansatz(Q[i,j], P[i,j]))
     
     # Plot the surface
     im = ax.imshow(A_values, extent=[q_range[0], q_range[1], p_range[0], p_range[1]], 
@@ -255,7 +260,7 @@ def plot_learned_ansatz(ax, theta, ansatz, q_range=(-3, 3), p_range=(-3, 3), n_p
     ax.set_ylabel('p')
     plt.colorbar(im, ax=ax, label='A(q,p)')
 
-def plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_fn, param_history=None, ansatz=None, ansatz_type=None):
+def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_history=None, ansatz=None):
     # Create two figures: one for distributions and one for the learned ansatz
     fig1, axes1 = plt.subplots(3, 6, figsize=(28, 14))
     fig2, axes2 = plt.subplots(3, 6, figsize=(28, 14))
@@ -272,7 +277,7 @@ def plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_
     axes1[0].legend()
 
     # Plot parameter history if available (only for polynomial ansatz)
-    if param_history is not None and len(param_history) > 0 and ansatz_type == 'polynomial':
+    if param_history is not None and len(param_history) > 0 and isinstance(ansatz, PolynomialAnsatz):
         param_times = np.arange(len(param_history)) * delta_t * 10
         axes1[1].set_title("Learned parameters over time")
         axes1[1].set_xlabel("t")
@@ -326,10 +331,23 @@ def plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_
 
         # Plot learned ansatz
         ax2 = axes2[plot_idx + 2]
-        if param_history is not None and snap_idx < len(param_history):
+        if isinstance(ansatz, AnalyticAnsatz):
+            plot_learned_ansatz(ax2, None, ansatz, q_range=(x_min, x_max), p_range=(-3, 3))
+            ax2.set_title(f"Analytic A(q,p) at t={snap_idx*10*delta_t:.2f}")
+
+        elif param_history is not None and snap_idx < len(param_history):
             theta = param_history[snap_idx]
             plot_learned_ansatz(ax2, theta, ansatz, q_range=(x_min, x_max), p_range=(-3, 3))
             ax2.set_title(f"Learned A(q,p) at t={snap_idx*10*delta_t:.2f}")
+
+    if isinstance(ansatz, PolynomialAnsatz):
+        ansatz_type = 'polynomial'
+    elif isinstance(ansatz, NeuralNetworkAnsatz):
+        ansatz_type = 'neural_network'
+    elif isinstance(ansatz, AnalyticAnsatz):
+        ansatz_type = 'analytic'
+    else:
+        raise ValueError(f"Unknown ansatz type")
 
     plt.figure(fig1.number)
     plt.tight_layout()
@@ -418,6 +436,21 @@ class NeuralNetworkAnsatz(A_ansatz):
         x = (self.layers[-1])(x)
         return x.squeeze()
 
+class AnalyticAnsatz(A_ansatz):
+    """An ansatz with a fixed analytical form from a screenshot."""
+    sigma: float
+    ansatz_type: str
+
+    def __init__(self, sigma=1.0):
+        self.sigma = sigma
+        self.ansatz_type = 'analytic'
+
+    def __call__(self, q, p):
+        # A(q, p) = - (sigma * p^2 + q^2 / sigma) / 2 * arctan(p * sigma / q)
+        # Use arctan2 to handle q=0 case
+        return p
+        # return - (self.sigma * p**2 + q**2 / self.sigma) / 2 * jnp.arctan2(p * self.sigma, q)
+
 def main():
 
     # todos
@@ -437,20 +470,23 @@ def main():
     def make_T(lam):
         return lambda p: 0.5 * (p ** 2) / m
     def make_V(lam):
-        return lambda q: (1-lam)*0.5*(q**2) + lam*(q**2 - 3)**2
+        # return lambda q: (1-lam)*0.5*(q**2) + lam*(q**2 - 3)**2
         # return lambda q: 0.5*((q-lam)**2 -1)**2
         # return lambda q: 0.5 * (q - lam) ** 2
-        # return lambda q: 0.5 * (lam + 0.1) * (q ** 2)
+        return lambda q: 0.5 * (lam + 0.1) * (q ** 2)
     
     # Initialize ansatz (either neural network or polynomial)
     key = jax.random.PRNGKey(0)
     # For neural network:
-    d = 1
+    # d = 1
     # ansatz = NeuralNetworkAnsatz([2*d, 128, 256, 128, d], key)
     # ansatz_type = 'neural_network'
     # For polynomial:
     ansatz = PolynomialAnsatz()
     ansatz_type = 'polynomial'
+    # For analytic solution:
+    # ansatz = AnalyticAnsatz(sigma=1.0)
+    # ansatz_type = 'analytic'
     
     # Print polynomial terms if using polynomial ansatz
     if ansatz_type == 'polynomial':
@@ -459,11 +495,20 @@ def main():
             print(f"  {desc}")
         print(f"Total number of parameters: {len(ansatz.params)}")
     
-    theta_history, snapshots, loss_histories, param_history = run_simulation(
-        M, N_steps, delta_t, eps, momentum_refresh_interval,
-        make_T, make_V, lambda x: x, lam_fn, dot_lam_fn, fit_gauge_potential, ansatz
+    A_ansatz, snapshots, loss_histories, param_history = run_simulation(
+        M=M, 
+        N_steps=N_steps, 
+        delta_t=delta_t, 
+        eps=eps, 
+        momentum_refresh_interval=momentum_refresh_interval,
+        make_T=make_T, 
+        make_V=make_V, 
+        lam_fn=lam_fn, 
+        dot_lam_fn=dot_lam_fn, 
+        A_ansatz=ansatz, 
+        key=key
     )
-    plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_fn, param_history, ansatz, ansatz_type)
+    plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_history, A_ansatz)
 
 if __name__ == '__main__':
     main()
