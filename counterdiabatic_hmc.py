@@ -154,14 +154,14 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, 
 
 
         # Re-fit A every 10 steps
-        if (k % 10 == 0) and (k < N_steps):
+        if (k % 1 == 0) and (k < N_steps):
             samples = np.stack([np.array(q_cd), np.array(p_cd)], axis=1)
             theta, loss_history = fit_gauge_potential(lam_k, samples, init_params=theta,
                                         make_T=make_T, make_V=make_V,
                                         A_ansatz=A_ansatz,
                                         num_iters=5000, lr=1e-3)
         
-            if k % 10 == 0:
+            if k % 1 == 0:
                 loss_histories.append(loss_history)
         # Record histograms every 10 steps
         if k % 10 == 0:
@@ -277,8 +277,17 @@ def plot_results(theta_history, snapshots, loss_histories, delta_t, make_V, lam_
         axes1[1].set_title("Learned parameters over time")
         axes1[1].set_xlabel("t")
         axes1[1].set_ylabel("θ value")
+        
+        # Get term descriptions for legend labels
+        term_descriptions = ansatz.get_term_description()
+        term_labels = []
+        for desc in term_descriptions:
+            # Extract just the term part (e.g., "pq", "q²", etc.)
+            term_part = desc.split(": ")[1]
+            term_labels.append(term_part)
+        
         for i in range(param_history[0].shape[0]):
-            axes1[1].plot(param_times, [p[i] for p in param_history], label=f'θ{i+1}')
+            axes1[1].plot(param_times, [p[i] for p in param_history], label=term_labels[i])
         axes1[1].legend()
 
     num_hist_axes = 13  # Reduced to make room for parameter plot
@@ -356,7 +365,7 @@ def generate_polynomial_terms(max_degree):
     
     return terms
 
-max_degree = 3
+max_degree = 4
 
 class PolynomialAnsatz(A_ansatz):
     """Polynomial ansatz for the gauge potential."""
@@ -428,10 +437,10 @@ def main():
     def make_T(lam):
         return lambda p: 0.5 * (p ** 2) / m
     def make_V(lam):
-        # return lambda q: (1-lam)*0.5*(q**2) + lam*(q**2 - 3)**2
+        return lambda q: (1-lam)*0.5*(q**2) + lam*(q**2 - 3)**2
         # return lambda q: 0.5*((q-lam)**2 -1)**2
         # return lambda q: 0.5 * (q - lam) ** 2
-        return lambda q: 0.5 * (lam + 0.1) * (q ** 2)
+        # return lambda q: 0.5 * (lam + 0.1) * (q ** 2)
     
     # Initialize ansatz (either neural network or polynomial)
     key = jax.random.PRNGKey(0)
