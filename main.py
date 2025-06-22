@@ -13,8 +13,8 @@ def main():
     N_steps = 20
     eps = 0.05
     delta_t = eps # should this even be a parameter?
-    momentum_refresh_interval = 20
-    fit_every = 1  # Fit the gauge potential every N steps
+    momentum_refresh_interval = 2
+    fit_every = 10  # Fit the gauge potential every N steps
     v = 0.5
     max_lam = 1.0
     lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)

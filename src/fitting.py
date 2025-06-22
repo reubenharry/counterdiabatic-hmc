@@ -7,7 +7,7 @@ from .physics import poisson_bracket_fn
 # =============================================================================
 #  FIT FUNCTION USING GENERAL POISSON BRACKET
 # =============================================================================
-def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters=200, lr=0.01):
+def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr):
     """
     Fit A(q,p; θ) by minimizing mean_{samples}[ ( {A,H} - ∂H/∂μ )^2 ].
     Returns both the optimized parameters and the loss history.

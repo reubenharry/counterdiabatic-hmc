@@ -31,34 +31,99 @@ This project explores the use of learned gauge potentials for counterdiabatic dr
 
 You can choose the ansatz to use by modifying the `main()` function in `main.py`. 
 
-## Notes
+## Notation
 
-## Deriving the condition on $A$
+Let $\rho_H$ be the canonical distribution, i.e. $\rho_H(q,p) \propto e^{-H}(q,p)$. We write $L_H\rho := \{H, \rho\}$.
 
-Suppose our (classical) Hamiltonian has the form $H_{C}(q,p,t) = H_0(q,p,t) + \dot \lambda A(q,p,t)$.
+## The problem
 
-We have (Liouville's theorem):
+Suppose we want to sample from some $P(q)$. Hamiltonian Monte Carlo works by defining a time-independent Hamiltonian $H$, which we choose so that the marginal $\int \rho_H(q,p)dp = P(q)$, and then running (discretized) Hamiltonian dynamics to take samples from $\rho_H$.
+
+This in turn works well because the exact Hamiltonian flow preserves the stationary distribution, in the following sense: $L_H\rho_H=0$, so that $e^{-tL_H}\rho_H = \rho_H, \forall t$.
+
+If samples were initially drawn from $\rho_H$, then exact Hamiltonian dynamics would preserve $\rho_H$ nicely (and discretized Hamiltonian dynamics would only yield small errors, which could be corrected by MH).
+
+However, samples are typically not drawn from $\rho_H$, but from a normal distribution, which could be very far from $\rho_H$. Adding noise in the correct way ensures eventual convergence to $\rho_H$, but this can be arbitrarily slow.
+
+One solution is to "anneal" through a series of distributions $\rho_{H_\lambda}$, equilibrating to each. One can think of this as adiabatic Hamiltonian Monte Carlo, in the sense that one has to vary $\lambda$ only very slowly, in order that after each change of $\lambda$, enough dynamics happen for the samples to re-equilibrate to the new distribution. In fact, [a beautiful paper by Betancourt](https://arxiv.org/abs/1405.3489) shows how to vary $\lambda$ adiabatically.
+
+But this too can be very slow. Instead, we might want to change $\lambda$ faster. In this case, the problem is that the samples will lag behind $\rho_{H_\lambda}$. To see this, observe that if $\Phi(\delta t)$ is the time evolution operator by an infinitesimal amount $\delta t$, then $\Phi_{H_{\lambda(t)}}(\delta t)^*\rho_{H_{\lambda(t)}} = \rho_{H_{\lambda(t)}} + O((\delta t)^2)$, whereas the true distribution at time $t+\delta t$ is $\rho_{H_{\lambda(t)}} + \delta t\partial_t\rho_{H_{\lambda(t)}} + O((\delta t)^2)$.
+
+This discrepancy of $\partial_t\rho_{H_{\lambda(t)}}$ can be expressed differently, since we assume $\rho$ is canonical. That is, $\partial_t\rho_{H_{\lambda(t)}} = \frac{\dot Z}{Z}\rho_{H_{\lambda(t)}} - \partial_\lambda H\dot\lambda\rho$.
+
+Now suppose that we have a function on phase space $A$ with $\{A, H\} = \partial_\lambda H$. We rewrite the true evolution as $\rho_{H_{\lambda(t+\delta t)}} = \rho_{H_{\lambda(t)}} + \delta t\partial_t\rho_{H_{\lambda(t)}} + O((\delta t)^2) = \rho_{H_{\lambda(t)}} - \delta t\dot\lambda \{A, H\}\rho_{H_{\lambda(t)}}+ O((\delta t)^2) = \rho_{H_{\lambda(t)}} + \delta t\dot\lambda \{A,\rho_{H_{\lambda(t)}}\}+ O((\delta t)^2) \approx (I + \delta t\dot\lambda L_A)\rho_{H_{\lambda(t)}}$.
+
+(where we have used that $\{f,g\} = \frac{df}{dr}\{r, g\}$, as is evident from direct calculation).
+
+The intuitive solution is then to construct a new Hamiltonian which accounts for the discrepancy. This will take the form $H'_{\lambda(t)} := H_{\lambda(t)} + \dot\lambda A$
+
 
 $$
-\partial_t\rho + \{\rho, H_C\} = 0
+\Phi_{H_{\lambda(t)}+ \dot\lambda A}(\delta t)^*\rho_{H_{\lambda(t)}} = \rho_{H_{\lambda(t)}} + \dot\lambda\{A, \rho_{H_{\lambda(t)}}\} + O((\delta t)^2)
 $$
 
-which holds for the evolution of any measure under Hamiltonian dynamics (as a consequence of the continuity theorem, which follows from the measure preservation of Hamiltonian dynamics, and then some further properties of the Poisson bracket).
+which gives us the desired evolution.
 
-where $\rho(q,p,t) \propto e^{-\beta H_0(q,p,t)}$ is the canonical distribution with respect to $H_0$. Expanding this, we find:
+
+<!-- $L_{H_{\lambda(t)}}\rho_{\lambda(t)} = 0$, so that $e^{-tL_H}\rho_H = \rho_H$ -->
+
+
+## Solution
+
+Finding $A$ is hard in practice. In fact, it isn't entirely obvious to me that it always exists in the classical setting. But one can tackle the problem variationally, but taking e.g. a polynomial ansatz and minimizing it at regular intervals.
+
+In particular, we assume we are in a multichain setting, so at every time point, we have $M$ particles.
+
+Defining $R = |\partial_\lambda H - \{A, H\}|^2$, our variational problem is then to vary $A$ in order to minimize $\langle R \rangle$, as estimated by our current set of particles.
+
+More concretely, we parametrize $A$ as a sum of polynomials, so $A(q,p) = \theta_1 p + \theta_2 pq + \ldots$
 
 $$
--\beta \dot\lambda(t)\partial_\lambda H_0\rho(q,p,t) + g(\lambda(t)) + \dot\lambda\rho
-(q,p,t)(-\beta \{H_0, A\}) = 0
+
 $$
 
-so that when $\dot\lambda$ is finite, $\{\partial_\lambda H_0 - \{A, H_0\}, H_0\} = 0$.
+$$
+todo
+$$
 
-The approach of Sels et al is to minimize $A$ variationally
+Pseudocode:
 
-What we want is that $\rho$ is 
+```python
+for i in 
+```
 
-Dividing by λ˙λ˙ (assuming it’s nonzero) yields the first‐order linear PDE for the : but ldot can be 0!
 
- hat PDE does not by itself fix AA uniquely—you can always add any function F(H0)F(H0​) of the original Hamiltonian and still satisfy it, because {F(H0),H0}=0{F(H0​),H0​}=0
+<!-- Standard Hamiltonian Monte Carlo is based on the fact that a time-independent Hamiltonian $H$ satisfies $\partial_t\rho_H = 0$, i.e.  -->
+
+## Questions
+
+How should we integrate the new Hamiltonian? In any case of interest, it is non-separable, but this means that our symplectic integrators do not have the desired behavior.
+
+How should we tune the step size of HMC?
+
+
+## Geometric perspective
+
+## Appendix
+
+Suppose $\rho(q,p,t) \propto e^{-\beta H(q,p,t)}$. Then:
+
+$$\frac{d}{dt}\rho(q(t), p(t), t) = \dot q\partial_q\rho + \dot p \partial_p\rho + \partial_t\rho$$
+
+$$
+= \{q, H\}\partial_q\rho + \{p, H\} \partial_p\rho + \partial_t\rho
+$$
+
+$$
+= \{\rho, H\} + \partial_t\rho
+$$
+
+Defining $L_H\rho = \{H, \rho\}$, we see that $L_H\rho = \partial_t\rho$ is sufficient for 
+
+$$
+\rho(q(t), p(t), t) = \rho(q(0), p(0), 0)
+$$
+
+
+<!-- that PDE does not by itself fix AA uniquely—you can always add any function F(H0)F(H0​) of the original Hamiltonian and still satisfy it, because {F(H0),H0}=0{F(H0​),H0​}=0 -->
 

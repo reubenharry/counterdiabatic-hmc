@@ -83,6 +83,8 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
     # Plot loss histories
     if loss_histories:
         axes1[0].set_title("Loss during optimization")
+        # maximum y value: 100
+        axes1[0].set_ylim(0, 100)
         axes1[0].set_xlabel("Optimization iteration")
         axes1[0].set_ylabel("Loss")
         for i, loss_history in enumerate(loss_histories):

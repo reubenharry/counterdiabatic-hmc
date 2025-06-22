@@ -58,7 +58,7 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
             A_ansatz, loss_history = fit_gauge_potential(lam_k, samples,
                                         make_T=make_T, make_V=make_V,
                                         A_ansatz=A_ansatz,
-                                        num_iters=10000, lr=1e-4)
+                                        num_iters=50000, lr=1e-4)
             loss_histories.append(loss_history)
 
         # Record snapshots and parameters every 10 steps
