@@ -106,6 +106,8 @@ Should we be using weighting schemes, or indeed MH, to correct for discretizatio
 
 ## Geometric perspective
 
+$`\{a\}`$
+
 ## Appendix
 
 Suppose $\rho(q,p,t) \propto e^{-\beta H(q,p,t)}$. Then:
