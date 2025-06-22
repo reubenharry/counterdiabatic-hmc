@@ -51,7 +51,7 @@ But this too can be very slow. Instead, we might want to change $\lambda$ faster
 
 This discrepancy of $\partial_t\rho_{H_{\lambda(t)}}$ can be expressed differently, since we assume $\rho$ is canonical. That is, $\partial_t\rho_{H_{\lambda(t)}} = \frac{\dot Z}{Z}\rho_{H_{\lambda(t)}} - \partial_\lambda H\dot\lambda\rho$.
 
-Now suppose that we have a function on phase space $A$ with $\{A, H\} = \partial_\lambda H$. We rewrite the true evolution as $\rho_{H_{\lambda(t+\delta t)}} = \rho_{H_{\lambda(t)}} + \delta t\partial_t\rho_{H_{\lambda(t)}} + O((\delta t)^2) = \rho_{H_{\lambda(t)}} - \delta t\dot\lambda \{A, H\}\rho_{H_{\lambda(t)}}+ O((\delta t)^2) = \rho_{H_{\lambda(t)}} + \delta t\dot\lambda \{A,\rho_{H_{\lambda(t)}}\}+ O((\delta t)^2) \approx (I + \delta t\dot\lambda L_A)\rho_{H_{\lambda(t)}}$.
+Now suppose that we have a function on phase space $A$ with $\{A, H\} = \partial_\lambda H$. We rewrite the true evolution as $`\rho_{H_{\lambda(t+\delta t)}} = \rho_{H_{\lambda(t)}} + \delta t\partial_t\rho_{H_{\lambda(t)}} + O((\delta t)^2) = \rho_{H_{\lambda(t)}} - \delta t\dot\lambda \{A, H\}\rho_{H_{\lambda(t)}}+ O((\delta t)^2) = \rho_{H_{\lambda(t)}} + \delta t\dot\lambda \{A,\rho_{H_{\lambda(t)}}\}+ O((\delta t)^2) \approx (I + \delta t\dot\lambda L_A)\rho_{H_{\lambda(t)}}`$.
 
 (where we have used that $\{f,g\} = \frac{df}{dr}\{r, g\}$, as is evident from direct calculation).
 
@@ -106,7 +106,6 @@ Should we be using weighting schemes, or indeed MH, to correct for discretizatio
 
 ## Geometric perspective
 
-$`\{a\}`$
 
 ## Appendix
 
