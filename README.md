@@ -101,6 +101,8 @@ How should we integrate the new Hamiltonian? In any case of interest, it is non-
 
 How should we tune the step size of HMC?
 
+Should we be using weighting schemes, or indeed MH, to correct for discretization?
+
 
 ## Geometric perspective
 
@@ -111,7 +113,7 @@ Suppose $\rho(q,p,t) \propto e^{-\beta H(q,p,t)}$. Then:
 $$\frac{d}{dt}\rho(q(t), p(t), t) = \dot q\partial_q\rho + \dot p \partial_p\rho + \partial_t\rho$$
 
 $$
-= \{q, H\}\partial_q\rho + \{p, H\} \partial_p\rho + \partial_t\rho
+= \{q, H\}\partial_q\rho + '\{p, H'\} \partial_p\rho + \partial_t\rho
 $$
 
 $$
