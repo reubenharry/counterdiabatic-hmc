@@ -51,7 +51,7 @@ But this too can be very slow. Instead, we might want to change $\lambda$ faster
 
 This discrepancy of $\partial_t\rho_{H_{\lambda(t)}}$ can be expressed differently, since we assume $\rho$ is canonical. That is, $\partial_t\rho_{H_{\lambda(t)}} = \frac{\dot Z}{Z}\rho_{H_{\lambda(t)}} - \partial_\lambda H\dot\lambda\rho$.
 
-Now suppose that we have a function on phase space $A$ with $\{A, H\} = \partial_\lambda H$. We rewrite the true evolution as $`\rho_{H_{\lambda(t+\delta t)}} = \rho_{H_{\lambda(t)}} + \delta t\partial_t\rho_{H_{\lambda(t)}} + O((\delta t)^2) = \rho_{H_{\lambda(t)}} - \delta t\dot\lambda \{A, H\}\rho_{H_{\lambda(t)}}+ O((\delta t)^2) = \rho_{H_{\lambda(t)}} + \delta t\dot\lambda \{A,\rho_{H_{\lambda(t)}}\}+ O((\delta t)^2) \approx (I + \delta t\dot\lambda L_A)\rho_{H_{\lambda(t)}}`$.
+Now suppose that we have a function on phase space $A$ with $\{A, H\} = \partial_\lambda H$. We rewrite the true evolution as $\rho_{H_{\lambda(t+\delta t)}} = \rho_{H_{\lambda(t)}} + \delta t\partial_t\rho_{H_{\lambda(t)}} + O((\delta t)^2) = \rho_{H_{\lambda(t)}} + \delta t\dot\lambda \{A,\rho_{H_{\lambda(t)}}\}+ O((\delta t)^2) \approx (I + \delta t\dot\lambda L_A)\rho_{H_{\lambda(t)}}$.
 
 (where we have used that $\{f,g\} = \frac{df}{dr}\{r, g\}$, as is evident from direct calculation).
 
@@ -97,11 +97,29 @@ for i in
 
 ## Questions
 
+Does the condition have to be \partial_\lambda H = {A, H}, or just that this is constant of motion?
+
 How should we integrate the new Hamiltonian? In any case of interest, it is non-separable, but this means that our symplectic integrators do not have the desired behavior.
+
+Shoud we recompute A at the midpoint $\lambda(t + 0.5\delta t)$?
 
 How should we tune the step size of HMC?
 
+How should we tune the hyperparams
+
 Should we be using weighting schemes, or indeed MH, to correct for discretization?
+
+There is presumably gauge freedom in the choice of $A$. How should we gauge fix?
+
+Should we leapfrog update $\lambda$?
+
+Should we consider multiple dimensions in the base manifold? More interesting geometry...
+
+Hannay angles?
+
+notes:
+
+   no even terms like p^2
 
 
 ## Geometric perspective

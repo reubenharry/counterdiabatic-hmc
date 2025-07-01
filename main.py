@@ -14,16 +14,16 @@ def main():
     eps = 0.01
     delta_t = eps # should this even be a parameter?
     momentum_refresh_interval = 5
-    fit_every = 1  # Fit the gauge potential every N steps
+    fit_every = 10  # Fit the gauge potential every N steps
     v = 0.5
     max_lam = 1.0
     lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
     dot_lam_fn = jax.grad(lam_fn)
     
     # Choose the system to simulate
-    # system_name = "gaussian_moving_mean"
+    system_name = "gaussian_moving_mean"
     # system_name = "gaussian_annealing"
-    system_name = "double_well"
+    # system_name = "double_well"
     make_T, make_V, system_description = get_system(system_name)
     print(f"Using system: {system_name}")
     print(f"Description: {system_description}")
