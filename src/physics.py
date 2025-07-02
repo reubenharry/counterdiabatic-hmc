@@ -7,22 +7,42 @@ m = 1.0
 # 1) GENERAL POISSON BRACKET FUNCTION (scalar)
 # =============================================================================
 def poisson_bracket_fn(f, g):
-
+    """Compute the Poisson bracket {f, g} for multi-dimensional q and p."""
     df_dq = jax.grad(lambda qr, pr: f(qr, pr), argnums=0)
     df_dp = jax.grad(lambda qr, pr: f(qr, pr), argnums=1)
     dg_dq = jax.grad(lambda qr, pr: g(qr, pr), argnums=0)
     dg_dp = jax.grad(lambda qr, pr: g(qr, pr), argnums=1)
 
-    return lambda q,p: df_dq(q, p) * dg_dp(q, p) - df_dp(q, p) * dg_dq(q, p)
+    def poisson_bracket(q, p):
+        df_dq_val = df_dq(q, p)
+        df_dp_val = df_dp(q, p)
+        dg_dq_val = dg_dq(q, p)
+        dg_dp_val = dg_dp(q, p)
+        
+        # For multi-dimensional case, compute dot product of gradients
+        return jnp.dot(df_dq_val, dg_dp_val) - jnp.dot(df_dp_val, dg_dq_val)
+    
+    return poisson_bracket
 
-make_p_update = lambda V: lambda q, p, eps: p - eps * jax.grad(V)(q)
-make_x_update = lambda T: lambda q, p, eps: q + eps * jax.grad(T)(p)
+def make_p_update(V):
+    """Create momentum update function for potential V."""
+    def p_update(q, p, eps):
+        # Assume V returns a scalar
+        return p - eps * jax.grad(V)(q)
+    return p_update
+
+def make_x_update(T):
+    """Create position update function for kinetic energy T."""
+    def x_update(q, p, eps):
+        # Assume T returns a scalar
+        return q + eps * jax.grad(T)(p)
+    return x_update
 
 # =============================================================================
 # GENERAL LEAPFROG INTEGRATOR FOR SEPARABLE HAMILTONIAN
 # =============================================================================
 def make_leapfrog_step(T, V):
-
+    """Create a leapfrog step function for separable Hamiltonian."""
     p_update = make_p_update(V)
     x_update = make_x_update(T)
 
@@ -34,11 +54,24 @@ def make_leapfrog_step(T, V):
     return leapfrog
 
 def make_cd_leapfrog_step(T, V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next):
+    """Create a counterdiabatic leapfrog step function."""
     dA_dq_scalar = jax.grad(A_ansatz, argnums=0)
     dA_dp_scalar = jax.grad(A_ansatz, argnums=1)
+    
     def cd_leapfrog(q, p, eps):
-        p_half = p - 0.5 * eps * (jax.grad(V)(q) + dot_lam * dA_dq_scalar(q, p))
-        q_new = q + eps * (jax.grad(T)(p_half) + dot_lam * dA_dp_scalar(q, p_half))
-        p_new = p_half - 0.5 * eps * (jax.grad(V)(q_new) + dot_lam * dA_dq_scalar(q_new, p_half))
+        # Compute gradients of the gauge potential
+        dA_dq = dA_dq_scalar(q, p)
+        dA_dp = dA_dp_scalar(q, p)
+        
+        # Update momentum with potential and gauge potential gradients
+        p_half = p - 0.5 * eps * (jax.grad(V)(q) + dot_lam * dA_dq)
+        
+        # Update position with kinetic and gauge potential gradients
+        q_new = q + eps * (jax.grad(T)(p_half) + dot_lam * dA_dp)
+        
+        # Update momentum again
+        dA_dq_new = dA_dq_scalar(q_new, p_half)
+        p_new = p_half - 0.5 * eps * (jax.grad(V)(q_new) + dot_lam * dA_dq_new)
+        
         return q_new, p_new
     return cd_leapfrog 

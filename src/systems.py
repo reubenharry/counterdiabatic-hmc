@@ -4,36 +4,79 @@ from .physics import m
 
 def make_T_standard(lam):
     """Standard kinetic energy: T(p) = p^2 / (2m)"""
-    return lambda p: 0.5 * (p ** 2) / m
+    return lambda p: 0.5 * jnp.sum(p ** 2) / m
 
 def make_V_gaussian_moving_mean(lam):
     """Gaussian potential with moving mean: V(q) = 0.5 * (q - λ)^2"""
-    return lambda q: 0.5 * (q - lam) ** 2
+    return lambda q: 0.5 * jnp.sum((q - lam) ** 2)
 
 def make_V_gaussian_annealing(lam):
     """Gaussian potential with annealing temperature: V(q) = 0.5 * (λ + 0.1) * q^2"""
-    return lambda q: 0.5 * (lam + 0.1) * (q ** 2)
+    return lambda q: 0.5 * jnp.sum((lam + 0.1) * (q ** 2))
 
 def make_V_double_well(lam):
     """Double well potential: V(q) = (1-λ)*0.5*q^2 + λ*(q^2 - 3)^2"""
-    return lambda q: (1-lam)*0.5*(q**2) + lam*(q**2 - 3)**2
+    return lambda q: jnp.sum((1-lam)*0.5*(q**2) + lam*(q**2 - 3)**2)
+
+def make_V_2d_gaussian_moving_mean(lam):
+    """2D Gaussian potential with moving mean: V(q) = 0.5 * ||q - λ||^2"""
+    return lambda q: 0.5 * jnp.sum((q - lam) ** 2)
+
+def make_V_2d_double_well(lam):
+    """2D Double well potential: V(q) = (1-λ)*0.5*||q||^2 + λ*((q_0^2 - 3)^2 + (q_1^2 - 3)^2)"""
+    return lambda q: jnp.sum((1-lam)*0.5*(q**2) + lam*((q[0]**2 - 3)**2 + (q[1]**2 - 3)**2))
+
+def make_V_2d_gaussian_annealing(lam):
+    """2D Gaussian potential with annealing temperature: V(q) = 0.5 * (λ + 0.1) * ||q||^2"""
+    return lambda q: 0.5 * jnp.sum((lam + 0.1) * (q ** 2))
+
+def make_V_2d_rosenbrock(lam):
+    """2D Rosenbrock potential: V(q) = (1-λ)*0.5*||q||^2 + λ*((1-q_0)^2 + 100*(q_1-q_0^2)^2)"""
+    return lambda q: jnp.sum((1-lam)*0.5*(q**2) + lam*((1-q[0])**2 + 100*(q[1]-q[0]**2)**2))
 
 # Dictionary of available systems
 SYSTEMS = {
     'gaussian_moving_mean': {
         'make_T': make_T_standard,
         'make_V': make_V_gaussian_moving_mean,
-        'description': 'Gaussian potential with moving mean V(q) = 0.5 * (q - λ)²'
+        'description': 'Gaussian potential with moving mean V(q) = 0.5 * (q - λ)²',
+        'dim': 1
     },
     'gaussian_annealing': {
         'make_T': make_T_standard,
         'make_V': make_V_gaussian_annealing,
-        'description': 'Gaussian potential with annealing temperature V(q) = 0.5 * (λ + 0.1) * q²'
+        'description': 'Gaussian potential with annealing temperature V(q) = 0.5 * (λ + 0.1) * q²',
+        'dim': 1
     },
     'double_well': {
         'make_T': make_T_standard,
         'make_V': make_V_double_well,
-        'description': 'Double well potential V(q) = (1-λ)*0.5*q² + λ*(q² - 3)²'
+        'description': 'Double well potential V(q) = (1-λ)*0.5*q² + λ*(q² - 3)²',
+        'dim': 1
+    },
+    '2d_gaussian_moving_mean': {
+        'make_T': make_T_standard,
+        'make_V': make_V_2d_gaussian_moving_mean,
+        'description': '2D Gaussian potential with moving mean V(q) = 0.5 * ||q - λ||²',
+        'dim': 2
+    },
+    '2d_double_well': {
+        'make_T': make_T_standard,
+        'make_V': make_V_2d_double_well,
+        'description': '2D Double well potential V(q) = (1-λ)*0.5*||q||² + λ*((q₀² - 3)² + (q₁² - 3)²)',
+        'dim': 2
+    },
+    '2d_gaussian_annealing': {
+        'make_T': make_T_standard,
+        'make_V': make_V_2d_gaussian_annealing,
+        'description': '2D Gaussian potential with annealing temperature V(q) = 0.5 * (λ + 0.1) * ||q||²',
+        'dim': 2
+    },
+    '2d_normal_to_rosenbrock': {
+        'make_T': make_T_standard,
+        'make_V': make_V_2d_rosenbrock,
+        'description': '2D interpolating potential: normal → Rosenbrock V(q) = (1-λ)*0.5*||q||² + λ*((1-q₀)² + 100*(q₁-q₀²)²)',
+        'dim': 2
     }
 }
 
@@ -44,4 +87,4 @@ def get_system(system_name):
         raise ValueError(f"Unknown system '{system_name}'. Available systems: {available}")
     
     system = SYSTEMS[system_name]
-    return system['make_T'], system['make_V'], system['description'] 
+    return system['make_T'], system['make_V'], system['description'], system['dim'] 
