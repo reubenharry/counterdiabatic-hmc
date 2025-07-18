@@ -22,7 +22,7 @@ def check_nans(name, value, iteration=None):
 # =============================================================================
 #  FIT FUNCTION USING GENERAL POISSON BRACKET
 # =============================================================================
-def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr):
+def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, use_regularization=False):
     """
     Fit A(q,p; θ) by minimizing mean_{samples}[ ( {A,H} - ∂H/∂μ )^2 ].
     Returns both the optimized parameters and the loss history.
@@ -35,6 +35,7 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr):
         A_ansatz: The ansatz to fit
         num_iters: Number of optimization iterations
         lr: Learning rate
+        use_regularization: Whether to use L2 regularization
     """
     # Check input samples for NaNs
     check_nans("input_samples", samples)
@@ -59,9 +60,9 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr):
         # Main loss term
         main_loss = jnp.mean(R_vals ** 2)
         
-        # Add weight regularization to prevent large weights
+        # Add weight regularization to prevent large weights (optional)
         reg_loss = 0.0
-        if isinstance(A_ansatz, eqx.Module):
+        if use_regularization and isinstance(A_ansatz, eqx.Module):
             # Handle different ansatz types
             if hasattr(A_ansatz, 'params') and isinstance(A_ansatz.params, jnp.ndarray):
                 # PolynomialAnsatz case - params is a single array
@@ -115,6 +116,10 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr):
         return A_ansatz, opt_state, loss
 
     loss_history = []
+    best_loss = float('inf')
+    patience = 50  # Number of iterations to wait for improvement
+    patience_counter = 0
+    
     for iteration in range(num_iters):
         A_ansatz, opt_state, loss = update(A_ansatz, opt_state, qp_batch)
         
@@ -125,6 +130,18 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr):
             break
             
         loss_history.append(float(loss))
+        
+        # Early stopping: check if loss has improved
+        if loss < best_loss:
+            best_loss = loss
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            
+        # Stop if loss hasn't improved for patience iterations
+        if patience_counter >= patience and iteration > 100:  # Wait at least 100 iterations
+            print(f"Early stopping at iteration {iteration} (loss: {loss:.6f})")
+            break
 
     print(f"Fitting completed after {len(loss_history)} iterations")
     return A_ansatz, loss_history 

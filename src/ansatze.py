@@ -100,9 +100,6 @@ class PolynomialAnsatz(A_ansatz):
                     term = term * (p[d] ** p_powers[d])
             result += term
         
-        # Clip the output to prevent extremely large values
-        result = jnp.clip(result, -20.0, 20.0)
-        
         return result
 
     def get_term_description(self):
@@ -148,21 +145,23 @@ class AnalyticAnsatz(A_ansatz):
     def __call__(self, q, p):
         lam_schedule = self.params[0]  # Get current schedule lambda value
 
+        return -(q*p)[0]
+
         # return p
         
         # For the 'gaussian_annealing' system, V(q) = 0.5 * (lam_schedule + 0.1) * q^2.
         # The parameter in the analytic formula corresponds to the coefficient of 0.5*q^2.
-        potential_param = lam_schedule + 0.001
+        # potential_param = lam_schedule + 0.001
         
         # Formula from screenshot: A = (p^2 + L*q^2) / (4*L*sqrt(L)) * arctan(p / (q*sqrt(L)))
         # where L is the potential parameter.
-        numerator = p**2 + potential_param * q**2
-        denominator = 4 * potential_param**(1.5)
+        # numerator = p**2 + potential_param * q**2
+        # denominator = 4 * potential_param**(1.5)
         
         # Use arctan2 to handle q=0 case
-        arctan_term = jnp.arctan2(p, jnp.sqrt(potential_param) * q)
+        # arctan_term = jnp.arctan2(p, jnp.sqrt(potential_param) * q)
         
-        return (numerator / denominator) * arctan_term
+        # return (numerator / denominator) * arctan_term
 
 class NeuralNetworkAnsatz(A_ansatz):
     """Neural network ansatz for the gauge potential."""
