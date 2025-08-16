@@ -107,11 +107,49 @@ def plot_2d_distribution(ax, samples, title, color='blue', alpha=0.6):
     ax.set_title(title)
     ax.set_aspect('equal')
 
+def compute_weighted_kde(samples, weights=None, x_grid=None):
+    """Compute weighted KDE for 1D samples.
+    
+    Args:
+        samples: 1D array of samples
+        weights: Optional array of weights (log weights)
+        x_grid: Optional grid for evaluation
+    
+    Returns:
+        density: KDE values on x_grid
+    """
+    if x_grid is None:
+        x_grid = np.linspace(np.min(samples) - 0.5, np.max(samples) + 0.5, 200)
+    
+    if weights is not None:
+        # Convert log weights to regular weights
+        weights = np.exp(weights - np.max(weights))  # Subtract max for numerical stability
+        weights = weights / np.sum(weights)  # Normalize
+        
+        # Compute weighted histogram
+        hist, bin_edges = np.histogram(samples, bins=50, weights=weights, density=True, 
+                                      range=(np.min(x_grid), np.max(x_grid)))
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        density = np.interp(x_grid, bin_centers, hist)
+    else:
+        # Unweighted KDE
+        try:
+            kde = gaussian_kde(samples.flatten())
+            density = kde(x_grid)
+        except:
+            # Fallback to histogram if KDE fails
+            hist, bin_edges = np.histogram(samples, bins=50, density=True, 
+                                          range=(np.min(x_grid), np.max(x_grid)))
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            density = np.interp(x_grid, bin_centers, hist)
+    
+    return density
+
 def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmonic", ansatz_type="polynomial"):
     """Create a ridge plot showing the evolution of 1D distributions over time.
     
     Args:
-        snapshots: Dictionary containing 'naive', 'cd', 'cd_post_equil', 'lam' arrays
+        snapshots: Dictionary containing 'naive', 'naive_weighted', 'cd', 'cd_post_equil', 'lam' arrays
         delta_t: Time step
         make_V: Function to create potential energy
         lam_fn: Function to compute lambda at a given time
@@ -126,6 +164,9 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     # Check if re-equilibration was used
     has_re_equil = 'cd_post_equil' in snapshots and len(snapshots['cd_post_equil']) > 0
     
+    # Check if weights are available
+    has_weights = 'weights' in snapshots and any(w is not None for w in snapshots['weights'])
+    
     # Get time points
     times = np.arange(len(snapshots['naive'])) * delta_t * 10  # *10 because we record every 10 steps
     
@@ -139,9 +180,26 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     else:
         post_equil_times = np.array([])
     
-    # Create figure with narrower side-by-side layout
-    if has_re_equil:
+    # Create figure with appropriate layout
+    if has_re_equil and has_weights:
+        # Four columns: naive unweighted, naive weighted, CD pre-equil, CD post-equil
+        fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(24, 6))
+        
+        # Create secondary y-axes for lambda values
+        ax1_lambda = ax1.twinx()
+        ax2_lambda = ax2.twinx()
+        ax3_lambda = ax3.twinx()
+        ax4_lambda = ax4.twinx()
+    elif has_re_equil:
         # Three columns: naive, CD pre-equil, CD post-equil
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+        
+        # Create secondary y-axes for lambda values
+        ax1_lambda = ax1.twinx()
+        ax2_lambda = ax2.twinx()
+        ax3_lambda = ax3.twinx()
+    elif has_weights:
+        # Three columns: naive unweighted, naive weighted, CD
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
         
         # Create secondary y-axes for lambda values
@@ -156,27 +214,72 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
         ax1_lambda = ax1.twinx()
         ax2_lambda = ax2.twinx()
     
-    # Plot naive HMC ridge plot
-    ax1.set_title("Naïve HMC Evolution", fontsize=14, fontweight='bold')
-    ax1.set_xlabel("Position q", fontsize=12)
-    ax1.set_ylabel("Time t", fontsize=12)
-    ax1_lambda.set_ylabel("λ", fontsize=12, color='red')
-    ax1_lambda.tick_params(axis='y', labelcolor='red')
-    
-    # Plot CD HMC ridge plot (pre-equilibration)
-    ax2.set_title("Counterdiabatic HMC Evolution (Pre-equilibration)", fontsize=14, fontweight='bold')
-    ax2.set_xlabel("Position q", fontsize=12)
-    ax2.set_ylabel("Time t", fontsize=12)
-    ax2_lambda.set_ylabel("λ", fontsize=12, color='red')
-    ax2_lambda.tick_params(axis='y', labelcolor='red')
-    
-    # Plot CD HMC ridge plot (post-equilibration) if available
-    if has_re_equil:
-        ax3.set_title("Counterdiabatic HMC Evolution (Post-equilibration)", fontsize=14, fontweight='bold')
+    # Set up axis titles based on layout
+    if has_re_equil and has_weights:
+        # Four columns: naive unweighted, naive weighted, CD pre-equil, CD post-equil
+        ax1.set_title("Naïve HMC Evolution (Unweighted)", fontsize=14, fontweight='bold')
+        ax1.set_xlabel("Position q", fontsize=12)
+        ax1.set_ylabel("Time t", fontsize=12)
+        ax1_lambda.set_ylabel("λ", fontsize=12, color='red')
+        ax1_lambda.tick_params(axis='y', labelcolor='red')
+        
+        ax2.set_title("Naïve HMC Evolution (Weighted SMC)", fontsize=14, fontweight='bold')
+        ax2.set_xlabel("Position q", fontsize=12)
+        ax2.set_ylabel("Time t", fontsize=12)
+        ax2_lambda.set_ylabel("λ", fontsize=12, color='red')
+        ax2_lambda.tick_params(axis='y', labelcolor='red')
+        
+        ax3.set_title("Counterdiabatic HMC Evolution (Pre-equilibration)", fontsize=14, fontweight='bold')
         ax3.set_xlabel("Position q", fontsize=12)
         ax3.set_ylabel("Time t", fontsize=12)
         ax3_lambda.set_ylabel("λ", fontsize=12, color='red')
         ax3_lambda.tick_params(axis='y', labelcolor='red')
+        
+        ax4.set_title("Counterdiabatic HMC Evolution (Post-equilibration)", fontsize=14, fontweight='bold')
+        ax4.set_xlabel("Position q", fontsize=12)
+        ax4.set_ylabel("Time t", fontsize=12)
+        ax4_lambda.set_ylabel("λ", fontsize=12, color='red')
+        ax4_lambda.tick_params(axis='y', labelcolor='red')
+    elif has_weights:
+        # Three columns: naive unweighted, naive weighted, CD
+        ax1.set_title("Naïve HMC Evolution (Unweighted)", fontsize=14, fontweight='bold')
+        ax1.set_xlabel("Position q", fontsize=12)
+        ax1.set_ylabel("Time t", fontsize=12)
+        ax1_lambda.set_ylabel("λ", fontsize=12, color='red')
+        ax1_lambda.tick_params(axis='y', labelcolor='red')
+        
+        ax2.set_title("Naïve HMC Evolution (Weighted SMC)", fontsize=14, fontweight='bold')
+        ax2.set_xlabel("Position q", fontsize=12)
+        ax2.set_ylabel("Time t", fontsize=12)
+        ax2_lambda.set_ylabel("λ", fontsize=12, color='red')
+        ax2_lambda.tick_params(axis='y', labelcolor='red')
+        
+        ax3.set_title("Counterdiabatic HMC Evolution (Pre-equilibration)", fontsize=14, fontweight='bold')
+        ax3.set_xlabel("Position q", fontsize=12)
+        ax3.set_ylabel("Time t", fontsize=12)
+        ax3_lambda.set_ylabel("λ", fontsize=12, color='red')
+        ax3_lambda.tick_params(axis='y', labelcolor='red')
+    else:
+        # Standard layout
+        ax1.set_title("Naïve HMC Evolution", fontsize=14, fontweight='bold')
+        ax1.set_xlabel("Position q", fontsize=12)
+        ax1.set_ylabel("Time t", fontsize=12)
+        ax1_lambda.set_ylabel("λ", fontsize=12, color='red')
+        ax1_lambda.tick_params(axis='y', labelcolor='red')
+        
+        ax2.set_title("Counterdiabatic HMC Evolution (Pre-equilibration)", fontsize=14, fontweight='bold')
+        ax2.set_xlabel("Position q", fontsize=12)
+        ax2.set_ylabel("Time t", fontsize=12)
+        ax2_lambda.set_ylabel("λ", fontsize=12, color='red')
+        ax2_lambda.tick_params(axis='y', labelcolor='red')
+        
+        # Plot CD HMC ridge plot (post-equilibration) if available
+        if has_re_equil:
+            ax3.set_title("Counterdiabatic HMC Evolution (Post-equilibration)", fontsize=14, fontweight='bold')
+            ax3.set_xlabel("Position q", fontsize=12)
+            ax3.set_ylabel("Time t", fontsize=12)
+            ax3_lambda.set_ylabel("λ", fontsize=12, color='red')
+            ax3_lambda.tick_params(axis='y', labelcolor='red')
     
     # Find global range for consistent x-axis
     all_qs = np.concatenate([snapshots['naive'] + snapshots['cd_pre_equil']])
@@ -193,17 +296,10 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     # Create x grid for smooth curves
     x_grid = np.linspace(x_min, x_max, 200)
     
-    # Plot naive HMC distributions
+    # Plot naive HMC distributions (unweighted)
     for i, (t, naive_snap, lam_val) in enumerate(zip(times, snapshots['naive'], snapshots['lam_pre_equil'])):
         # Compute KDE for smooth curve
-        try:
-            kde = gaussian_kde(naive_snap.flatten())
-            density = kde(x_grid)
-        except:
-            # Fallback to histogram if KDE fails
-            hist, bin_edges = np.histogram(naive_snap, bins=50, density=True, range=(x_min, x_max))
-            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-            density = np.interp(x_grid, bin_centers, hist)
+        density = compute_weighted_kde(naive_snap.flatten(), weights=None, x_grid=x_grid)
         
         # Normalize and offset for ridge plot - increased height for more overlap
         density = density / np.max(density) * 1.8  # Increased from 1.2 to 1.8 for more overlap
@@ -219,46 +315,55 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
         rho = rho / np.max(rho) * 1.8  # Scale to match
         ax1.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
     
+    # Plot naive HMC distributions (weighted) if available
+    if has_weights:
+        for i, (t, naive_weighted_snap, lam_val, weights) in enumerate(zip(times, snapshots['naive_weighted'], snapshots['lam_pre_equil'], snapshots['weights'])):
+            if weights is not None:
+                # Compute weighted KDE for smooth curve
+                density = compute_weighted_kde(naive_weighted_snap.flatten(), weights=weights, x_grid=x_grid)
+                
+                # Normalize and offset for ridge plot - increased height for more overlap
+                density = density / np.max(density) * 1.8  # Increased from 1.2 to 1.8 for more overlap
+                offset = t
+                
+                # Plot the ridge with transparency for overlap
+                ax2.fill_between(x_grid, offset, offset + density, 
+                                color='green', alpha=0.4, edgecolor='green', linewidth=0.5)
+                
+                # Add true distribution at each time step
+                potential_fn = make_V(lam_val)
+                rho = np.array(jax.vmap(lambda x: jnp.exp(-potential_fn(x)))(x_grid))
+                rho = rho / np.max(rho) * 1.8  # Scale to match
+                ax2.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
+    
     # Plot CD HMC distributions (pre-equilibration)
+    cd_ax = ax3 if has_weights else ax2  # Use appropriate axis based on layout
     for i, (t, cd_snap, lam_val) in enumerate(zip(times, snapshots['cd_pre_equil'], snapshots['lam_pre_equil'])):
         # Compute KDE for smooth curve
-        try:
-            kde = gaussian_kde(cd_snap.flatten())
-            density = kde(x_grid)
-        except:
-            # Fallback to histogram if KDE fails
-            hist, bin_edges = np.histogram(cd_snap, bins=50, density=True, range=(x_min, x_max))
-            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-            density = np.interp(x_grid, bin_centers, hist)
+        density = compute_weighted_kde(cd_snap.flatten(), weights=None, x_grid=x_grid)
         
         # Normalize and offset for ridge plot - increased height for more overlap
         density = density / np.max(density) * 1.8  # Increased from 1.2 to 1.8 for more overlap
         offset = t
         
         # Plot the ridge with transparency for overlap
-        ax2.fill_between(x_grid, offset, offset + density, 
+        cd_ax.fill_between(x_grid, offset, offset + density, 
                         color='red', alpha=0.4, edgecolor='red', linewidth=0.5)
         
         # Add true distribution at each time step
         potential_fn = make_V(lam_val)
         rho = np.array(jax.vmap(lambda x: jnp.exp(-potential_fn(x)))(x_grid))
         rho = rho / np.max(rho) * 1.8  # Scale to match
-        ax2.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
+        cd_ax.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
     
     # Plot CD HMC distributions (post-equilibration) if available
     if has_re_equil:
         # Post-equilibration snapshots represent the state after CD step + re-equilibration
         # They should be plotted at the next timestep since re-equilibration happens at lam_k1
+        cd_post_equil_ax = ax4 if has_weights else ax3  # Use appropriate axis based on layout
         for i, (cd_post_equil_snap, lam_val) in enumerate(zip(snapshots['cd_post_equil'], snapshots['lam_post_equil'])):
             # Compute KDE for smooth curve
-            try:
-                kde = gaussian_kde(cd_post_equil_snap.flatten())
-                density = kde(x_grid)
-            except:
-                # Fallback to histogram if KDE fails
-                hist, bin_edges = np.histogram(cd_post_equil_snap, bins=50, density=True, range=(x_min, x_max))
-                bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-                density = np.interp(x_grid, bin_centers, hist)
+            density = compute_weighted_kde(cd_post_equil_snap.flatten(), weights=None, x_grid=x_grid)
             
             # Normalize and offset for ridge plot - increased height for more overlap
             density = density / np.max(density) * 1.8  # Increased from 1.2 to 1.8 for more overlap
@@ -274,7 +379,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
             offset = next_timestep
             
             # Plot the ridge with transparency for overlap
-            ax3.fill_between(x_grid, offset, offset + density, 
+            cd_post_equil_ax.fill_between(x_grid, offset, offset + density, 
                             color='orange', alpha=0.4, edgecolor='orange', linewidth=0.5)
             
             # Add true distribution at the next timestep
@@ -282,75 +387,159 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
             potential_fn = make_V(lam_val)
             rho = np.array(jax.vmap(lambda x: jnp.exp(-potential_fn(x)))(x_grid))
             rho = rho / np.max(rho) * 1.8  # Scale to match
-            ax3.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
+            cd_post_equil_ax.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
     
     # Set consistent limits
     ax1.set_xlim(x_min, x_max)
-    ax2.set_xlim(x_min, x_max)
     ax1.set_ylim(times[0] - 0.1, times[-1] + 2.0)  # Increased upper limit for taller histograms
-    ax2.set_ylim(times[0] - 0.1, times[-1] + 2.0)  # Increased upper limit for taller histograms
     
-    if has_re_equil:
+    if has_weights:
+        ax2.set_xlim(x_min, x_max)
+        ax2.set_ylim(times[0] - 0.1, times[-1] + 2.0)  # Increased upper limit for taller histograms
+    
+    if has_weights and has_re_equil:
+        # Four columns: naive unweighted, naive weighted, CD pre-equil, CD post-equil
+        ax3.set_xlim(x_min, x_max)
+        ax3.set_ylim(times[0] - 0.1, times[-1] + 2.0)  # Increased upper limit for taller histograms
+        
         # For post-equilibration, extend the y-axis to accommodate the next timestep
-        # The last post-equilibration snapshot will be at time (len-1) * delta_t * 10 + delta_t
+        max_post_equil_time = (len(snapshots['cd_post_equil']) - 1) * delta_t * 10 + delta_t
+        max_time = max(times[-1], max_post_equil_time)
+        ax4.set_xlim(x_min, x_max)
+        ax4.set_ylim(times[0] - 0.1, max_time + 2.0)  # Extended upper limit for post-equil
+    elif has_re_equil:
+        # Three columns: naive, CD pre-equil, CD post-equil
+        ax2.set_xlim(x_min, x_max)
+        ax2.set_ylim(times[0] - 0.1, times[-1] + 2.0)  # Increased upper limit for taller histograms
+        
+        # For post-equilibration, extend the y-axis to accommodate the next timestep
         max_post_equil_time = (len(snapshots['cd_post_equil']) - 1) * delta_t * 10 + delta_t
         max_time = max(times[-1], max_post_equil_time)
         ax3.set_xlim(x_min, x_max)
         ax3.set_ylim(times[0] - 0.1, max_time + 2.0)  # Extended upper limit for post-equil
+    elif has_weights:
+        # Three columns: naive unweighted, naive weighted, CD
+        ax3.set_xlim(x_min, x_max)
+        ax3.set_ylim(times[0] - 0.1, times[-1] + 2.0)  # Increased upper limit for taller histograms
+    else:
+        # Two columns: naive and CD
+        ax2.set_xlim(x_min, x_max)
+        ax2.set_ylim(times[0] - 0.1, times[-1] + 2.0)  # Increased upper limit for taller histograms
     
     # Set y-axis ticks only at the time points where distributions are plotted
     ax1.set_yticks(times)
-    ax2.set_yticks(times)
-    if has_re_equil:
+    
+    if has_weights:
+        ax2.set_yticks(times)
+    
+    if has_weights and has_re_equil:
+        ax3.set_yticks(times)
+        # Include both original times and the next timestep for post-equilibration
+        post_equil_times = np.array([i * delta_t * 10 + delta_t for i in range(len(snapshots['cd_post_equil']))])
+        all_times = np.concatenate([times, post_equil_times])
+        ax4.set_yticks(all_times)
+    elif has_re_equil:
+        ax2.set_yticks(times)
         # Include both original times and the next timestep for post-equilibration
         post_equil_times = np.array([i * delta_t * 10 + delta_t for i in range(len(snapshots['cd_post_equil']))])
         all_times = np.concatenate([times, post_equil_times])
         ax3.set_yticks(all_times)
+    elif has_weights:
+        ax3.set_yticks(times)
+    else:
+        ax2.set_yticks(times)
     
     # Configure lambda axes (secondary y-axes)
     # Get lambda values for the time points
     lambda_values = snapshots['lam_pre_equil']
     
+    # Configure lambda axes based on layout
     ax1_lambda.set_ylim(ax1.get_ylim())  # Same limits as time axis
-    ax2_lambda.set_ylim(ax2.get_ylim())  # Same limits as time axis
-    
-    # Set lambda ticks at the same positions as time ticks
     ax1_lambda.set_yticks(times)
-    ax2_lambda.set_yticks(times)
-    
-    # Map time positions to lambda values for tick labels
     lambda_tick_labels = [f"{lam:.3f}" for lam in lambda_values]
     ax1_lambda.set_yticklabels(lambda_tick_labels)
-    ax2_lambda.set_yticklabels(lambda_tick_labels)
     
-    if has_re_equil:
+    if has_weights:
+        ax2_lambda.set_ylim(ax2.get_ylim())  # Same limits as time axis
+        ax2_lambda.set_yticks(times)
+        ax2_lambda.set_yticklabels(lambda_tick_labels)
+    
+    if has_weights and has_re_equil:
+        # Four columns: naive unweighted, naive weighted, CD pre-equil, CD post-equil
         ax3_lambda.set_ylim(ax3.get_ylim())  # Same limits as time axis
+        ax3_lambda.set_yticks(times)
+        ax3_lambda.set_yticklabels(lambda_tick_labels)
+        
+        ax4_lambda.set_ylim(ax4.get_ylim())  # Same limits as time axis
+        # Include both original times and the next timestep for post-equilibration
+        post_equil_times = np.array([i * delta_t * 10 + delta_t for i in range(len(snapshots['cd_post_equil']))])
+        all_times = np.concatenate([times, post_equil_times])
+        ax4_lambda.set_yticks(all_times)
+        
+        # For post-equilibration, use the stored lambda values from snapshots
+        post_equil_lambda_values = snapshots['lam_post_equil']
+        all_lambda_values = lambda_values + post_equil_lambda_values
+        all_lambda_tick_labels = [f"{lam:.3f}" for lam in all_lambda_values]
+        ax4_lambda.set_yticklabels(all_lambda_tick_labels)
+    elif has_re_equil:
+        # Three columns: naive, CD pre-equil, CD post-equil
+        ax2_lambda.set_ylim(ax2.get_ylim())  # Same limits as time axis
+        ax2_lambda.set_yticks(times)
+        ax2_lambda.set_yticklabels(lambda_tick_labels)
+        
+        ax3_lambda.set_ylim(ax3.get_ylim())  # Same limits as time axis
+        # Include both original times and the next timestep for post-equilibration
+        post_equil_times = np.array([i * delta_t * 10 + delta_t for i in range(len(snapshots['cd_post_equil']))])
+        all_times = np.concatenate([times, post_equil_times])
         ax3_lambda.set_yticks(all_times)
         
         # For post-equilibration, use the stored lambda values from snapshots
         post_equil_lambda_values = snapshots['lam_post_equil']
-        
-        # Combine lambda values for all time points
         all_lambda_values = lambda_values + post_equil_lambda_values
         all_lambda_tick_labels = [f"{lam:.3f}" for lam in all_lambda_values]
         ax3_lambda.set_yticklabels(all_lambda_tick_labels)
+    elif has_weights:
+        # Three columns: naive unweighted, naive weighted, CD
+        ax3_lambda.set_ylim(ax3.get_ylim())  # Same limits as time axis
+        ax3_lambda.set_yticks(times)
+        ax3_lambda.set_yticklabels(lambda_tick_labels)
+    else:
+        # Two columns: naive and CD
+        ax2_lambda.set_ylim(ax2.get_ylim())  # Same limits as time axis
+        ax2_lambda.set_yticks(times)
+        ax2_lambda.set_yticklabels(lambda_tick_labels)
     
     # Add legends with true distribution reference
     ax1.plot([], [], 'k--', linewidth=1.5, label='True distribution')
-    ax2.plot([], [], 'k--', linewidth=1.5, label='True distribution')
     ax1.legend(loc='upper right')
-    ax2.legend(loc='upper right')
     
-    if has_re_equil:
+    if has_weights:
+        ax2.plot([], [], 'k--', linewidth=1.5, label='True distribution')
+        ax2.legend(loc='upper right')
+    
+    if has_weights and has_re_equil:
         ax3.plot([], [], 'k--', linewidth=1.5, label='True distribution')
         ax3.legend(loc='upper right')
+        ax4.plot([], [], 'k--', linewidth=1.5, label='True distribution')
+        ax4.legend(loc='upper right')
+    elif has_re_equil:
+        ax2.plot([], [], 'k--', linewidth=1.5, label='True distribution')
+        ax2.legend(loc='upper right')
+        ax3.plot([], [], 'k--', linewidth=1.5, label='True distribution')
+        ax3.legend(loc='upper right')
+    elif has_weights:
+        ax3.plot([], [], 'k--', linewidth=1.5, label='True distribution')
+        ax3.legend(loc='upper right')
+    else:
+        ax2.plot([], [], 'k--', linewidth=1.5, label='True distribution')
+        ax2.legend(loc='upper right')
     
     # Adjust layout and save
     plt.tight_layout()
     plt.savefig(f"{ansatz_dir}/ridge_plot_{potential_name}.png", dpi=300, bbox_inches='tight')
     plt.close()
 
-def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_history=None, ansatz=None, potential_name="harmonic", dim=1, plot_ansatz=False):
+def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_history=None, ansatz=None, potential_name="harmonic", dim=1, plot_ansatz=False, make_T=None):
     # Create figures directory if it doesn't exist
     os.makedirs("figures", exist_ok=True)
     
@@ -410,13 +599,13 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
 
     # Create figures based on what we want to plot
     if plot_ansatz:
-        fig1, axes1 = plt.subplots(4, 6, figsize=(32, 18))  # Increased width for legend space
+        fig1, axes1 = plt.subplots(5, 6, figsize=(32, 22))  # Increased height for additional diagnostic
         fig2, axes2 = plt.subplots(3, 6, figsize=(28, 14))
         axes1 = axes1.flatten()
         axes2 = axes2.flatten()
     else:
         # Only plot distributions, not ansatz visualization
-        fig1, axes1 = plt.subplots(4, 6, figsize=(32, 18))  # Increased width for legend space
+        fig1, axes1 = plt.subplots(5, 6, figsize=(32, 22))  # Increased height for additional diagnostic
         axes1 = axes1.flatten()
     
     times = np.arange(len(snapshots['naive'])) * delta_t * 10  # *10 because we record every 10 steps
@@ -431,6 +620,56 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
         for i, loss_history in enumerate(loss_histories):
             axes1[0].plot(loss_history, label=f'Fit {i+1}')
         axes1[0].legend()
+    elif isinstance(ansatz, AnalyticAnsatz):
+        # Calculate and plot loss for analytic ansatz
+        axes1[0].set_title("Analytic Ansatz Loss (MSE of {A,H} - ∂H/∂λ)")
+        axes1[0].set_xlabel("Time step")
+        axes1[0].set_ylabel("Loss")
+        
+        # Calculate loss at each time step for the analytic ansatz
+        analytic_losses = []
+        times_for_loss = []
+        
+        for i, (naive_snap, lam_val) in enumerate(zip(snapshots['naive'], snapshots['lam_pre_equil'])):
+            # Create samples from the naive snapshot
+            q_samples = naive_snap
+            
+            # Debug: check sample shapes
+            if i == 0:  # Only print for first iteration to avoid spam
+                print(f"Debug: naive_snap shape: {naive_snap.shape}")
+                print(f"Debug: naive_snap sample: {naive_snap[:2] if len(naive_snap) > 0 else 'empty'}")
+            
+            # Skip if samples are empty
+            if len(q_samples) == 0:
+                print(f"Warning: Empty samples at time step {i}, skipping loss calculation")
+                continue
+            
+            # Generate synthetic momentum samples for loss calculation
+            # For a Gaussian potential, momentum should be Gaussian distributed
+            # We'll use a simple approach: generate momenta from standard normal distribution
+            # In a more sophisticated approach, we'd use the actual temperature/kinetic energy
+            key = jax.random.PRNGKey(i)  # Use different key for each time step
+            p_samples = jax.random.normal(key, q_samples.shape)
+            
+            # Combine q and p samples to create full qp samples
+            samples = jnp.concatenate([q_samples, p_samples], axis=1)
+            
+            # Create a temporary ansatz with the current lambda value
+            temp_ansatz = eqx.tree_at(lambda m: m.params, ansatz, jnp.array([lam_val]))
+            
+            # Calculate loss using the reusable function
+            from .fitting import calculate_gauge_potential_loss
+            try:
+                loss = calculate_gauge_potential_loss(lam_val, samples, make_T, make_V, temp_ansatz)
+                analytic_losses.append(float(loss))
+                times_for_loss.append(i * delta_t * 10)
+            except Exception as e:
+                print(f"Error calculating loss at time step {i}: {e}")
+                continue
+        
+        axes1[0].plot(times_for_loss, analytic_losses, 'r-', linewidth=2, label='Analytic Ansatz Loss')
+        axes1[0].legend()
+        axes1[0].grid(True, alpha=0.3)
     else:
         axes1[0].set_title("No Loss Data")
         axes1[0].text(0.5, 0.5, "Fitting not performed\n(e.g., Analytic Ansatz)", 
@@ -605,6 +844,136 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
                       horizontalalignment='center', verticalalignment='center', 
                       transform=axes1[3].transAxes)
 
+    # Plot {A, H} diagnostic (Poisson bracket expectation)
+    axes1[4].set_title("⟨{A, H}⟩ Diagnostic (Poisson Bracket)")
+    axes1[4].set_xlabel("Time step")
+    axes1[4].set_ylabel("Value")
+    
+    # Calculate {A, H} at each timestep
+    poisson_bracket_values = []
+    fisher_score_values = []
+    times_for_poisson = []
+    
+    for i, (naive_snap, lam_val) in enumerate(zip(snapshots['naive'], snapshots['lam_pre_equil'])):
+        if len(naive_snap) == 0:
+            continue
+            
+        # Generate momentum samples for the calculation
+        key = jax.random.PRNGKey(i)
+        p_samples = jax.random.normal(key, naive_snap.shape)
+        
+        # Create samples
+        samples = jnp.concatenate([naive_snap, p_samples], axis=1)
+        
+        # Create ansatz with current lambda value
+        if isinstance(ansatz, AnalyticAnsatz):
+            temp_ansatz = eqx.tree_at(lambda m: m.params, ansatz, jnp.array([lam_val]))
+        elif isinstance(ansatz, PolynomialAnsatz) and param_history is not None and i < len(param_history):
+            temp_ansatz = eqx.tree_at(lambda m: m.params, ansatz, param_history[i])
+        else:
+            temp_ansatz = ansatz
+        
+        # Calculate {A, H} = ∂A/∂q · ∂H/∂p - ∂A/∂p · ∂H/∂q
+        try:
+            # Get gradients of A
+            dA_dq = jax.vmap(jax.grad(temp_ansatz, argnums=0))(naive_snap, p_samples)
+            dA_dp = jax.vmap(jax.grad(temp_ansatz, argnums=1))(naive_snap, p_samples)
+            
+            # Get gradients of H
+            T_fn = make_T(lam_val)
+            V_fn = make_V(lam_val)
+            
+            # ∂H/∂p = ∂T/∂p (since V doesn't depend on p)
+            dH_dp = jax.vmap(jax.grad(T_fn))(p_samples)
+            
+            # ∂H/∂q = ∂V/∂q (since T doesn't depend on q)
+            dH_dq = jax.vmap(jax.grad(V_fn))(naive_snap)
+            
+            # Calculate Poisson bracket {A, H} = ∂A/∂q · ∂H/∂p - ∂A/∂p · ∂H/∂q
+            poisson_bracket = dA_dq * dH_dp - dA_dp * dH_dq
+            
+            # Take expectation
+            avg_poisson = float(jnp.mean(poisson_bracket))
+            poisson_bracket_values.append(avg_poisson)
+            
+            # Calculate theoretical Fisher score ∂H/∂λ
+            # For the moving mean potential V(q) = 0.5 * (q - λ)², ∂V/∂λ = -(q - λ)
+            # So ∂H/∂λ = ∂V/∂λ = -(q - λ)
+            fisher_score = float(jnp.mean(-(naive_snap.flatten() - lam_val)))
+            fisher_score_values.append(fisher_score)
+            
+            times_for_poisson.append(i * delta_t * 10)
+            
+        except Exception as e:
+            print(f"Error calculating {A, H} at time step {i}: {e}")
+            continue
+    
+    if len(poisson_bracket_values) > 0:
+        # Create a twin axis for the cumulative distance
+        ax_twin = axes1[4].twinx()
+        
+        # Plot the instantaneous values on the left axis
+        line1 = axes1[4].plot(times_for_poisson, poisson_bracket_values, 'r-', linewidth=2, label='⟨{A, H}⟩', alpha=0.8)
+        line2 = axes1[4].plot(times_for_poisson, fisher_score_values, 'k--', linewidth=2, label='⟨∂H/∂λ⟩', alpha=0.8)
+        
+        # Calculate cumulative distance using proper geodesic formula
+        # Distance = ∫ √(⟨{A,H}⟩ (dλ/dt)²) dt ≈ Σ √(⟨{A,H}⟩) |dλ/dt| Δt
+        cumulative_distance = []
+        total_distance = 0.0
+        dt = delta_t * 10  # Time step between snapshots
+        
+        # Calculate dλ/dt at each timestep (approximate using finite differences)
+        dlambda_dt = []
+        for i in range(len(times_for_poisson)):
+            if i == 0:
+                # Forward difference for first point
+                dlambda_dt.append((snapshots['lam_pre_equil'][i+1] - snapshots['lam_pre_equil'][i]) / dt)
+            elif i == len(times_for_poisson) - 1:
+                # Backward difference for last point
+                dlambda_dt.append((snapshots['lam_pre_equil'][i] - snapshots['lam_pre_equil'][i-1]) / dt)
+            else:
+                # Central difference for interior points
+                dlambda_dt.append((snapshots['lam_pre_equil'][i+1] - snapshots['lam_pre_equil'][i-1]) / (2 * dt))
+        
+        for i, pb_val in enumerate(poisson_bracket_values):
+            # Use the proper geodesic formula: √(⟨{A,H}⟩) |dλ/dt| Δt
+            # Note: We take the absolute value of the Poisson bracket to ensure positive metric
+            metric_value = abs(pb_val)  # ⟨{A,H}⟩ as approximation of Fisher metric
+            speed = abs(dlambda_dt[i])  # |dλ/dt|
+            segment_length = np.sqrt(metric_value) * speed * dt
+            total_distance += segment_length
+            cumulative_distance.append(total_distance)
+        
+        # Plot cumulative distance on the right axis
+        line3 = ax_twin.plot(times_for_poisson, cumulative_distance, 'b-', linewidth=2, label='Cumulative Distance', alpha=0.8)
+        
+        # Set labels and colors
+        axes1[4].set_xlabel("Time t")
+        axes1[4].set_ylabel("⟨{A, H}⟩ / ⟨∂H/∂λ⟩", color='black')
+        ax_twin.set_ylabel("Cumulative Distance", color='blue')
+        
+        # Color the axes
+        axes1[4].tick_params(axis='y', labelcolor='black')
+        ax_twin.tick_params(axis='y', labelcolor='blue')
+        
+        # Combine legends
+        lines = line1 + line2 + line3
+        labels = [l.get_label() for l in lines]
+        axes1[4].legend(lines, labels, loc='upper left')
+        
+        axes1[4].grid(True, alpha=0.3)
+        
+        # Add correlation information
+        if len(poisson_bracket_values) > 1:
+            correlation = np.corrcoef(poisson_bracket_values, fisher_score_values)[0, 1]
+            axes1[4].text(0.02, 0.98, f'Correlation: {correlation:.3f}\nTotal Distance: {total_distance:.3f}', 
+                         transform=axes1[4].transAxes, fontsize=10,
+                         verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+    else:
+        axes1[4].text(0.5, 0.5, "{A, H} calculation failed", 
+                      horizontalalignment='center', verticalalignment='center', 
+                      transform=axes1[4].transAxes)
+
     num_hist_axes = 13  # Reduced to make room for parameter plot
     num_snaps = len(snapshots['naive'])
     if num_snaps > num_hist_axes:
@@ -623,7 +992,7 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
 
     for plot_idx, snap_idx in enumerate(selected_indices):
         # Plot distributions
-        ax1 = axes1[plot_idx + 4]  # +4 because we have loss, parameter, energy change, and ∂H/∂λ plots at the start
+        ax1 = axes1[plot_idx + 5]  # +5 because we have loss, parameter, energy change, ∂H/∂λ, and {A,H} plots at the start
         naive_snap = snapshots['naive'][snap_idx]
         cd_pre_equil_snap = snapshots['cd_pre_equil'][snap_idx]
         lam_val = snapshots['lam_pre_equil'][snap_idx]
@@ -710,7 +1079,7 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
 
         # Plot learned ansatz
         if plot_ansatz:
-            ax2 = axes2[plot_idx + 3]  # +3 because we have loss, parameter, and energy plots at the start
+            ax2 = axes2[plot_idx + 3]  # +3 because we have loss, parameter, and energy plots at the start (unchanged for fig2)
             if param_history is not None and snap_idx < len(param_history):
                 theta = param_history[snap_idx]
                 if dim == 1:

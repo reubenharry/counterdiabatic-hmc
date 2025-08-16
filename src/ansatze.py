@@ -144,8 +144,17 @@ class AnalyticAnsatz(A_ansatz):
 
     def __call__(self, q, p):
         lam_schedule = self.params[0]  # Get current schedule lambda value
-
-        return -(q*p)[0]
+        
+        # Ensure q and p are arrays and handle different shapes
+        q = jnp.atleast_1d(q)
+        p = jnp.atleast_1d(p)
+        
+        # For 1D case, return -q*p
+        if q.shape[0] == 1 and p.shape[0] == 1:
+            return -q[0] * p[0]
+        else:
+            # For multi-dimensional case, return the first component
+            return -(q * p)[0]
 
         # return p
         

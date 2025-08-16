@@ -79,12 +79,12 @@ def with_maruyama(integrator):
 
 clip_value = 20.0
 
-def make_cd_leapfrog_step(T, V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next):
-    """Create a counterdiabatic leapfrog step function."""
+def make_cd_euler_step(T, V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next):
+    """Create a counterdiabatic Euler step function."""
     dA_dq_scalar = jax.grad(A_ansatz, argnums=0)
     dA_dp_scalar = jax.grad(A_ansatz, argnums=1)
     
-    def cd_leapfrog(q, p, eps):
+    def cd_euler(q, p, eps):
         # Compute gradients of the gauge potential
         dA_dq = dA_dq_scalar(q, p)
         dA_dp = dA_dp_scalar(q, p)
@@ -92,23 +92,47 @@ def make_cd_leapfrog_step(T, V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next):
         # Clip the gradients to prevent large forces
         dA_dq = jnp.clip(dA_dq, -clip_value, clip_value)
         dA_dp = jnp.clip(dA_dp, -clip_value, clip_value)
-
-        # p = partially_refresh_momentum(p, rng_key, step_size=eps, L=eps*momentum_refresh_interval)
-        # jax.debug.print("p: {p}", p=p.shape)
         
-        # Update momentum with potential and gauge potential gradients
-        # p_half = p - 0.5 * eps * (jax.grad(V)(q) + dot_lam * dA_dq)
-        p_half = p - 0.5 * eps * ( dot_lam * dA_dq)
-        
-        # Update position with kinetic and gauge potential gradients
-        # q_new = q + eps * (jax.grad(T)(p_half) + dot_lam * dA_dp)
-        q_new = q + eps * (dot_lam * dA_dp)
-        
-        # Update momentum again
-        dA_dq_new = dA_dq_scalar(q_new, p_half)
-        dA_dq_new = jnp.clip(dA_dq_new, -clip_value, clip_value)  # Clip again for the second update
-        # p_new = p_half - 0.5 * eps * (jax.grad(V)(q_new) + dot_lam * dA_dq_new)
-        p_new = p_half - 0.5 * eps * (dot_lam * dA_dq_new)
+        # Euler integration for counterdiabatic dynamics
+        # dq/dt = dot_lam * dA/dp
+        # dp/dt = -dot_lam * dA/dq
+        q_new = q + eps * dot_lam * dA_dp
+        p_new = p - eps * dot_lam * dA_dq
         
         return q_new, p_new
-    return cd_leapfrog 
+    return cd_euler 
+
+
+# def make_cd_leapfrog_step(T, V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next):
+    # """Create a counterdiabatic leapfrog step function."""
+    # dA_dq_scalar = jax.grad(A_ansatz, argnums=0)
+    # dA_dp_scalar = jax.grad(A_ansatz, argnums=1)
+    
+    # def cd_leapfrog(q, p, eps):
+    #     # Compute gradients of the gauge potential
+    #     dA_dq = dA_dq_scalar(q, p)
+    #     dA_dp = dA_dp_scalar(q, p)
+        
+    #     # Clip the gradients to prevent large forces
+    #     dA_dq = jnp.clip(dA_dq, -clip_value, clip_value)
+    #     dA_dp = jnp.clip(dA_dp, -clip_value, clip_value)
+
+    #     # p = partially_refresh_momentum(p, rng_key, step_size=eps, L=eps*momentum_refresh_interval)
+    #     # jax.debug.print("p: {p}", p=p.shape)
+        
+    #     # Update momentum with potential and gauge potential gradients
+    #     # p_half = p - 0.5 * eps * (jax.grad(V)(q) + dot_lam * dA_dq)
+    #     p_half = p - 0.5 * eps * ( dot_lam * dA_dq)
+        
+    #     # Update position with kinetic and gauge potential gradients
+    #     # q_new = q + eps * (jax.grad(T)(p_half) + dot_lam * dA_dp)
+    #     q_new = q + eps * (dot_lam * dA_dp)
+        
+    #     # Update momentum again
+    #     dA_dq_new = dA_dq_scalar(q_new, p_half)
+    #     dA_dq_new = jnp.clip(dA_dq_new, -clip_value, clip_value)  # Clip again for the second update
+    #     # p_new = p_half - 0.5 * eps * (jax.grad(V)(q_new) + dot_lam * dA_dq_new)
+    #     p_new = p_half - 0.5 * eps * (dot_lam * dA_dq_new)
+        
+    #     return q_new, p_new
+    # return cd_leapfrog 

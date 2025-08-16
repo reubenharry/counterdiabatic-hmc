@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import numpy as np
 import equinox as eqx
 
-from .physics import make_leapfrog_step, make_cd_leapfrog_step, partially_refresh_momentum, with_maruyama
+from .physics import make_leapfrog_step, make_cd_euler_step, partially_refresh_momentum, with_maruyama
 from .fitting import fit_gauge_potential
 from .ansatze import AnalyticAnsatz, PolynomialAnsatz, NeuralNetworkAnsatz
 
@@ -79,7 +79,177 @@ def generate_initial_samples(M, make_T, make_V, lam, key, dim, num_steps=1000, e
     # return np.array(qs), np.array(ps)
     return q, p
 
-def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_every, num_initial_iterations, num_iterations, make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, key, dim, learning_rate=1e-4, re_equil_steps=0):
+def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, make_V, lam_fn, dot_lam_fn, key, dim, use_weights=False, ess_threshold=0.5):
+    """Run naive HMC simulation without fitting the ansatz (for efficiency)."""
+    
+    def compute_ess(log_weights):
+        """Compute effective sample size from log weights."""
+        weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
+        weights = weights / jnp.sum(weights)  # Normalize
+        ess = 1.0 / jnp.sum(weights ** 2)
+        return ess
+    
+    def multinomial_resample(q, p, log_weights, rng_key):
+        """Perform multinomial resampling and reset weights to uniform."""
+        weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
+        weights = weights / jnp.sum(weights)  # Normalize
+        
+        # Generate multinomial samples
+        indices = jax.random.choice(rng_key, M, shape=(M,), p=weights, replace=True)
+        
+        # Resample particles
+        q_resampled = q[indices]
+        p_resampled = p[indices]
+        
+        # Reset weights to uniform (log weights = 0)
+        log_weights_reset = jnp.zeros(M)
+        
+        return q_resampled, p_resampled, log_weights_reset
+    
+    # Generate initial samples from the correct distribution
+    initial_lam = float(lam_fn(0.0))
+    print(f"Generating initial samples with λ = {initial_lam}")
+    q_naive, p_naive = generate_initial_samples(M, make_T, make_V, initial_lam, key, dim)
+
+    # Check initial samples
+    check_nans("initial_q_naive", q_naive)
+    check_nans("initial_p_naive", p_naive)
+
+    # Initialize weights for SMC (Sequential Monte Carlo)
+    if use_weights:
+        log_weights = jnp.zeros(M)  # Initial weights are uniform (log weights = 0)
+        print("Using Sequential Monte Carlo with importance weights")
+    else:
+        log_weights = None
+        print("Using standard HMC without weights")
+
+    snapshots = {'naive': [], 'naive_weighted': [], 'lam_pre_equil': [], 'weights': [], 'resampling_events': []}
+    resampling_count = 0  # Track number of resampling events
+
+    for k in range(N_steps + 1):
+        t_k = k * delta_t
+        lam_k = float(lam_fn(t_k))
+        dot_lam_k = float(dot_lam_fn(t_k))
+
+        # Check lambda values for NaNs
+        if jnp.isnan(lam_k):
+            print(f"⚠️  NaN detected in lam_k at step {k}")
+            break
+        if jnp.isnan(dot_lam_k):
+            print(f"⚠️  NaN detected in dot_lam_k at step {k}")
+            break
+
+        # Record snapshots every 10 steps
+        if k % 10 == 0:
+            snapshots['naive'].append(np.array(q_naive))
+            if use_weights:
+                snapshots['naive_weighted'].append(np.array(q_naive))
+                snapshots['weights'].append(np.array(log_weights))
+                snapshots['resampling_events'].append(resampling_count)
+            else:
+                snapshots['naive_weighted'].append(np.array(q_naive))
+                snapshots['weights'].append(None)
+                snapshots['resampling_events'].append(0)
+            snapshots['lam_pre_equil'].append(lam_k)
+
+        if k == N_steps:
+            break
+
+        lam_k1 = float(lam_fn(t_k + delta_t))
+        dot_lam_k1 = float(dot_lam_fn(t_k + delta_t))
+
+        # Check next lambda values for NaNs
+        if jnp.isnan(lam_k1):
+            print(f"⚠️  NaN detected in lam_k1 at step {k}")
+            break
+        if jnp.isnan(dot_lam_k1):
+            print(f"⚠️  NaN detected in dot_lam_k1 at step {k}")
+            break
+
+        key, sub = jax.random.split(key)
+        subs = jax.random.split(sub, M)
+        naive_step = jax.vmap(lambda q, p, lam, lam_next, eps, L, rng_key: with_maruyama(make_leapfrog_step(make_T(lam), make_V(lam)))(q,p,eps,L=L, rng_key=rng_key), in_axes=(0, 0, None, None, None, None, 0))
+
+        # --- Naïve step ---
+        q_naive, p_naive = jax.jit(naive_step)(q_naive, p_naive, lam_k, lam_k1, eps, eps*momentum_refresh_interval, subs)
+
+        # Check for NaNs in naive HMC
+        if check_nans("q_naive", q_naive, k):
+            print(f"  Stopping simulation due to NaNs in naive HMC at step {k}")
+            break
+        if check_nans("p_naive", p_naive, k):
+            print(f"  Stopping simulation due to NaNs in naive HMC at step {k}")
+            break
+
+        # --- Compute importance weights for SMC ---
+        if use_weights:
+            # Compute energy at old and new lambda values for each particle
+            T_old = make_T(lam_k)
+            V_old = make_V(lam_k)
+            T_new = make_T(lam_k1)
+            V_new = make_V(lam_k1)
+            
+            # Compute energies for each particle
+            def compute_energy(q, p, T_fn, V_fn):
+                return T_fn(p) + V_fn(q)
+            
+            # Vectorize over particles
+            energy_old = jax.vmap(lambda q, p: compute_energy(q, p, T_old, V_old))(q_naive, p_naive)
+            energy_new = jax.vmap(lambda q, p: compute_energy(q, p, T_new, V_new))(q_naive, p_naive)
+            
+            # Log weight update: log(w_new) = log(w_old) - (H_new - H_old)
+            # This is the negative change in energy (Boltzmann factor)
+            log_weight_update = -(energy_new - energy_old)
+            log_weights = log_weights + log_weight_update
+            
+            # Check for NaNs in weights
+            if check_nans("log_weights", log_weights, k):
+                print(f"  Stopping simulation due to NaNs in weights at step {k}")
+                break
+            
+            # Check if resampling is needed
+            ess = compute_ess(log_weights)
+            ess_ratio = ess / M
+            
+            if ess_ratio < ess_threshold:
+                print(f"  Resampling at step {k}: ESS = {ess:.1f}/{M} ({ess_ratio:.3f})")
+                key, sub = jax.random.split(key)
+                q_naive, p_naive, log_weights = multinomial_resample(q_naive, p_naive, log_weights, sub)
+                resampling_count += 1
+                print(f"    Resampling completed. Total resampling events: {resampling_count}")
+
+    print(f"Simulation completed after {k} steps")
+    if use_weights:
+        print(f"Total resampling events: {resampling_count}")
+    
+    return snapshots
+
+def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_every, num_initial_iterations, num_iterations, make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, key, dim, learning_rate=1e-4, re_equil_steps=0, use_weights=False, ess_threshold=0.5):
+    
+    def compute_ess(log_weights):
+        """Compute effective sample size from log weights."""
+        weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
+        weights = weights / jnp.sum(weights)  # Normalize
+        ess = 1.0 / jnp.sum(weights ** 2)
+        return ess
+    
+    def multinomial_resample(q, p, log_weights, rng_key):
+        """Perform multinomial resampling and reset weights to uniform."""
+        weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
+        weights = weights / jnp.sum(weights)  # Normalize
+        
+        # Generate multinomial samples
+        indices = jax.random.choice(rng_key, M, shape=(M,), p=weights, replace=True)
+        
+        # Resample particles
+        q_resampled = q[indices]
+        p_resampled = p[indices]
+        
+        # Reset weights to uniform (log weights = 0)
+        log_weights_reset = jnp.zeros(M)
+        
+        return q_resampled, p_resampled, log_weights_reset
+    
     # Generate initial samples from the correct distribution
     initial_lam = float(lam_fn(0.0))
     print(f"Generating initial samples with λ = {initial_lam}")
@@ -93,10 +263,19 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
     check_nans("initial_q_cd", q_cd)
     check_nans("initial_p_cd", p_cd)
 
+    # Initialize weights for SMC (Sequential Monte Carlo)
+    if use_weights:
+        log_weights = jnp.zeros(M)  # Initial weights are uniform (log weights = 0)
+        print("Using Sequential Monte Carlo with importance weights")
+    else:
+        log_weights = None
+        print("Using standard HMC without weights")
+
     loss_histories = []
-    snapshots = {'naive': [], 'cd_pre_equil': [], 'cd_post_equil': [], 'lam_pre_equil': [], 'lam_post_equil': [], 'energy_stats': []}
+    snapshots = {'naive': [], 'naive_weighted': [], 'cd_pre_equil': [], 'cd_post_equil': [], 'lam_pre_equil': [], 'lam_post_equil': [], 'energy_stats': [], 'weights': [], 'resampling_events': []}
     param_history = []  # Track parameter history
     first_fit = True
+    resampling_count = 0  # Track number of resampling events
 
     # Function to compute energy statistics
     def compute_energy_stats(q, p, lam):
@@ -230,6 +409,17 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
         # Record snapshots and parameters every 10 steps
         if k % 10 == 0:
             snapshots['naive'].append(np.array(q_naive))
+            if use_weights:
+                # Store weighted samples (same positions, but with weights)
+                snapshots['naive_weighted'].append(np.array(q_naive))
+                snapshots['weights'].append(np.array(log_weights))
+                # Record resampling events
+                snapshots['resampling_events'].append(resampling_count)
+            else:
+                # Store unweighted samples
+                snapshots['naive_weighted'].append(np.array(q_naive))
+                snapshots['weights'].append(None)
+                snapshots['resampling_events'].append(0)  # No resampling for unweighted case
             snapshots['cd_pre_equil'].append(np.array(q_cd)) # Store pre-equilibration state
             snapshots['lam_pre_equil'].append(lam_k) # Store lambda at pre-equilibration
             
@@ -291,10 +481,47 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
             print(f"  Stopping simulation due to NaNs in naive HMC at step {k}")
             break
 
+        # --- Compute importance weights for SMC ---
+        if use_weights:
+            # Compute energy at old and new lambda values for each particle
+            T_old = make_T(lam_k)
+            V_old = make_V(lam_k)
+            T_new = make_T(lam_k1)
+            V_new = make_V(lam_k1)
+            
+            # Compute energies for each particle
+            def compute_energy(q, p, T_fn, V_fn):
+                return T_fn(p) + V_fn(q)
+            
+            # Vectorize over particles
+            energy_old = jax.vmap(lambda q, p: compute_energy(q, p, T_old, V_old))(q_naive, p_naive)
+            energy_new = jax.vmap(lambda q, p: compute_energy(q, p, T_new, V_new))(q_naive, p_naive)
+            
+            # Log weight update: log(w_new) = log(w_old) - (H_new - H_old)
+            # This is the negative change in energy (Boltzmann factor)
+            log_weight_update = -(energy_new - energy_old)
+            log_weights = log_weights + log_weight_update
+            
+            # Check for NaNs in weights
+            if check_nans("log_weights", log_weights, k):
+                print(f"  Stopping simulation due to NaNs in weights at step {k}")
+                break
+            
+            # Check if resampling is needed
+            ess = compute_ess(log_weights)
+            ess_ratio = ess / M
+            
+            if ess_ratio < ess_threshold:
+                print(f"  Resampling at step {k}: ESS = {ess:.1f}/{M} ({ess_ratio:.3f})")
+                key, sub = jax.random.split(key)
+                q_naive, p_naive, log_weights = multinomial_resample(q_naive, p_naive, log_weights, sub)
+                resampling_count += 1
+                print(f"    Resampling completed. Total resampling events: {resampling_count}")
+
         # --- CD step ---
         try:
             key, sub = jax.random.split(key)
-            cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, eps: make_cd_leapfrog_step(make_T(lam), make_V(lam), A_ansatz, lam, lam_next, dot_lam, dot_lam_next)(q, p, eps), in_axes=(0, 0, None, None, None, None, None))
+            cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, eps: make_cd_euler_step(make_T(lam), make_V(lam), A_ansatz, lam, lam_next, dot_lam, dot_lam_next)(q, p, eps), in_axes=(0, 0, None, None, None, None, None))
             q_cd, p_cd = jax.jit(cd_step)(q_cd, p_cd, lam_k, lam_k1, dot_lam_k, dot_lam_k1, eps)
 
             # if k % 10 == 0 and k > 0:
@@ -378,5 +605,7 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
     print(f"Simulation completed after {k} steps")
     if re_equil_steps > 0:
         print(f"Performed {re_equil_steps} re-equilibration steps after each CD step")
+    if use_weights:
+        print(f"Total resampling events: {resampling_count}")
     
     return A_ansatz, snapshots, loss_histories, param_history 

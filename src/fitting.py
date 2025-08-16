@@ -22,6 +22,58 @@ def check_nans(name, value, iteration=None):
 # =============================================================================
 #  FIT FUNCTION USING GENERAL POISSON BRACKET
 # =============================================================================
+def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_regularization=False):
+    """
+    Calculate the loss for a gauge potential ansatz without optimization.
+    This is the same loss function used in fitting.
+    
+    Args:
+        lam: Current lambda value
+        samples: Array of shape (N, 2*dim) where first dim columns are q and last dim columns are p
+        make_T: Function to create kinetic energy
+        make_V: Function to create potential energy
+        A_ansatz: The ansatz to evaluate
+        use_regularization: Whether to include L2 regularization
+        
+    Returns:
+        The loss value (float)
+    """
+    qp_batch = jnp.array(samples)  # shape (N, 2*dim)
+    dim = qp_batch.shape[1] // 2  # Extract dimension from sample shape
+
+    H = lambda lam: lambda q, p: make_T(lam)(p) + make_V(lam)(q)
+    H_fixed = H(lam)
+    dH_fixed = lambda q, p: (jax.grad(lambda q, p, lam: H(lam)(q, p), argnums=2)(q, p, lam))
+
+    def R(A_ansatz, q, p):
+        return poisson_bracket_fn(A_ansatz, H_fixed)(q, p) - dH_fixed(q, p)
+
+    # Split samples into q and p components
+    qs = qp_batch[:, :dim]  # First dim columns
+    ps = qp_batch[:, dim:]  # Last dim columns
+    
+    R_vals = jax.vmap(lambda qr, pr, A_ansatz: R(A_ansatz, qr, pr), in_axes=(0, 0, None))(qs, ps, A_ansatz)
+    
+    # Main loss term
+    main_loss = jnp.mean(R_vals ** 2)
+    
+    # Add weight regularization to prevent large weights (optional)
+    reg_loss = 0.0
+    if use_regularization and isinstance(A_ansatz, eqx.Module):
+        # Handle different ansatz types
+        if hasattr(A_ansatz, 'params') and isinstance(A_ansatz.params, jnp.ndarray):
+            # PolynomialAnsatz case - params is a single array
+            reg_loss += 1e-4 * jnp.mean(A_ansatz.params ** 2)  # Stronger regularization
+        elif hasattr(A_ansatz, 'layers'):
+            # Neural network case - handle layers directly
+            for layer in A_ansatz.layers:
+                if isinstance(layer, eqx.nn.Linear):
+                    reg_loss += 1e-6 * jnp.mean(layer.weight ** 2)
+                    reg_loss += 1e-6 * jnp.mean(layer.bias ** 2)
+    
+    total_loss = main_loss + reg_loss
+    return total_loss
+
 def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, use_regularization=False):
     """
     Fit A(q,p; θ) by minimizing mean_{samples}[ ( {A,H} - ∂H/∂μ )^2 ].
@@ -41,41 +93,10 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
     check_nans("input_samples", samples)
     
     qp_batch = jnp.array(samples)  # shape (N, 2*dim)
-    dim = qp_batch.shape[1] // 2  # Extract dimension from sample shape
-
-    H = lambda lam: lambda q, p: make_T(lam)(p) + make_V(lam)(q)
-    H_fixed = H(lam)
-    dH_fixed = lambda q, p: (jax.grad(lambda q, p, lam: H(lam)(q, p), argnums=2)(q, p, lam))
-
-    def R(A_ansatz, q, p):
-        return poisson_bracket_fn(A_ansatz, H_fixed)(q, p) - dH_fixed(q, p)
 
     def loss_fn(A_ansatz, qp_batch):
-        # Split samples into q and p components
-        qs = qp_batch[:, :dim]  # First dim columns
-        ps = qp_batch[:, dim:]  # Last dim columns
-        
-        R_vals = jax.vmap(lambda qr, pr, A_ansatz: R(A_ansatz, qr, pr), in_axes=(0, 0, None))(qs, ps, A_ansatz)
-        
-        # Main loss term
-        main_loss = jnp.mean(R_vals ** 2)
-        
-        # Add weight regularization to prevent large weights (optional)
-        reg_loss = 0.0
-        if use_regularization and isinstance(A_ansatz, eqx.Module):
-            # Handle different ansatz types
-            if hasattr(A_ansatz, 'params') and isinstance(A_ansatz.params, jnp.ndarray):
-                # PolynomialAnsatz case - params is a single array
-                reg_loss += 1e-4 * jnp.mean(A_ansatz.params ** 2)  # Stronger regularization
-            elif hasattr(A_ansatz, 'layers'):
-                # Neural network case - handle layers directly
-                for layer in A_ansatz.layers:
-                    if isinstance(layer, eqx.nn.Linear):
-                        reg_loss += 1e-6 * jnp.mean(layer.weight ** 2)
-                        reg_loss += 1e-6 * jnp.mean(layer.bias ** 2)
-        
-        total_loss = main_loss + reg_loss
-        return total_loss
+        # Use the reusable loss calculation function
+        return calculate_gauge_potential_loss(lam, qp_batch, make_T, make_V, A_ansatz, use_regularization)
 
     # Use gradient clipping to prevent exploding gradients
     optimizer = optax.chain(

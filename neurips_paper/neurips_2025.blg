@@ -1,0 +1,19 @@
+[0] Config.pm:311> INFO - This is Biber 2.16
+[0] Config.pm:314> INFO - Logfile is 'neurips_2025.blg'
+[90] biber-darwin:340> INFO - === Fri Aug 15, 2025, 08:40:45
+[107] Biber.pm:415> INFO - Reading 'neurips_2025.bcf'
+[199] Biber.pm:952> INFO - Found 35 citekeys in bib section 0
+[214] Biber.pm:4340> INFO - Processing section 0
+[224] Biber.pm:4531> INFO - Looking for bibtex format file 'neurips.bib' for section 0
+[226] bibtex.pm:1689> INFO - LaTeX decoding ...
+[260] bibtex.pm:1494> INFO - Found BibTeX data source 'neurips.bib'
+[261] Utils.pm:395> WARN - Duplicate entry key: 'vaikuntanathan2011escorted' in file 'neurips.bib', skipping ...
+[262] Utils.pm:395> WARN - Duplicate entry key: 'zhong2024time' in file 'neurips.bib', skipping ...
+[393] Utils.pm:395> WARN - I didn't find a database entry for 'doucet2001sequential' (section 0)
+[427] UCollate.pm:68> INFO - Overriding locale 'en-US' defaults 'normalization = NFD' with 'normalization = prenormalized'
+[427] UCollate.pm:68> INFO - Overriding locale 'en-US' defaults 'variable = shifted' with 'variable = non-ignorable'
+[427] Biber.pm:4168> INFO - Sorting list 'nty/global//global/global' of type 'entry' with template 'nty' and locale 'en-US'
+[427] Biber.pm:4174> INFO - No sort tailoring available for locale 'en-US'
+[453] bbl.pm:654> INFO - Writing 'neurips_2025.bbl' with encoding 'UTF-8'
+[470] bbl.pm:757> INFO - Output to neurips_2025.bbl
+[470] Biber.pm:128> INFO - WARNINGS: 3

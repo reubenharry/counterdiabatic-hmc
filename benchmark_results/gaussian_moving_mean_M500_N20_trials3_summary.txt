@@ -1,0 +1,88 @@
+Benchmark Results for gaussian_moving_mean
+==================================================
+Parameters: M=500, N_steps=20, num_trials=3
+
+CD_HMC:
+  Mean time: 15.566 ± 4.964 s
+  Expectation Errors:
+    mean:
+      Absolute: 0.253906 ± 0.015983
+      Relative: 0.507812 ± 0.031967
+    variance:
+      Absolute: 0.114810 ± 0.077518
+      Relative: 0.114810 ± 0.077518
+    second_moment:
+      Absolute: 0.155545 ± 0.090856
+      Relative: 0.124436 ± 0.072684
+    third_moment:
+      Absolute: 1.011672 ± 0.185636
+      Relative: 0.622567 ± 0.114237
+    fourth_moment:
+      Absolute: 1.226346 ± 0.543987
+      Relative: 0.268788 ± 0.119230
+    potential_energy:
+      Absolute: 0.057405 ± 0.038759
+      Relative: 0.114810 ± 0.077518
+    kinetic_energy:
+      Absolute: 0.019903 ± 0.018009
+      Relative: 0.039806 ± 0.036019
+    total_energy:
+      Absolute: 0.078782 ± 0.056382
+      Relative: 0.078782 ± 0.056382
+
+SMC_WEIGHTED:
+  Mean time: 4.637 ± 1.849 s
+  Expectation Errors:
+    mean:
+      Absolute: 0.044578 ± 0.022055
+      Relative: 0.089155 ± 0.044111
+    variance:
+      Absolute: 0.037046 ± 0.016779
+      Relative: 0.037046 ± 0.016779
+    second_moment:
+      Absolute: 0.019199 ± 0.003014
+      Relative: 0.015359 ± 0.002411
+    third_moment:
+      Absolute: 0.094143 ± 0.060052
+      Relative: 0.057934 ± 0.036955
+    fourth_moment:
+      Absolute: 0.429650 ± 0.166791
+      Relative: 0.094170 ± 0.036557
+    potential_energy:
+      Absolute: 0.018523 ± 0.008390
+      Relative: 0.037046 ± 0.016779
+    kinetic_energy:
+      Absolute: 0.046666 ± 0.007367
+      Relative: 0.093333 ± 0.014734
+    total_energy:
+      Absolute: 0.047549 ± 0.025906
+      Relative: 0.047549 ± 0.025906
+
+NAIVE_UNWEIGHTED:
+  Mean time: 3.476 ± 0.304 s
+  Expectation Errors:
+    mean:
+      Absolute: 0.451233 ± 0.054710
+      Relative: 0.902465 ± 0.109421
+    variance:
+      Absolute: 0.122392 ± 0.088892
+      Relative: 0.122392 ± 0.088892
+    second_moment:
+      Absolute: 0.330057 ± 0.038853
+      Relative: 0.264046 ± 0.031083
+    third_moment:
+      Absolute: 1.561261 ± 0.123383
+      Relative: 0.960776 ± 0.075928
+    fourth_moment:
+      Absolute: 2.173558 ± 0.221399
+      Relative: 0.476396 ± 0.048526
+    potential_energy:
+      Absolute: 0.061196 ± 0.044446
+      Relative: 0.122392 ± 0.088892
+    kinetic_energy:
+      Absolute: 0.025398 ± 0.018773
+      Relative: 0.050797 ± 0.037547
+    total_energy:
+      Absolute: 0.068023 ± 0.041905
+      Relative: 0.068023 ± 0.041905
+
