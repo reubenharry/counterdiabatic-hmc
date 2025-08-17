@@ -180,25 +180,8 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     else:
         post_equil_times = np.array([])
     
-    # Create figure with appropriate layout
-    if has_re_equil and has_weights:
-        # Four columns: naive unweighted, naive weighted, CD pre-equil, CD post-equil
-        fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(24, 6))
-        
-        # Create secondary y-axes for lambda values
-        ax1_lambda = ax1.twinx()
-        ax2_lambda = ax2.twinx()
-        ax3_lambda = ax3.twinx()
-        ax4_lambda = ax4.twinx()
-    elif has_re_equil:
-        # Three columns: naive, CD pre-equil, CD post-equil
-        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
-        
-        # Create secondary y-axes for lambda values
-        ax1_lambda = ax1.twinx()
-        ax2_lambda = ax2.twinx()
-        ax3_lambda = ax3.twinx()
-    elif has_weights:
+    # Create figure with appropriate layout (simplified - no post-equilibration)
+    if has_weights:
         # Three columns: naive unweighted, naive weighted, CD
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
         
@@ -214,33 +197,8 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
         ax1_lambda = ax1.twinx()
         ax2_lambda = ax2.twinx()
     
-    # Set up axis titles based on layout
-    if has_re_equil and has_weights:
-        # Four columns: naive unweighted, naive weighted, CD pre-equil, CD post-equil
-        ax1.set_title("Naïve HMC Evolution (Unweighted)", fontsize=14, fontweight='bold')
-        ax1.set_xlabel("Position q", fontsize=12)
-        ax1.set_ylabel("Time t", fontsize=12)
-        ax1_lambda.set_ylabel("λ", fontsize=12, color='red')
-        ax1_lambda.tick_params(axis='y', labelcolor='red')
-        
-        ax2.set_title("Naïve HMC Evolution (Weighted SMC)", fontsize=14, fontweight='bold')
-        ax2.set_xlabel("Position q", fontsize=12)
-        ax2.set_ylabel("Time t", fontsize=12)
-        ax2_lambda.set_ylabel("λ", fontsize=12, color='red')
-        ax2_lambda.tick_params(axis='y', labelcolor='red')
-        
-        ax3.set_title("Counterdiabatic HMC Evolution (Pre-equilibration)", fontsize=14, fontweight='bold')
-        ax3.set_xlabel("Position q", fontsize=12)
-        ax3.set_ylabel("Time t", fontsize=12)
-        ax3_lambda.set_ylabel("λ", fontsize=12, color='red')
-        ax3_lambda.tick_params(axis='y', labelcolor='red')
-        
-        ax4.set_title("Counterdiabatic HMC Evolution (Post-equilibration)", fontsize=14, fontweight='bold')
-        ax4.set_xlabel("Position q", fontsize=12)
-        ax4.set_ylabel("Time t", fontsize=12)
-        ax4_lambda.set_ylabel("λ", fontsize=12, color='red')
-        ax4_lambda.tick_params(axis='y', labelcolor='red')
-    elif has_weights:
+    # Set up axis titles based on layout (simplified - no post-equilibration)
+    if has_weights:
         # Three columns: naive unweighted, naive weighted, CD
         ax1.set_title("Naïve HMC Evolution (Unweighted)", fontsize=14, fontweight='bold')
         ax1.set_xlabel("Position q", fontsize=12)
@@ -254,32 +212,24 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
         ax2_lambda.set_ylabel("λ", fontsize=12, color='red')
         ax2_lambda.tick_params(axis='y', labelcolor='red')
         
-        ax3.set_title("Counterdiabatic HMC Evolution (Pre-equilibration)", fontsize=14, fontweight='bold')
+        ax3.set_title("Counterdiabatic HMC Evolution", fontsize=14, fontweight='bold')
         ax3.set_xlabel("Position q", fontsize=12)
         ax3.set_ylabel("Time t", fontsize=12)
         ax3_lambda.set_ylabel("λ", fontsize=12, color='red')
         ax3_lambda.tick_params(axis='y', labelcolor='red')
     else:
-        # Standard layout
+        # Two columns: naive and CD
         ax1.set_title("Naïve HMC Evolution", fontsize=14, fontweight='bold')
         ax1.set_xlabel("Position q", fontsize=12)
         ax1.set_ylabel("Time t", fontsize=12)
         ax1_lambda.set_ylabel("λ", fontsize=12, color='red')
         ax1_lambda.tick_params(axis='y', labelcolor='red')
         
-        ax2.set_title("Counterdiabatic HMC Evolution (Pre-equilibration)", fontsize=14, fontweight='bold')
+        ax2.set_title("Counterdiabatic HMC Evolution", fontsize=14, fontweight='bold')
         ax2.set_xlabel("Position q", fontsize=12)
         ax2.set_ylabel("Time t", fontsize=12)
         ax2_lambda.set_ylabel("λ", fontsize=12, color='red')
         ax2_lambda.tick_params(axis='y', labelcolor='red')
-        
-        # Plot CD HMC ridge plot (post-equilibration) if available
-        if has_re_equil:
-            ax3.set_title("Counterdiabatic HMC Evolution (Post-equilibration)", fontsize=14, fontweight='bold')
-            ax3.set_xlabel("Position q", fontsize=12)
-            ax3.set_ylabel("Time t", fontsize=12)
-            ax3_lambda.set_ylabel("λ", fontsize=12, color='red')
-            ax3_lambda.tick_params(axis='y', labelcolor='red')
     
     # Find global range for consistent x-axis
     all_qs = np.concatenate([snapshots['naive'] + snapshots['cd_pre_equil']])
@@ -303,7 +253,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
         
         # Normalize and offset for ridge plot - increased height for more overlap
         density = density / np.max(density) * 1.8  # Increased from 1.2 to 1.8 for more overlap
-        offset = t
+        offset = t * 2.0  # Increased spacing between plots to reduce overlap
         
         # Plot the ridge with transparency for overlap
         ax1.fill_between(x_grid, offset, offset + density, 
@@ -324,7 +274,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
                 
                 # Normalize and offset for ridge plot - increased height for more overlap
                 density = density / np.max(density) * 1.8  # Increased from 1.2 to 1.8 for more overlap
-                offset = t
+                offset = t * 2.0  # Increased spacing between plots to reduce overlap
                 
                 # Plot the ridge with transparency for overlap
                 ax2.fill_between(x_grid, offset, offset + density, 
@@ -344,7 +294,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
         
         # Normalize and offset for ridge plot - increased height for more overlap
         density = density / np.max(density) * 1.8  # Increased from 1.2 to 1.8 for more overlap
-        offset = t
+        offset = t * 2.0  # Increased spacing between plots to reduce overlap
         
         # Plot the ridge with transparency for overlap
         cd_ax.fill_between(x_grid, offset, offset + density, 
@@ -356,98 +306,52 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
         rho = rho / np.max(rho) * 1.8  # Scale to match
         cd_ax.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
     
-    # Plot CD HMC distributions (post-equilibration) if available
-    if has_re_equil:
-        # Post-equilibration snapshots represent the state after CD step + re-equilibration
-        # They should be plotted at the next timestep since re-equilibration happens at lam_k1
-        cd_post_equil_ax = ax4 if has_weights else ax3  # Use appropriate axis based on layout
-        for i, (cd_post_equil_snap, lam_val) in enumerate(zip(snapshots['cd_post_equil'], snapshots['lam_post_equil'])):
-            # Compute KDE for smooth curve
-            density = compute_weighted_kde(cd_post_equil_snap.flatten(), weights=None, x_grid=x_grid)
-            
-            # Normalize and offset for ridge plot - increased height for more overlap
-            density = density / np.max(density) * 1.8  # Increased from 1.2 to 1.8 for more overlap
-            
-            # Plot at the next timestep since re-equilibration happens after the CD step
-            # The post-equilibration snapshot at index i corresponds to the state after the CD step
-            # that was taken at snapshot time i, so it should be plotted at time (i+1) * delta_t * 10
-            # But actually, it should be at the next timestep after the CD step, which is just delta_t later
-            # So if the pre-equilibration snapshot is at time i * delta_t * 10, the post-equilibration
-            # should be at time (i * delta_t * 10) + delta_t
-            pre_equil_time = i * delta_t * 10
-            next_timestep = pre_equil_time + delta_t
-            offset = next_timestep
-            
-            # Plot the ridge with transparency for overlap
-            cd_post_equil_ax.fill_between(x_grid, offset, offset + density, 
-                            color='orange', alpha=0.4, edgecolor='orange', linewidth=0.5)
-            
-            # Add true distribution at the next timestep
-            # Use the stored lambda value from snapshots since it's now correct
-            potential_fn = make_V(lam_val)
-            rho = np.array(jax.vmap(lambda x: jnp.exp(-potential_fn(x)))(x_grid))
-            rho = rho / np.max(rho) * 1.8  # Scale to match
-            cd_post_equil_ax.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
+    # Plot CD HMC distributions (pre-equilibration only - simplified)
+    # Use the same axis as the pre-equilibration CD plots for consistency
+    cd_ax = ax3 if has_weights else ax2  # Use appropriate axis based on layout
     
-    # Set consistent limits
+    # Just plot the pre-equilibration snapshots, which should give us 5 histograms like naive HMC
+    for i, (cd_snap, lam_val) in enumerate(zip(snapshots['cd_pre_equil'], snapshots['lam_pre_equil'])):
+        # Compute KDE for smooth curve
+        density = compute_weighted_kde(cd_snap.flatten(), weights=None, x_grid=x_grid)
+        
+        # Normalize and offset for ridge plot - increased height for more overlap
+        density = density / np.max(density) * 1.8  # Increased from 1.2 to 1.8 for more overlap
+        offset = i * delta_t * 10 * 2.0  # Use the same timing as pre-equilibration snapshots
+        
+        # Plot the ridge with transparency for overlap
+        cd_ax.fill_between(x_grid, offset, offset + density, 
+                        color='red', alpha=0.4, edgecolor='red', linewidth=0.5)
+        
+        # Add true distribution at each time step
+        potential_fn = make_V(lam_val)
+        rho = np.array(jax.vmap(lambda x: jnp.exp(-potential_fn(x)))(x_grid))
+        rho = rho / np.max(rho) * 1.8  # Scale to match
+        cd_ax.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
+    
+    # Set consistent limits (simplified - no post-equilibration)
     ax1.set_xlim(x_min, x_max)
-    ax1.set_ylim(times[0] - 0.1, times[-1] + 2.0)  # Increased upper limit for taller histograms
+    ax1.set_ylim(times[0] * 2.0 - 0.1, times[-1] * 2.0 + 2.0)  # Adjusted for increased spacing
     
     if has_weights:
         ax2.set_xlim(x_min, x_max)
-        ax2.set_ylim(times[0] - 0.1, times[-1] + 2.0)  # Increased upper limit for taller histograms
-    
-    if has_weights and has_re_equil:
-        # Four columns: naive unweighted, naive weighted, CD pre-equil, CD post-equil
-        ax3.set_xlim(x_min, x_max)
-        ax3.set_ylim(times[0] - 0.1, times[-1] + 2.0)  # Increased upper limit for taller histograms
+        ax2.set_ylim(times[0] * 2.0 - 0.1, times[-1] * 2.0 + 2.0)  # Adjusted for increased spacing
         
-        # For post-equilibration, extend the y-axis to accommodate the next timestep
-        max_post_equil_time = (len(snapshots['cd_post_equil']) - 1) * delta_t * 10 + delta_t
-        max_time = max(times[-1], max_post_equil_time)
-        ax4.set_xlim(x_min, x_max)
-        ax4.set_ylim(times[0] - 0.1, max_time + 2.0)  # Extended upper limit for post-equil
-    elif has_re_equil:
-        # Three columns: naive, CD pre-equil, CD post-equil
-        ax2.set_xlim(x_min, x_max)
-        ax2.set_ylim(times[0] - 0.1, times[-1] + 2.0)  # Increased upper limit for taller histograms
-        
-        # For post-equilibration, extend the y-axis to accommodate the next timestep
-        max_post_equil_time = (len(snapshots['cd_post_equil']) - 1) * delta_t * 10 + delta_t
-        max_time = max(times[-1], max_post_equil_time)
         ax3.set_xlim(x_min, x_max)
-        ax3.set_ylim(times[0] - 0.1, max_time + 2.0)  # Extended upper limit for post-equil
-    elif has_weights:
-        # Three columns: naive unweighted, naive weighted, CD
-        ax3.set_xlim(x_min, x_max)
-        ax3.set_ylim(times[0] - 0.1, times[-1] + 2.0)  # Increased upper limit for taller histograms
+        ax3.set_ylim(times[0] * 2.0 - 0.1, times[-1] * 2.0 + 2.0)  # Adjusted for increased spacing
     else:
         # Two columns: naive and CD
         ax2.set_xlim(x_min, x_max)
-        ax2.set_ylim(times[0] - 0.1, times[-1] + 2.0)  # Increased upper limit for taller histograms
+        ax2.set_ylim(times[0] * 2.0 - 0.1, times[-1] * 2.0 + 2.0)  # Adjusted for increased spacing
     
-    # Set y-axis ticks only at the time points where distributions are plotted
-    ax1.set_yticks(times)
+    # Set y-axis ticks only at the time points where distributions are plotted (simplified)
+    ax1.set_yticks(times * 2.0)
     
     if has_weights:
-        ax2.set_yticks(times)
-    
-    if has_weights and has_re_equil:
-        ax3.set_yticks(times)
-        # Include both original times and the next timestep for post-equilibration
-        post_equil_times = np.array([i * delta_t * 10 + delta_t for i in range(len(snapshots['cd_post_equil']))])
-        all_times = np.concatenate([times, post_equil_times])
-        ax4.set_yticks(all_times)
-    elif has_re_equil:
-        ax2.set_yticks(times)
-        # Include both original times and the next timestep for post-equilibration
-        post_equil_times = np.array([i * delta_t * 10 + delta_t for i in range(len(snapshots['cd_post_equil']))])
-        all_times = np.concatenate([times, post_equil_times])
-        ax3.set_yticks(all_times)
-    elif has_weights:
-        ax3.set_yticks(times)
+        ax2.set_yticks(times * 2.0)
+        ax3.set_yticks(times * 2.0)
     else:
-        ax2.set_yticks(times)
+        ax2.set_yticks(times * 2.0)
     
     # Configure lambda axes (secondary y-axes)
     # Get lambda values for the time points
@@ -455,58 +359,24 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     
     # Configure lambda axes based on layout
     ax1_lambda.set_ylim(ax1.get_ylim())  # Same limits as time axis
-    ax1_lambda.set_yticks(times)
+    ax1_lambda.set_yticks(times * 2.0)
     lambda_tick_labels = [f"{lam:.3f}" for lam in lambda_values]
     ax1_lambda.set_yticklabels(lambda_tick_labels)
     
     if has_weights:
         ax2_lambda.set_ylim(ax2.get_ylim())  # Same limits as time axis
-        ax2_lambda.set_yticks(times)
+        ax2_lambda.set_yticks(times * 2.0)
         ax2_lambda.set_yticklabels(lambda_tick_labels)
     
-    if has_weights and has_re_equil:
-        # Four columns: naive unweighted, naive weighted, CD pre-equil, CD post-equil
-        ax3_lambda.set_ylim(ax3.get_ylim())  # Same limits as time axis
-        ax3_lambda.set_yticks(times)
-        ax3_lambda.set_yticklabels(lambda_tick_labels)
-        
-        ax4_lambda.set_ylim(ax4.get_ylim())  # Same limits as time axis
-        # Include both original times and the next timestep for post-equilibration
-        post_equil_times = np.array([i * delta_t * 10 + delta_t for i in range(len(snapshots['cd_post_equil']))])
-        all_times = np.concatenate([times, post_equil_times])
-        ax4_lambda.set_yticks(all_times)
-        
-        # For post-equilibration, use the stored lambda values from snapshots
-        post_equil_lambda_values = snapshots['lam_post_equil']
-        all_lambda_values = lambda_values + post_equil_lambda_values
-        all_lambda_tick_labels = [f"{lam:.3f}" for lam in all_lambda_values]
-        ax4_lambda.set_yticklabels(all_lambda_tick_labels)
-    elif has_re_equil:
-        # Three columns: naive, CD pre-equil, CD post-equil
-        ax2_lambda.set_ylim(ax2.get_ylim())  # Same limits as time axis
-        ax2_lambda.set_yticks(times)
-        ax2_lambda.set_yticklabels(lambda_tick_labels)
-        
-        ax3_lambda.set_ylim(ax3.get_ylim())  # Same limits as time axis
-        # Include both original times and the next timestep for post-equilibration
-        post_equil_times = np.array([i * delta_t * 10 + delta_t for i in range(len(snapshots['cd_post_equil']))])
-        all_times = np.concatenate([times, post_equil_times])
-        ax3_lambda.set_yticks(all_times)
-        
-        # For post-equilibration, use the stored lambda values from snapshots
-        post_equil_lambda_values = snapshots['lam_post_equil']
-        all_lambda_values = lambda_values + post_equil_lambda_values
-        all_lambda_tick_labels = [f"{lam:.3f}" for lam in all_lambda_values]
-        ax3_lambda.set_yticklabels(all_lambda_tick_labels)
-    elif has_weights:
+    if has_weights:
         # Three columns: naive unweighted, naive weighted, CD
         ax3_lambda.set_ylim(ax3.get_ylim())  # Same limits as time axis
-        ax3_lambda.set_yticks(times)
+        ax3_lambda.set_yticks(times * 2.0)
         ax3_lambda.set_yticklabels(lambda_tick_labels)
     else:
         # Two columns: naive and CD
         ax2_lambda.set_ylim(ax2.get_ylim())  # Same limits as time axis
-        ax2_lambda.set_yticks(times)
+        ax2_lambda.set_yticks(times * 2.0)
         ax2_lambda.set_yticklabels(lambda_tick_labels)
     
     # Add legends with true distribution reference
@@ -517,17 +387,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
         ax2.plot([], [], 'k--', linewidth=1.5, label='True distribution')
         ax2.legend(loc='upper right')
     
-    if has_weights and has_re_equil:
-        ax3.plot([], [], 'k--', linewidth=1.5, label='True distribution')
-        ax3.legend(loc='upper right')
-        ax4.plot([], [], 'k--', linewidth=1.5, label='True distribution')
-        ax4.legend(loc='upper right')
-    elif has_re_equil:
-        ax2.plot([], [], 'k--', linewidth=1.5, label='True distribution')
-        ax2.legend(loc='upper right')
-        ax3.plot([], [], 'k--', linewidth=1.5, label='True distribution')
-        ax3.legend(loc='upper right')
-    elif has_weights:
+    if has_weights:
         ax3.plot([], [], 'k--', linewidth=1.5, label='True distribution')
         ax3.legend(loc='upper right')
     else:
@@ -1029,25 +889,30 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
             ax1.bar(bin_centers, cd_pre_hist, width=cd_pre_bins[1]-cd_pre_bins[0], 
                    color='red', alpha=0.5, label='CD HMC (pre-equil)')
             
-            # Add post-equilibration CD distribution if available
+            # Add post-equilibration CD distribution if available and different from pre-equilibration
             # Note: Post-equilibration snapshots are stored at the same index but represent the next timestep
             if has_re_equil and snap_idx < len(snapshots['cd_post_equil']):
                 cd_post_equil_snap = snapshots['cd_post_equil'][snap_idx]
                 lam_post_equil = snapshots['lam_post_equil'][snap_idx]
                 
-                cd_post_hist, cd_post_bins = safe_hist(cd_post_equil_snap)
-                bin_centers = (cd_post_bins[:-1] + cd_post_bins[1:]) / 2
-                ax1.bar(bin_centers, cd_post_hist, width=cd_post_bins[1]-cd_post_bins[0], 
-                       color='orange', alpha=0.5, label='CD HMC (post-equil)')
-                
-                # Plot true distribution for post-equilibration state
-                # Use the stored lambda value from snapshots since it's now correct
-                lam_post_equil = snapshots['lam_post_equil'][snap_idx]
-                xs_post_equil = np.linspace(x_min, x_max, 400)
-                potential_fn_post_equil = make_V(lam_post_equil)
-                rho_post_equil = np.array(jax.vmap(lambda x: jnp.exp(-potential_fn_post_equil(x)))(xs_post_equil))
-                rho_post_equil /= np.trapezoid(rho_post_equil, xs_post_equil)
-                ax1.plot(xs_post_equil, rho_post_equil, 'g-', lw=2, label=f'True (post-equil, λ={lam_post_equil:.2f})', alpha=0.7)
+                # Check if post-equilibration is actually different from pre-equilibration
+                # If lambda values are identical, it means re_equil_steps = 0, so don't plot post-equil
+                lam_pre = snapshots['lam_pre_equil'][snap_idx]
+                lam_post = snapshots['lam_post_equil'][snap_idx]
+                if abs(lam_post - lam_pre) > 1e-6:  # Only plot if lambda values are different
+                    cd_post_hist, cd_post_bins = safe_hist(cd_post_equil_snap)
+                    bin_centers = (cd_post_bins[:-1] + cd_post_bins[1:]) / 2
+                    ax1.bar(bin_centers, cd_post_hist, width=cd_post_bins[1]-cd_post_bins[0], 
+                           color='orange', alpha=0.5, label='CD HMC (post-equil)')
+                    
+                    # Plot true distribution for post-equilibration state
+                    # Use the stored lambda value from snapshots since it's now correct
+                    lam_post_equil = snapshots['lam_post_equil'][snap_idx]
+                    xs_post_equil = np.linspace(x_min, x_max, 400)
+                    potential_fn_post_equil = make_V(lam_post_equil)
+                    rho_post_equil = np.array(jax.vmap(lambda x: jnp.exp(-potential_fn_post_equil(x)))(xs_post_equil))
+                    rho_post_equil /= np.trapezoid(rho_post_equil, xs_post_equil)
+                    ax1.plot(xs_post_equil, rho_post_equil, 'g-', lw=2, label=f'True (post-equil, λ={lam_post_equil:.2f})', alpha=0.7)
             
             # Plot true distribution for pre-equilibration state
             xs = np.linspace(x_min, x_max, 400)
@@ -1066,10 +931,15 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
             ax1.scatter(naive_snap[:, 0], naive_snap[:, 1], alpha=1.0, s=1, color='blue', label='Naïve')
             ax1.scatter(cd_pre_equil_snap[:, 0], cd_pre_equil_snap[:, 1], alpha=1.0, s=1, color='red', label='CD (pre-equil)')
             
-            # Add post-equilibration CD distribution if available
+            # Add post-equilibration CD distribution if available and different from pre-equilibration
             if has_re_equil and snap_idx < len(snapshots['cd_post_equil']):
                 cd_post_equil_snap = snapshots['cd_post_equil'][snap_idx]
-                ax1.scatter(cd_post_equil_snap[:, 0], cd_post_equil_snap[:, 1], alpha=1.0, s=1, color='orange', label='CD (post-equil)')
+                # Check if post-equilibration is actually different from pre-equilibration
+                # If lambda values are identical, it means re_equil_steps = 0, so don't plot post-equil
+                lam_pre = snapshots['lam_pre_equil'][snap_idx]
+                lam_post = snapshots['lam_post_equil'][snap_idx]
+                if abs(lam_post - lam_pre) > 1e-6:  # Only plot if lambda values are different
+                    ax1.scatter(cd_post_equil_snap[:, 0], cd_post_equil_snap[:, 1], alpha=1.0, s=1, color='orange', label='CD (post-equil)')
             
             ax1.set_xlabel('q_0')
             ax1.set_ylabel('q_1')

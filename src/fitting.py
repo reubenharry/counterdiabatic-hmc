@@ -22,7 +22,7 @@ def check_nans(name, value, iteration=None):
 # =============================================================================
 #  FIT FUNCTION USING GENERAL POISSON BRACKET
 # =============================================================================
-def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_regularization=False):
+def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_regularization=False, weights=None):
     """
     Calculate the loss for a gauge potential ansatz without optimization.
     This is the same loss function used in fitting.
@@ -34,6 +34,7 @@ def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_r
         make_V: Function to create potential energy
         A_ansatz: The ansatz to evaluate
         use_regularization: Whether to include L2 regularization
+        weights: Optional array of weights for weighted expectation (shape (N,))
         
     Returns:
         The loss value (float)
@@ -54,8 +55,14 @@ def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_r
     
     R_vals = jax.vmap(lambda qr, pr, A_ansatz: R(A_ansatz, qr, pr), in_axes=(0, 0, None))(qs, ps, A_ansatz)
     
-    # Main loss term
-    main_loss = jnp.mean(R_vals ** 2)
+    # Main loss term - use weighted mean if weights are provided
+    if weights is not None:
+        # Normalize weights to sum to 1
+        weights = jnp.array(weights)
+        weights = weights / jnp.sum(weights)
+        main_loss = jnp.sum(weights * (R_vals ** 2))
+    else:
+        main_loss = jnp.mean(R_vals ** 2)
     
     # Add weight regularization to prevent large weights (optional)
     reg_loss = 0.0
@@ -74,7 +81,7 @@ def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_r
     total_loss = main_loss + reg_loss
     return total_loss
 
-def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, use_regularization=False):
+def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, use_regularization=False, weights=None):
     """
     Fit A(q,p; θ) by minimizing mean_{samples}[ ( {A,H} - ∂H/∂μ )^2 ].
     Returns both the optimized parameters and the loss history.
@@ -88,6 +95,7 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
         num_iters: Number of optimization iterations
         lr: Learning rate
         use_regularization: Whether to use L2 regularization
+        weights: Optional array of weights for weighted expectation (shape (N,))
     """
     # Check input samples for NaNs
     check_nans("input_samples", samples)
@@ -96,7 +104,7 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
 
     def loss_fn(A_ansatz, qp_batch):
         # Use the reusable loss calculation function
-        return calculate_gauge_potential_loss(lam, qp_batch, make_T, make_V, A_ansatz, use_regularization)
+        return calculate_gauge_potential_loss(lam, qp_batch, make_T, make_V, A_ansatz, use_regularization, weights)
 
     # Use gradient clipping to prevent exploding gradients
     optimizer = optax.chain(

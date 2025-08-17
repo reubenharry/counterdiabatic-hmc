@@ -10,16 +10,15 @@ import numpy as np
 import os
 
 def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name, dim):
-    """Create comparison plots for all three simulation methods."""
+    """Create comparison plots for all four simulation methods."""
     # Create figures directory
     os.makedirs("figures", exist_ok=True)
     ansatz_dir = f"figures/polynomial"
     os.makedirs(ansatz_dir, exist_ok=True)
     
     # Create a comprehensive comparison ridge plot
-    fig, axes = plt.subplots(1, len(all_snapshots), figsize=(6*len(all_snapshots), 6))
-    if len(all_snapshots) == 1:
-        axes = [axes]
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    axes = axes.flatten()
     
     # Get time points
     times = np.arange(len(list(all_snapshots.values())[0]['naive'])) * delta_t * 10
@@ -27,56 +26,93 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name,
     # Find global range for consistent x-axis
     all_qs = []
     for method, snapshots in all_snapshots.items():
-        if method == 'unweighted':
+        if method == 'naive_unweighted':
             all_qs.extend(snapshots['naive'])
-        elif method == 'weighted':
+        elif method == 'naive_weighted':
             all_qs.extend(snapshots['naive_weighted'])
-        elif method == 'cd':
+        elif method == 'cd_unweighted':
             all_qs.extend(snapshots['cd_post_equil'])
+        elif method == 'cd_weighted':
+            all_qs.extend(snapshots['cd_weighted'])
     x_min = np.min(np.concatenate(all_qs)) - 0.5
     x_max = np.max(np.concatenate(all_qs)) + 0.5
     x_grid = np.linspace(x_min, x_max, 200)
     
     # Plot each method
-    colors = {'unweighted': 'blue', 'weighted': 'green', 'cd': 'red'}
+    colors = {'naive_unweighted': 'blue', 'naive_weighted': 'green', 'cd_unweighted': 'red', 'cd_weighted': 'orange'}
     titles = {
-        'unweighted': 'Naive HMC (Unweighted)',
-        'weighted': 'Naive HMC (Weighted SMC)',
-        'cd': 'Counterdiabatic HMC'
+        'naive_unweighted': 'Naive HMC (Unweighted)',
+        'naive_weighted': 'Naive HMC (Weighted SMC)',
+        'cd_unweighted': 'Counterdiabatic HMC (Unweighted)',
+        'cd_weighted': 'Counterdiabatic HMC (Weighted)'
     }
     
-    for i, (method, snapshots) in enumerate(all_snapshots.items()):
+    # Filter out non-snapshot keys (like loss_histories and param_history)
+    snapshot_methods = {k: v for k, v in all_snapshots.items() if k in titles}
+    
+    for i, (method, snapshots) in enumerate(snapshot_methods.items()):
         ax = axes[i]
         ax.set_title(titles[method], fontsize=14, fontweight='bold')
         ax.set_xlabel("Position q", fontsize=12)
         ax.set_ylabel("Time t", fontsize=12)
         
         # Choose the correct snapshot key for each method
-        if method == 'unweighted':
+        if method == 'naive_unweighted':
             snapshot_key = 'naive'
-        elif method == 'weighted':
+            weights_key = None
+        elif method == 'naive_weighted':
             snapshot_key = 'naive_weighted'
-        elif method == 'cd':
-            snapshot_key = 'cd_post_equil'  # Use post-equilibration results
+            weights_key = 'weights_naive'
+        elif method == 'cd_unweighted':
+            snapshot_key = 'cd_post_equil'
+            weights_key = None
+        elif method == 'cd_weighted':
+            snapshot_key = 'cd_weighted'
+            weights_key = 'weights_cd'
         else:
             snapshot_key = 'naive'  # fallback
+            weights_key = None
+        
+        # Choose the correct lambda values for each method
+        if method in ['cd_unweighted', 'cd_weighted']:
+            lam_key = 'lam_post_equil'
+        else:
+            lam_key = 'lam_pre_equil'
         
         # Plot distributions
-        for j, (t, snap, lam_val) in enumerate(zip(times, snapshots[snapshot_key], snapshots['lam_pre_equil'])):
+        for j, (t, snap, lam_val) in enumerate(zip(times, snapshots[snapshot_key], snapshots[lam_key])):
+            # Get weights if available
+            weights = None
+            if weights_key and snapshots[weights_key][j] is not None:
+                log_weights = snapshots[weights_key][j]
+                # Check if all log weights are zero (unit weights)
+                if np.allclose(log_weights, 0.0):
+                    weights = None  # Use unweighted histogram
+                else:
+                    weights = np.exp(log_weights - np.max(log_weights))
+                    weights = weights / np.sum(weights)
+            
             # Compute KDE
             try:
                 from scipy.stats import gaussian_kde
-                kde = gaussian_kde(snap.flatten())
+                if weights is not None:
+                    # Use weighted KDE
+                    kde = gaussian_kde(snap.flatten(), weights=weights)
+                else:
+                    kde = gaussian_kde(snap.flatten())
                 density = kde(x_grid)
             except:
                 # Fallback to histogram
-                hist, bin_edges = np.histogram(snap, bins=50, density=True, range=(x_min, x_max))
+                if weights is not None:
+                    hist, bin_edges = np.histogram(snap, bins=50, density=True, range=(x_min, x_max), weights=weights)
+                else:
+                    hist, bin_edges = np.histogram(snap, bins=50, density=True, range=(x_min, x_max))
                 bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
                 density = np.interp(x_grid, bin_centers, hist)
             
             # Normalize and offset for ridge plot
             density = density / np.max(density) * 1.8
-            offset = t
+            offset = t * 2.0  # Increased spacing between plots to reduce overlap
             
             # Plot the ridge
             ax.fill_between(x_grid, offset, offset + density, 
@@ -90,8 +126,8 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name,
         
         # Set limits
         ax.set_xlim(x_min, x_max)
-        ax.set_ylim(times[0] - 0.1, times[-1] + 2.0)
-        ax.set_yticks(times)
+        ax.set_ylim(times[0] * 2.0 - 0.1, times[-1] * 2.0 + 2.0)  # Adjusted for increased spacing
+        ax.set_yticks(times * 2.0)
     
     plt.tight_layout()
     plt.savefig(f"{ansatz_dir}/comparison_ridge_plot_{system_name}.png", dpi=300, bbox_inches='tight')
@@ -100,197 +136,140 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name,
     print(f"Saved comparison ridge plot to {ansatz_dir}/comparison_ridge_plot_{system_name}.png")
 
 def main():
-    # Define all routines and parameters here
-    M = 2048  # Reduced from 3000
-    N_steps = 40  # Reduced from 1000
-    eps = 0.05  # Increased from 0.0001 for faster simulation
-    delta_t = eps # should this even be a parameter?
-    momentum_refresh_interval = 1/eps # jnp.sqrt(1)/eps
-    fit_every = 1  # Fit the gauge potential every N steps
-    num_initial_iterations = 100000  # Reduced from 10000
-    num_iterations = 100000  # Reduced from 10000
+    # Set up the system
+    # system_name = "gaussian_moving_mean"
+    # system_name = "gaussian_annealing"
+    system_name = "double_well"
+    make_T, make_V, system_description, dim = get_system(system_name)
+    
+    # Define lambda functions
     v = 0.5
     max_lam = 1.0
-    # lam_fn = lambda t: 0.0
     lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
     dot_lam_fn = jax.grad(lam_fn)
-    learning_rate = 5e-4
     
-    # Re-equilibration parameters
-    re_equil_steps = 1000  # Number of naive HMC steps after each CD step
+    # Parameters
+    M = 1000
+    N_steps = 40
+    delta_t = 0.05
+    eps = 0.05
+    momentum_refresh_interval =  10.0
+    fit_every = 1
+    num_initial_iterations = 100000
+    num_iterations = 100000
+    learning_rate = 1e-4
+    re_equil_steps = 0
+    ess_threshold = 0.5
     
-    # Choose the system to simulate
-    # system_name = "2d_gaussian_moving_mean"  # Try the 2D system
-    # system_name = "2d_gaussian_annealing"  # Try the 2D system
-    # system_name = "gaussian_moving_mean"
-    system_name = "gaussian_annealing"
-    # system_name = "double_well"
-    # system_name = "2d_normal_to_rosenbrock"
-    make_T, make_V, system_description, dim = get_system(system_name)
-    print(f"Using system: {system_name}")
-    print(f"Description: {system_description}")
-    print(f"Dimension: {dim}")
+    # Create ansatz
+    ansatz = PolynomialAnsatz(max_degree=2, dim=dim)
     
-    # Initialize ansatz (either neural network or polynomial)
-    key = jax.random.PRNGKey(0)
-    # For neural network:
-    # ansatz = NeuralNetworkAnsatz([2*dim, 128, 256, 128, 1], key, dim=dim)
-    # ansatz = NeuralNetworkAnsatz([2*dim, 16, 1], key, dim=dim)
-    # For polynomial:
-    ansatz = PolynomialAnsatz(max_degree=2, dim=dim)  
-    # For analytic solution:
-    # ansatz = AnalyticAnsatz()
+    # Storage for all simulation results
+    successful_simulations = {}
+
+    naive = True
+    if naive:
     
-    # Print polynomial terms if using polynomial ansatz
-    if isinstance(ansatz, PolynomialAnsatz):
-        print("Polynomial terms:")
-        for desc in ansatz.get_term_description():
-            print(f"  {desc}")
-        print(f"Total number of parameters: {len(ansatz.params)}")
-    
-    import time
-    start_time = time.time()
-    
-    # Run three separate simulations for comparison
-    all_snapshots = {}
-    all_loss_histories = {}
-    all_param_histories = {}
-    
-    # 1. Naive HMC without weights
-    print("\n" + "="*60)
-    print("RUNNING NAIVE HMC WITHOUT WEIGHTS")
-    print("="*60)
-    key, subkey = jax.random.split(key)
-    try:
-        snapshots_unweighted = run_naive_hmc_simulation(
-            M=M, 
-            N_steps=N_steps, 
-            delta_t=delta_t, 
-            eps=eps, 
-            momentum_refresh_interval=momentum_refresh_interval,
-            make_T=make_T, 
-            make_V=make_V, 
-            lam_fn=lam_fn, 
-            dot_lam_fn=dot_lam_fn, 
-            key=subkey,
-            dim=dim,
-            use_weights=False
-        )
-        all_snapshots['unweighted'] = snapshots_unweighted
-        all_loss_histories['unweighted'] = []  # No loss history for naive HMC
-        all_param_histories['unweighted'] = []  # No parameter history for naive HMC
-        print("✓ Naive HMC without weights completed successfully")
-    except Exception as e:
-        print(f"❌ Naive HMC without weights failed: {e}")
-        all_snapshots['unweighted'] = None
-    
-    # 2. Naive HMC with weights and resampling
-    print("\n" + "="*60)
-    print("RUNNING NAIVE HMC WITH WEIGHTS AND RESAMPLING")
-    print("="*60)
-    key, subkey = jax.random.split(key)
-    try:
-        snapshots_weighted = run_naive_hmc_simulation(
-            M=M, 
-            N_steps=N_steps, 
-            delta_t=delta_t, 
-            eps=eps, 
-            momentum_refresh_interval=momentum_refresh_interval,
-            make_T=make_T, 
-            make_V=make_V, 
-            lam_fn=lam_fn, 
-            dot_lam_fn=dot_lam_fn, 
-            key=subkey,
-            dim=dim,
-            use_weights=True,
-            ess_threshold=0.5
-        )
-        all_snapshots['weighted'] = snapshots_weighted
-        all_loss_histories['weighted'] = []  # No loss history for naive HMC
-        all_param_histories['weighted'] = []  # No parameter history for naive HMC
-        print("✓ Naive HMC with weights completed successfully")
-    except Exception as e:
-        print(f"❌ Naive HMC with weights failed: {e}")
-        all_snapshots['weighted'] = None
-    
-    # 3. Counterdiabatic HMC
-    print("\n" + "="*60)
-    print("RUNNING COUNTERDIABATIC HMC")
-    print("="*60)
-    key, subkey = jax.random.split(key)
-    try:
-        A_ansatz_cd, snapshots_cd, loss_histories_cd, param_history_cd = run_simulation(
-            M=M, 
-            N_steps=N_steps, 
-            delta_t=delta_t, 
-            eps=eps, 
-            momentum_refresh_interval=momentum_refresh_interval,
-            fit_every=fit_every,
-            num_initial_iterations=num_initial_iterations,
-            num_iterations=num_iterations,
-            make_T=make_T, 
-            make_V=make_V, 
-            lam_fn=lam_fn, 
-            dot_lam_fn=dot_lam_fn, 
-            A_ansatz=ansatz, 
-            key=subkey,
-            dim=dim,
-            learning_rate=learning_rate,
-            re_equil_steps=re_equil_steps,  # Re-equilibration for CD HMC
-            use_weights=False
-        )
-        all_snapshots['cd'] = snapshots_cd
-        all_loss_histories['cd'] = loss_histories_cd
-        all_param_histories['cd'] = param_history_cd
-        print("✓ Counterdiabatic HMC completed successfully")
-    except Exception as e:
-        print(f"❌ Counterdiabatic HMC failed: {e}")
-        all_snapshots['cd'] = None
-    
-    simulation_time = time.time() - start_time
-    print(f"\nAll simulations completed in {simulation_time:.2f} seconds")
+        # 1. Naive HMC (Unweighted)
+        print("\n" + "="*50)
+        print("Running Naive HMC (Unweighted)")
+        print("="*50)
+        try:
+            key = jax.random.PRNGKey(0)
+            snapshots_naive_unweighted = run_naive_hmc_simulation(
+                M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
+                momentum_refresh_interval=momentum_refresh_interval,
+                make_T=make_T, make_V=make_V, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
+                key=key, dim=dim, use_weights=False
+            )
+            successful_simulations['naive_unweighted'] = snapshots_naive_unweighted
+            print("✓ Naive HMC (Unweighted) completed successfully")
+        except Exception as e:
+            print(f"✗ Naive HMC (Unweighted) failed: {e}")
+        
+        # 2. Naive HMC (Weighted SMC)
+        print("\n" + "="*50)
+        print("Running Naive HMC (Weighted SMC)")
+        print("="*50)
+        try:
+            key = jax.random.PRNGKey(1)
+            snapshots_naive_weighted = run_naive_hmc_simulation(
+                M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
+                momentum_refresh_interval=momentum_refresh_interval,
+                make_T=make_T, make_V=make_V, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
+                key=key, dim=dim, use_weights=True, ess_threshold=ess_threshold
+            )
+            successful_simulations['naive_weighted'] = snapshots_naive_weighted
+            print("✓ Naive HMC (Weighted SMC) completed successfully")
+        except Exception as e:
+            print(f"✗ Naive HMC (Weighted SMC) failed: {e}")
+        
+    counterdiabatic = True
+    if counterdiabatic:
+    # 3. Counterdiabatic HMC (Unweighted)
+        print("\n" + "="*50)
+        print("Running Counterdiabatic HMC (Unweighted)")
+        print("="*50)
+        try:
+            key = jax.random.PRNGKey(2)
+            _, snapshots_cd_unweighted, loss_histories_cd_unweighted, param_history_cd_unweighted = run_simulation(
+                M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
+                momentum_refresh_interval=momentum_refresh_interval,
+                fit_every=fit_every, num_initial_iterations=num_initial_iterations,
+                num_iterations=num_iterations, make_T=make_T, make_V=make_V,
+                A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
+                key=key, dim=dim, learning_rate=learning_rate,
+                re_equil_steps=re_equil_steps, use_weights=False
+            )
+            successful_simulations['cd_unweighted'] = snapshots_cd_unweighted
+            successful_simulations['loss_histories_cd_unweighted'] = loss_histories_cd_unweighted
+            successful_simulations['param_history_cd_unweighted'] = param_history_cd_unweighted
+            print("✓ Counterdiabatic HMC (Unweighted) completed successfully")
+        except Exception as e:
+            print(f"✗ Counterdiabatic HMC (Unweighted) failed: {e}")
+        
+        # 4. Counterdiabatic HMC (Weighted) - Using same seed as unweighted
+        print("\n" + "="*50)
+        print("Running Counterdiabatic HMC (Weighted) - Same seed as unweighted")
+        print("="*50)
+        try:
+            key = jax.random.PRNGKey(2)  # Same seed as unweighted
+            _, snapshots_cd_weighted, loss_histories_cd_weighted, param_history_cd_weighted = run_simulation(
+                M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
+                momentum_refresh_interval=momentum_refresh_interval,
+                fit_every=fit_every, num_initial_iterations=num_initial_iterations,
+                num_iterations=num_iterations, make_T=make_T, make_V=make_V,
+                A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
+                key=key, dim=dim, learning_rate=learning_rate,
+                re_equil_steps=re_equil_steps, use_weights=True, ess_threshold=ess_threshold
+            )
+            successful_simulations['cd_weighted'] = snapshots_cd_weighted
+            successful_simulations['loss_histories_cd_weighted'] = loss_histories_cd_weighted
+            successful_simulations['param_history_cd_weighted'] = param_history_cd_weighted
+            print("✓ Counterdiabatic HMC (Weighted) completed successfully")
+        except Exception as e:
+            print(f"✗ Counterdiabatic HMC (Weighted) failed: {e}")
     
     # Create comparison plots
-    print("\n" + "="*60)
-    print("CREATING COMPARISON PLOTS")
-    print("="*60)
-    
-    # Check which simulations succeeded
-    successful_simulations = {k: v for k, v in all_snapshots.items() if v is not None}
-    
     if len(successful_simulations) > 0:
-        plot_start = time.time()
+        print(f"\nCreating comparison plots for {len(successful_simulations)} successful simulations...")
         create_comparison_plots(successful_simulations, delta_t, make_V, lam_fn, system_name, dim)
-        plot_time = time.time() - plot_start
-        print(f"Comparison plotting completed in {plot_time:.2f} seconds")
+        
+        # Also create the detailed distribution plot using CD-HMC data (if available)
+        if 'cd_unweighted' in successful_simulations:
+            print("Creating detailed distribution plot...")
+            loss_histories = successful_simulations.get('loss_histories_cd_unweighted', [])
+            param_history = successful_simulations.get('param_history_cd_unweighted', None)
+            plot_results(successful_simulations['cd_unweighted'], loss_histories, delta_t, make_V, lam_fn, 
+                        param_history=param_history, ansatz=ansatz, potential_name=system_name, dim=dim, plot_ansatz=False, make_T=make_T)
+        elif 'cd_weighted' in successful_simulations:
+            print("Creating detailed distribution plot...")
+            loss_histories = successful_simulations.get('loss_histories_cd_weighted', [])
+            param_history = successful_simulations.get('param_history_cd_weighted', None)
+            plot_results(successful_simulations['cd_weighted'], loss_histories, delta_t, make_V, lam_fn, 
+                        param_history=param_history, ansatz=ansatz, potential_name=system_name, dim=dim, plot_ansatz=False, make_T=make_T)
     else:
-        print("⚠️  No simulations succeeded - cannot create plots")
-    
-    # Create original distributions plot using the counterdiabatic simulation
-    print("\n" + "="*60)
-    print("CREATING ORIGINAL DISTRIBUTIONS PLOT")
-    print("="*60)
-    
-    if all_snapshots['cd'] is not None:
-        plot_start = time.time()
-        # Use the counterdiabatic simulation for the original plot_results
-        plot_results(
-            snapshots=all_snapshots['cd'],
-            loss_histories=all_loss_histories['cd'],
-            delta_t=delta_t,
-            make_V=make_V,
-            lam_fn=lam_fn,
-            param_history=all_param_histories['cd'],
-            ansatz=ansatz,
-            potential_name=system_name,
-            dim=dim,
-            plot_ansatz=False,
-            make_T=make_T
-        )
-        plot_time = time.time() - plot_start
-        print(f"Original distributions plotting completed in {plot_time:.2f} seconds")
-    else:
-        print("⚠️  Counterdiabatic simulation failed - cannot create original distributions plot")
+        print("No successful simulations to plot.")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main() 

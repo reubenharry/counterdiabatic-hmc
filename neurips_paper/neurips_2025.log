@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.22 (TeX Live 2021) (preloaded format=pdflatex 2021.9.24)  15 AUG 2025 17:07
+This is pdfTeX, Version 3.141592653-2.6-1.40.22 (TeX Live 2021) (preloaded format=pdflatex 2021.9.24)  16 AUG 2025 22:05
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -796,6 +796,13 @@ Package biblatex Warning: The following entry could not be found
 (biblatex)                Please verify the spelling and rerun
 (biblatex)                LaTeX afterwards.
 
+
+Package biblatex Warning: The following entry could not be found
+(biblatex)                in the database:
+(biblatex)                todo
+(biblatex)                Please verify the spelling and rerun
+(biblatex)                LaTeX afterwards.
+
 )
 Package biblatex Info: Reference section=0 on input line 117.
 Package biblatex Info: Reference segment=0 on input line 117.
@@ -902,13 +909,95 @@ Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             `phv' (encoding: T1).
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
-<img/moving_mean_1D.png, id=46, 2979.13pt x 1774.63pt>
+<img/moving_mean_1D.png, id=50, 2979.13pt x 1774.63pt>
 File: img/moving_mean_1D.png Graphic file (type png)
 <use img/moving_mean_1D.png>
 Package pdftex.def Info: img/moving_mean_1D.png  used on input line 151.
 (pdftex.def)             Requested size: 190.79109pt x 113.64905pt.
-<img/double_well_1D.png, id=47, 2979.13pt x 1774.63pt>
+<img/double_well_1D.png, id=51, 2979.13pt x 1774.63pt>
 File: img/double_well_1D.png Graphic file (type png)
 <use img/double_well_1D.png>
 Package pdftex.def Info: img/double_well_1D.png  used on input line 158.
-(pdftex.def)             Requested size: 190.79109pt x 113.64905p
+(pdftex.def)             Requested size: 190.79109pt x 113.64905pt.
+ [1
+
+
+{/usr/local/texlive/2021/texmf-var/fonts/map/pdftex/updmap/pdftex.map}]
+Underfull \vbox (badness 1281) has occurred while \output is active []
+
+ [2 <./img/moving_mean_1D.png> <./img/double_well_1D.png>] [3] [4]
+
+LaTeX Warning: Reference `todo' on page 5 undefined on input line 510.
+
+[5]
+Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on in
+put line 533.
+
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [6]
+Package microtype Info: Loading generic protrusion settings for font family
+(microtype)             `cmss' (encoding: OT1).
+(microtype)             For optimal results, create family-specific settings.
+(microtype)             See the microtype manual for details.
+
+[7] [8]
+LaTeX Font Info:    Trying to load font information for TS1+ptm on input line 7
+62.
+ (/usr/local/texlive/2021/texmf-dist/tex/latex/psnfss/ts1ptm.fd
+File: ts1ptm.fd 2001/06/04 font definitions for TS1/ptm.
+)
+[9] [10] [11] [12] [13] [14] [15]
+Underfull \hbox (badness 5519) in paragraph at lines 1007--1007
+[]\T1/ptm/m/n/10 (+20) Mingzhou Fan et al. ``Path-guided particle-based sam-pli
+ng''. In: \T1/ptm/m/it/10 (+20) arXiv preprint
+ []
+
+[16] [17] (./neurips_2025.aux)
+
+LaTeX Warning: There were undefined references.
+
+Package rerunfilecheck Info: File `neurips_2025.out' has not changed.
+(rerunfilecheck)             Checksum: 4684EEDDC8CA1C50FD61BD4282CD71D9;1226.
+Package logreq Info: Writing requests to 'neurips_2025.run.xml'.
+\openout1 = `neurips_2025.run.xml'.
+
+ ) 
+Here is how much of TeX's memory you used:
+ 21753 strings out of 478994
+ 365302 string characters out of 5858184
+ 1118079 words of memory out of 5000000
+ 38530 multiletter control sequences out of 15000+600000
+ 454787 words of font info for 265 fonts, out of 8000000 for 9000
+ 1141 hyphenation exceptions out of 8191
+ 83i,9n,88p,1372b,1358s stack positions out of 5000i,500n,10000p,200000b,80000s
+{/usr/local/texlive/2021/texmf-dist/fonts/enc/dvips/base/8r.enc}{/usr/local/t
+exlive/2021/texmf-dist/fonts/enc/dvips/cm-super/cm-super-t1.enc}</usr/local/tex
+live/2021/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/local/texl
+ive/2021/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/local/texli
+ve/2021/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/local/texliv
+e/2021/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi5.pfb></usr/local/texlive/
+2021/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/local/texlive/20
+21/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></usr/local/texlive/2021
+/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2021/t
+exmf-dist/fonts/type1/public/amsfonts/cm/cmr5.pfb></usr/local/texlive/2021/texm
+f-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local/texlive/2021/texmf-d
+ist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/local/texlive/2021/texmf-dist
+/fonts/type1/public/amsfonts/cm/cmss10.pfb></usr/local/texlive/2021/texmf-dist/
+fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2021/texmf-dist/f
+onts/type1/public/amsfonts/cm/cmsy5.pfb></usr/local/texlive/2021/texmf-dist/fon
+ts/type1/public/amsfonts/cm/cmsy7.pfb></usr/local/texlive/2021/texmf-dist/fonts
+/type1/public/amsfonts/symbols/msbm10.pfb></usr/local/texlive/2021/texmf-dist/f
+onts/type1/public/amsfonts/symbols/msbm7.pfb></usr/local/texlive/2021/texmf-dis
+t/fonts/type1/public/cm-super/sftt1000.pfb></usr/local/texlive/2021/texmf-dist/
+fonts/type1/urw/helvetic/uhvr8a.pfb></usr/local/texlive/2021/texmf-dist/fonts/t
+ype1/urw/times/utmb8a.pfb></usr/local/texlive/2021/texmf-dist/fonts/type1/urw/t
+imes/utmr8a.pfb></usr/local/texlive/2021/texmf-dist/fonts/type1/urw/times/utmri
+8a.pfb>
+Output written on neurips_2025.pdf (17 pages, 945411 bytes).
+PDF statistics:
+ 389 PDF objects out of 1000 (max. 8388607)
+ 343 compressed objects within 4 object streams
+ 109 named destinations out of 1000 (max. 500000)
+ 53331 words of extra memory for PDF output out of 61914 (max. 10000000)
+

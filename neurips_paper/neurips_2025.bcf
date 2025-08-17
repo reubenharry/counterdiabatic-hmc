@@ -2362,4 +2362,90 @@
     <bcf:citekey order="13">vargas2023transport</bcf:citekey>
     <bcf:citekey order="13">arbel2021annealed</bcf:citekey>
     <bcf:citekey order="14">doucet2001introduction</bcf:citekey>
-    <bcf:citekey order="15">del200
+    <bcf:citekey order="15">del2006sequential</bcf:citekey>
+    <bcf:citekey order="16">heng2020controlled</bcf:citekey>
+    <bcf:citekey order="17">bernton2019schr</bcf:citekey>
+    <bcf:citekey order="18">fleming2012deterministic</bcf:citekey>
+    <bcf:citekey order="19">peyre2019computational</bcf:citekey>
+    <bcf:citekey order="20">vargas2023transport</bcf:citekey>
+    <bcf:citekey order="21">tian2024liouville</bcf:citekey>
+    <bcf:citekey order="22">fan2024path</bcf:citekey>
+    <bcf:citekey order="23">zhang2021path</bcf:citekey>
+    <bcf:citekey order="24">albergo2024nets</bcf:citekey>
+    <bcf:citekey order="25">albergo2024nets</bcf:citekey>
+    <bcf:citekey order="25">vargas2023transport</bcf:citekey>
+    <bcf:citekey order="26">jarzynski1997nonequilibrium</bcf:citekey>
+    <bcf:citekey order="27">crooks1998nonequilibrium</bcf:citekey>
+    <bcf:citekey order="28">martinez2016engineered</bcf:citekey>
+    <bcf:citekey order="29">demirplak2003adiabatic</bcf:citekey>
+    <bcf:citekey order="30">patra2017shortcuts</bcf:citekey>
+    <bcf:citekey order="31">vaikuntanathan2011escorted</bcf:citekey>
+    <bcf:citekey order="32">guery2019shortcuts</bcf:citekey>
+    <bcf:citekey order="33">kolodrubetz2017geometry</bcf:citekey>
+    <bcf:citekey order="34">sels2017minimizing</bcf:citekey>
+    <bcf:citekey order="35">vaikuntanathan2011escorted</bcf:citekey>
+    <bcf:citekey order="36">demirplak2003adiabatic</bcf:citekey>
+    <bcf:citekey order="37">neal2001annealed</bcf:citekey>
+    <bcf:citekey order="38">albergo2024nets</bcf:citekey>
+    <bcf:citekey order="39">vargas2023transport</bcf:citekey>
+    <bcf:citekey order="40">arbel2021annealed</bcf:citekey>
+    <bcf:citekey order="41">tian2024liouville</bcf:citekey>
+    <bcf:citekey order="42">fan2024path</bcf:citekey>
+    <bcf:citekey order="43">sun2024dynamical</bcf:citekey>
+    <bcf:citekey order="44">zhang2021path</bcf:citekey>
+    <bcf:citekey order="45">chib1995understanding</bcf:citekey>
+    <bcf:citekey order="46">demirplak2003adiabatic</bcf:citekey>
+    <bcf:citekey order="47">berry2009transitionless</bcf:citekey>
+    <bcf:citekey order="48">vaikuntanathan2011escorted</bcf:citekey>
+    <bcf:citekey order="48">guery2023driving</bcf:citekey>
+    <bcf:citekey order="50">sels2017minimizing</bcf:citekey>
+    <bcf:citekey order="51">crooks1998nonequilibrium</bcf:citekey>
+    <bcf:citekey order="52">zhong2024time</bcf:citekey>
+    <bcf:citekey order="53">zhong2024time</bcf:citekey>
+    <bcf:citekey order="54">doucet2001sequential</bcf:citekey>
+    <bcf:citekey order="55">doucet2001sequential</bcf:citekey>
+    <bcf:citekey order="56">crooks1998nonequilibrium</bcf:citekey>
+    <bcf:citekey order="57">todo</bcf:citekey>
+    <bcf:citekey order="58">dai2022invitation</bcf:citekey>
+    <bcf:citekey order="59">zhong2024time</bcf:citekey>
+  </bcf:section>
+  <!-- SORTING TEMPLATES -->
+  <bcf:sortingtemplate name="nty">
+    <bcf:sort order="1">
+      <bcf:sortitem order="1">presort</bcf:sortitem>
+    </bcf:sort>
+    <bcf:sort order="2" final="1">
+      <bcf:sortitem order="1">sortkey</bcf:sortitem>
+    </bcf:sort>
+    <bcf:sort order="3">
+      <bcf:sortitem order="1">sortname</bcf:sortitem>
+      <bcf:sortitem order="2">author</bcf:sortitem>
+      <bcf:sortitem order="3">editor</bcf:sortitem>
+      <bcf:sortitem order="4">translator</bcf:sortitem>
+      <bcf:sortitem order="5">sorttitle</bcf:sortitem>
+      <bcf:sortitem order="6">title</bcf:sortitem>
+    </bcf:sort>
+    <bcf:sort order="4">
+      <bcf:sortitem order="1">sorttitle</bcf:sortitem>
+      <bcf:sortitem order="2">title</bcf:sortitem>
+    </bcf:sort>
+    <bcf:sort order="5">
+      <bcf:sortitem order="1">sortyear</bcf:sortitem>
+      <bcf:sortitem order="2">year</bcf:sortitem>
+    </bcf:sort>
+    <bcf:sort order="6">
+      <bcf:sortitem order="1">volume</bcf:sortitem>
+      <bcf:sortitem literal="1" order="2">0</bcf:sortitem>
+    </bcf:sort>
+  </bcf:sortingtemplate>
+  <!-- DATALISTS -->
+  <bcf:datalist section="0"
+                name="nty/global//global/global"
+                type="entry"
+                sortingtemplatename="nty"
+                sortingnamekeytemplatename="global"
+                labelprefix=""
+                uniquenametemplatename="global"
+                labelalphanametemplatename="global">
+  </bcf:datalist>
+</bcf:controlfile>

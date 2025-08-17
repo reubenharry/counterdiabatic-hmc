@@ -234,6 +234,50 @@
       \field{pages}{1481\bibrangedash 1487}
       \range{pages}{7}
     \endentry
+    \entry{dai2022invitation}{article}{}
+      \name{author}{4}{}{%
+        {{hash=51bbb596a37d0f27a7fde8fcba06299c}{%
+           family={Dai},
+           familyi={D\bibinitperiod},
+           given={Chenguang},
+           giveni={C\bibinitperiod}}}%
+        {{hash=60bf04150ae1eeaae984b24c3b66bf29}{%
+           family={Heng},
+           familyi={H\bibinitperiod},
+           given={Jeremy},
+           giveni={J\bibinitperiod}}}%
+        {{hash=7888851742ea6bd4583f37c1d5aa6fd8}{%
+           family={Jacob},
+           familyi={J\bibinitperiod},
+           given={Pierre\bibnamedelima E},
+           giveni={P\bibinitperiod\bibinitdelim E\bibinitperiod}}}%
+        {{hash=54f298378a05eefa8496fcea832c3d7e}{%
+           family={Whiteley},
+           familyi={W\bibinitperiod},
+           given={Nick},
+           giveni={N\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Taylor \& Francis}%
+      }
+      \strng{namehash}{b5dd4f8fd5898dde0e60fff92115f9f8}
+      \strng{fullhash}{81a494bd06c096274939b292e1036d93}
+      \strng{bibnamehash}{b5dd4f8fd5898dde0e60fff92115f9f8}
+      \strng{authorbibnamehash}{b5dd4f8fd5898dde0e60fff92115f9f8}
+      \strng{authornamehash}{b5dd4f8fd5898dde0e60fff92115f9f8}
+      \strng{authorfullhash}{81a494bd06c096274939b292e1036d93}
+      \field{sortinit}{D}
+      \field{sortinithash}{6f385f66841fb5e82009dc833c761848}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Journal of the American Statistical Association}
+      \field{number}{539}
+      \field{title}{An invitation to sequential Monte Carlo samplers}
+      \field{volume}{117}
+      \field{year}{2022}
+      \field{pages}{1587\bibrangedash 1600}
+      \range{pages}{14}
+    \endentry
     \entry{del2006sequential}{article}{}
       \name{author}{3}{}{%
         {{hash=ffba709e072f0474f2b0b461384367c8}{%
@@ -1228,6 +1272,7 @@
     \endentry
   \enddatalist
   \missing{doucet2001sequential}
+  \missing{todo}
 \endrefsection
 \endinput
 

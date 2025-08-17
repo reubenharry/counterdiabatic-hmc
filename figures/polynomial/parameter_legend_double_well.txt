@@ -1,7 +1,7 @@
 Parameter Legend for double_well (Polynomial Ansatz)
 ==================================================
 
-Total parameters: 15
+Total parameters: 6
 
 Compact notation -> Full polynomial term:
 ----------------------------------------
@@ -11,12 +11,3 @@ Compact notation -> Full polynomial term:
 θ_ 4 -> p_0^2
 θ_ 5 -> q_0 p_0
 θ_ 6 -> q_0^2
-θ_ 7 -> p_0^3
-θ_ 8 -> q_0 p_0^2
-θ_ 9 -> q_0^2 p_0
-θ_10 -> q_0^3
-θ_11 -> p_0^4
-θ_12 -> q_0 p_0^3
-θ_13 -> q_0^2 p_0^2
-θ_14 -> q_0^3 p_0
-θ_15 -> q_0^4

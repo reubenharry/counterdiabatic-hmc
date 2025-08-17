@@ -479,9 +479,7 @@ In the simplest case, $M$ can be chosen as any invariant kernel, and $L$ as its 
 
 In many cases, the ratio of kernels derived from forward and backward dynamics is known as a result of the Crooks detailed fluctuation theorem \cite{crooks1998nonequilibrium}. This states that
 
-$$
 
-$$
 
 
 
@@ -497,7 +495,7 @@ which defines $W[z(t)] = \int_0^T dW$
 
 This allows us to calculate the reversibility, since \cite{zhong2024time} show that 
 
-W[z(t)] = H(z(t), \lambda(t)) - H(z(0), \lambda(0)) + \log \frac{\mathcal{P}[z(t) | z(0)}{\mathcal{P}(\tilde z(t) | \tilde z(0)}
+% W[z(t)] = H(z(t), \lambda(t)) - H(z(0), \lambda(0)) + \log \frac{\mathcal{P}[z(t) | z(0)}{\mathcal{P}(\tilde z(t) | \tilde z(0)}
 
 
 % (We see that if we were to stay (via canonical transformation) in the frame of the moving Hamiltonian, i.e. by taking the total derivative, we would experience an effective Hamiltonian $-A$.)
@@ -596,6 +594,161 @@ We compare to Sequential Monte Carlo, as well as the results reported in NETS TO
 We use the models proposed in the NETS paper for evaluation (todo: get michael or eric to share them).
 
 \section{Conclusion}
+
+\appendix
+
+\section{Counterdiabatic HMC as an SMC sampler}
+
+% \paragraph{Path space and a proposal law.}
+% Let \((\mathsf X,\mathcal B)\) be a measurable state space and fix a horizon \(T\in\mathbb N\).
+% Write \(x_{0:T}=(x_0,\ldots,x_T)\in \mathsf X^{T+1}\) and endow the path space
+% \((\mathsf X^{T+1},\mathcal B^{\otimes (T+1)})\) with the product $\sigma$-algebra.
+
+
+Given an initial distribution \(\mu\in\mathcal P(\mathsf X)\) and a sequence of Markov kernels
+\(M_t\in\mathcal M(\mathsf X)\) for \(t=1,\ldots,T\), the \emph{proposal} (or reference) path
+measure \(\mathbb Q\) is
+\begin{equation}
+\label{eq:Q-path}
+\mathbb Q(\mathrm d x_{0:T})
+=\mu(\mathrm d x_0)\,\prod_{t=1}^T M_t(x_{t-1},\mathrm d x_t).
+\end{equation}
+
+\paragraph{Importance sampling on path space (Feynman--Kac).}
+Let \(G_0:\mathsf X\to(0,\infty)\) and \(G_t:\mathsf X\times\mathsf X\to(0,\infty)\) for \(t\ge1\)
+be strictly positive \emph{potentials}. The \emph{target} path measure \(\mathbb P\) is defined by
+reweighting \(\mathbb Q\):
+\begin{equation}
+\label{eq:FK-path}
+\mathbb P(\mathrm d x_{0:T})
+=\frac{1}{Z}\,G_0(x_0)\Bigg[\prod_{t=1}^T G_t(x_{t-1},x_t)\Bigg]\,\mathbb Q(\mathrm d x_{0:T}),
+\end{equation}
+where the normalizing constant is
+\(Z=\mathbb E_{\mathbb Q}\!\left[G_0(X_0)\prod_{t=1}^T G_t(X_{t-1},X_t)\right]\).
+The resulting unnormalized \emph{marginal} measures \(\gamma_t\in\mathcal S(\mathsf X)\) and their
+normalized counterparts \(\eta_t\in\mathcal P(\mathsf X)\) are
+\begin{align}
+\label{eq:gamma-eta}
+\gamma_t(\varphi)&=
+\mathbb E_{\mathbb Q}\!\left[\varphi(X_t)\,G_0(X_0)\prod_{s=1}^t G_s(X_{s-1},X_s)\right],\qquad
+Z_t:=\gamma_t(1),\\
+\eta_t(\varphi)&=\gamma_t(\varphi)/Z_t,\qquad t=0,\ldots,T .
+\end{align}
+Eqs.~\eqref{eq:Q-path}--\eqref{eq:gamma-eta} constitute the standard Feynman--Kac framework:
+importance sampling is performed on the \emph{path} measure, while particle approximations target
+the time marginals \((\eta_t)_{t=0:T}\).
+
+One can then sample from todo
+by initializing a population of particles from $\pi_0$ and then propagating them forward in time using the kernel $M_t$, keeping track of the weights at each step and optionally resampling to mitigate weight degeneracy.
+
+
+
+
+
+
+
+\paragraph{Sequential Monte Carlo samplers}
+
+\cite{doucet2001sequential} show how the general framework of Sequential Monte Carlo as summarized above can be applied to the problem of sampling from a distribution $\pi$ on $\mathbb{R}^d$, by artificially constructing a path of distributions $\pi_t$ with $\pi_0$ a simple distribution and $\pi_T = \pi$ the target distribution.
+
+The central idea is that a forward path can be constructed by choosing a time dependent Markov kernel $M_t$
+
+Q(M, pi0)
+
+and that this can be renormalized to sample from a 
+
+Q(L, piT)
+
+This requires $G = ...$
+
+
+
+
+
+
+
+% A particularly useful specification is obtained by introducing, for each \(t\ge1\), a
+% \emph{backward} Markov kernel \(L_{t-1}\in\mathcal M(\mathsf X)\).
+% Assuming absolute continuity,
+% define the potentials by the Radon--Nikodym derivative
+% \begin{equation}
+% \label{eq:G-rn}
+% G_t(x_{t-1},x_t)=
+% \frac{\mathrm d\!\left(L_{t-1}\otimes \gamma_t\right)}
+%      {\mathrm d\!\left(\gamma_{t-1}\otimes M_t\right)}(x_{t-1},x_t),
+% \qquad t=1,\ldots,T,
+% \end{equation}
+% with \(G_0\equiv 1\). Here \( \alpha\otimes K\) denotes the measure on
+% \(\mathsf X\times\mathsf X\) given by \(\alpha(\mathrm d x)\,K(x,\mathrm d y)\).
+% Under \eqref{eq:G-rn}, the path measure \eqref{eq:FK-path} indeed has marginals \((\eta_t)\),
+% and the incremental importance weight at time \(t\) depends only on \((x_{t-1},x_t)\).
+
+% A common and convenient choice is to take \(M_t\) to be \(\eta_t\)-invariant
+% (\(\eta_t M_t=\eta_t\)) and \(L_{t-1}\) its time reversal:
+% \begin{equation}
+% \label{eq:time-reversal}
+% L_{t-1}(x_t,\mathrm d x_{t-1})
+% =\frac{\eta_{t-1}(\mathrm d x_{t-1})\,M_t(x_{t-1},\mathrm d x_t)}{\eta_t(\mathrm d x_t)}.
+% \end{equation}
+% Plugging \eqref{eq:time-reversal} into \eqref{eq:G-rn} yields the simple potential
+% \begin{equation}
+% \label{eq:ais-G}
+% G_t(x_{t-1},x_t)=\frac{\gamma_t(x_t)}{\gamma_{t-1}(x_{t-1})},
+% \end{equation}
+% which recovers annealed/bridging SMC and AIS.
+
+\paragraph{SMC with physical dynamics: nonequilibrium fluctuation theorems}
+
+In the case where $M$ and $L$ are given by forward time and backward time Hamiltonian dynamics (or overdamped or underdamped Langevin dynamics), the ratio of $M(x_t | x_{t-1})$ to $L(x_{t-1} | x_t)$ can be calculated using the non-equilibrium fluctuation theorem derived by \cite{crooks1998nonequilibrium} and extended to more generality \cite{todo}.
+
+First, recall that
+
+$$
+\frac{dH}{dt} = \frac{\partial H}{\partial t} + \nabla H \cdot \frac{d\mathbf{x}}{dt} := dW + dQ
+$$
+
+In physics terms, $dW$ and $dQ$ are the work done by the system and the heat absorbed by the system, respectively, and mathematically, should be viewed as one-forms that are not exact, i.e. are not the differential of a function. By contrast, their sum $dH$ is an exact one-form, namely the differential of the Hamiltonian.
+
+In particular, this theorem states that
+
+$$
+\frac{\pi(z_{t-1})k(z_t | z_{t-1})}{\pi(z_t)k(z_{t-1} | z_t)} = \exp^{W - \Delta F}
+$$
+
+where $W$ is the integral of $dw = \frac{\partial H}{\partial t}$ over the trajectory, and $\Delta F = -\log\frac{Z_t}{Z_{t-1}}$, for $Z_t := \int \pi_{H(t)}(z)dz$.
+
+The consequence is that we can compute 
+
+TODO: define $k$
+
+$$
+\frac{k(z_t | z_{t-1})}{k(z_{t-1} | z_t)} = e^W\frac{Z_t}{Z_{t-1}}\frac{Z_{t-1}}{Z_t}e^{-\Delta H} = e^{W - \Delta H} = e^{-Q}
+$$
+
+Since Hamiltonian dynamics are measure-preserving, i.e. $Q=0$, even when numerically simulated with a leapfrog integrator, we see immediately that when using an unadjusted HMC kernel in the SMC sampling algorithm, the correct weight is given by $e^{-\Delta H}$, in agreement with Appendix B of \cite{dai2022invitation}.
+
+The more interesting case concerns a kernel $k$ that arises from a counterdiabatic Hamiltonian $H_c$. In this case, \cite{zhong2024time} derives an analogous theorem, but in terms of a different work, which we refer to as $W_c$, obtained by integrating $dw_c = todo$ over the trajectory, where
+
+$$
+dw_c = (\frac{\partial H_c}{\partial t} - \nabla H\cdot v + \nabla \cdot v)dt
+$$
+
+
+
+
+
+
+
+% \nabla H \cdot \frac{d\mathbf{x}}{dt} = \nabla H \cdot \frac{d\mathbf{x}}{dt}
+
+
+By definition of
+
+
+
+
+
+
 
 \newpage
 \section*{NeurIPS Paper Checklist}
