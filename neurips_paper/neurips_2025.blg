@@ -1,20 +1,11 @@
 [0] Config.pm:311> INFO - This is Biber 2.16
 [0] Config.pm:314> INFO - Logfile is 'neurips_2025.blg'
-[84] biber-darwin:340> INFO - === Sat Aug 16, 2025, 21:10:55
-[102] Biber.pm:415> INFO - Reading 'neurips_2025.bcf'
-[211] Biber.pm:952> INFO - Found 37 citekeys in bib section 0
-[232] Biber.pm:4340> INFO - Processing section 0
-[250] Biber.pm:4531> INFO - Looking for bibtex format file 'neurips.bib' for section 0
-[252] bibtex.pm:1689> INFO - LaTeX decoding ...
-[293] bibtex.pm:1494> INFO - Found BibTeX data source 'neurips.bib'
-[295] Utils.pm:395> WARN - Duplicate entry key: 'vaikuntanathan2011escorted' in file 'neurips.bib', skipping ...
-[295] Utils.pm:395> WARN - Duplicate entry key: 'zhong2024time' in file 'neurips.bib', skipping ...
-[483] Utils.pm:395> WARN - I didn't find a database entry for 'doucet2001sequential' (section 0)
-[483] Utils.pm:395> WARN - I didn't find a database entry for 'todo' (section 0)
-[530] UCollate.pm:68> INFO - Overriding locale 'en-US' defaults 'normalization = NFD' with 'normalization = prenormalized'
-[530] UCollate.pm:68> INFO - Overriding locale 'en-US' defaults 'variable = shifted' with 'variable = non-ignorable'
-[530] Biber.pm:4168> INFO - Sorting list 'nty/global//global/global' of type 'entry' with template 'nty' and locale 'en-US'
-[530] Biber.pm:4174> INFO - No sort tailoring available for locale 'en-US'
-[562] bbl.pm:654> INFO - Writing 'neurips_2025.bbl' with encoding 'UTF-8'
-[581] bbl.pm:757> INFO - Output to neurips_2025.bbl
-[581] Biber.pm:128> INFO - WARNINGS: 4
+[152] biber-darwin:340> INFO - === Sun Aug 17, 2025, 15:53:45
+[186] Biber.pm:415> INFO - Reading 'neurips_2025.bcf'
+[934] Biber.pm:952> INFO - Found 37 citekeys in bib section 0
+[1018] Biber.pm:4340> INFO - Processing section 0
+[1088] Biber.pm:4531> INFO - Looking for bibtex format file 'neurips.bib' for section 0
+[1102] bibtex.pm:1689> INFO - LaTeX decoding ...
+[1241] bibtex.pm:1494> INFO - Found BibTeX data source 'neurips.bib'
+[1243] Utils.pm:395> WARN - Duplicate entry key: 'vaikuntanathan2011escorted' in file 'neurips.bib', skipping ...
+[1249] Utils.pm:395> WARN - Duplicate entry key: 'zhong2024time' in file 'neurips.bib', skipping ...

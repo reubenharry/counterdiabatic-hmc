@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.22 (TeX Live 2021) (preloaded format=pdflatex 2021.9.24)  16 AUG 2025 22:05
+This is pdfTeX, Version 3.141592653-2.6-1.40.22 (TeX Live 2021) (preloaded format=pdflatex 2021.9.24)  17 AUG 2025 15:53
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -788,26 +788,12 @@ Package: blx-case-expl3 2020/12/31 v3.16 expl3 case changing code for biblatex
 
 Package biblatex Info: Trying to load bibliographic data...
 Package biblatex Info: ... file 'neurips_2025.bbl' found.
- (./neurips_2025.bbl
-
-Package biblatex Warning: The following entry could not be found
-(biblatex)                in the database:
-(biblatex)                doucet2001sequential
-(biblatex)                Please verify the spelling and rerun
-(biblatex)                LaTeX afterwards.
-
-
-Package biblatex Warning: The following entry could not be found
-(biblatex)                in the database:
-(biblatex)                todo
-(biblatex)                Please verify the spelling and rerun
-(biblatex)                LaTeX afterwards.
-
-)
+ (./neurips_2025.bbl)
 Package biblatex Info: Reference section=0 on input line 117.
 Package biblatex Info: Reference segment=0 on input line 117.
 Package hyperref Info: Link coloring OFF on input line 117.
- (/usr/local/texlive/2021/texmf-dist/tex/latex/hyperref/nameref.sty
+
+(/usr/local/texlive/2021/texmf-dist/tex/latex/hyperref/nameref.sty
 Package: nameref 2021-04-02 v2.47 Cross-referencing by name of section
 
 (/usr/local/texlive/2021/texmf-dist/tex/latex/refcount/refcount.sty
@@ -899,9 +885,17 @@ Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             `cmtt' (encoding: T1).
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
+
+
+LaTeX Warning: Citation 'doucet2001introduction' on page 1 undefined on input l
+ine 124.
+
+
+LaTeX Warning: Citation 'sels2017minimizing' on page 1 undefined on input line 
+124.
+
 LaTeX Font Info:    Trying to load font information for T1+phv on input line 12
 5.
-
 (/usr/local/texlive/2021/texmf-dist/tex/latex/psnfss/t1phv.fd
 File: t1phv.fd 2020/03/25 scalable font definitions for T1/phv.
 )
@@ -909,30 +903,273 @@ Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             `phv' (encoding: T1).
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
-<img/moving_mean_1D.png, id=50, 2979.13pt x 1774.63pt>
+
+
+LaTeX Warning: Citation 'tuckerman2023statistical' on page 1 undefined on input
+ line 129.
+
+
+LaTeX Warning: Citation 'von2011bayesian' on page 1 undefined on input line 129
+.
+
+
+LaTeX Warning: Citation 'gamerman2006markov' on page 1 undefined on input line 
+129.
+
+
+LaTeX Warning: Citation 'betancourt2017conceptual' on page 1 undefined on input
+ line 129.
+
+
+LaTeX Warning: Citation 'hoffman2014no' on page 1 undefined on input line 129.
+
+
+LaTeX Warning: Citation 'gelman2015stan' on page 1 undefined on input line 129.
+
+
+
+LaTeX Warning: Citation 'sivak2013using' on page 1 undefined on input line 133.
+
+
+
+LaTeX Warning: Citation 'del2006sequential' on page 1 undefined on input line 1
+37.
+
+
+Underfull \hbox (badness 3590) in paragraph at lines 137--138
+[]\T1/ptm/m/n/10 (+20) One pro-posed so-lu-tion to this prob-lem is a Se-quen-t
+ial Monte Carlo (SMC) sam-pler
+ []
+
+<img/moving_mean_1D.png, id=40, 2979.13pt x 1774.63pt>
 File: img/moving_mean_1D.png Graphic file (type png)
 <use img/moving_mean_1D.png>
 Package pdftex.def Info: img/moving_mean_1D.png  used on input line 151.
 (pdftex.def)             Requested size: 190.79109pt x 113.64905pt.
-<img/double_well_1D.png, id=51, 2979.13pt x 1774.63pt>
+<img/double_well_1D.png, id=41, 2979.13pt x 1774.63pt>
 File: img/double_well_1D.png Graphic file (type png)
 <use img/double_well_1D.png>
 Package pdftex.def Info: img/double_well_1D.png  used on input line 158.
 (pdftex.def)             Requested size: 190.79109pt x 113.64905pt.
- [1
+
+LaTeX Warning: Citation 'vaikuntanathan2011escorted' on page 1 undefined on inp
+ut line 166.
+
+[1
 
 
 {/usr/local/texlive/2021/texmf-var/fonts/map/pdftex/updmap/pdftex.map}]
-Underfull \vbox (badness 1281) has occurred while \output is active []
 
- [2 <./img/moving_mean_1D.png> <./img/double_well_1D.png>] [3] [4]
+LaTeX Warning: Citation 'demirplak2003adiabatic' on page 2 undefined on input l
+ine 170.
 
-LaTeX Warning: Reference `todo' on page 5 undefined on input line 510.
 
-[5]
+LaTeX Warning: Citation 'berry2009transitionless' on page 2 undefined on input 
+line 170.
+
+
+LaTeX Warning: Citation 'sels2017minimizing' on page 2 undefined on input line 
+170.
+
+
+LaTeX Warning: Citation 'albergo2024nets' on page 2 undefined on input line 171
+.
+
+
+LaTeX Warning: Citation 'vargas2023transport' on page 2 undefined on input line
+ 171.
+
+
+LaTeX Warning: Citation 'arbel2021annealed' on page 2 undefined on input line 1
+71.
+
+
+LaTeX Warning: Citation 'doucet2001introduction' on page 2 undefined on input l
+ine 217.
+
+
+LaTeX Warning: Citation 'del2006sequential' on page 2 undefined on input line 2
+17.
+
+
+LaTeX Warning: Citation 'heng2020controlled' on page 2 undefined on input line 
+219.
+
+
+LaTeX Warning: Citation 'bernton2019schr' on page 2 undefined on input line 219
+.
+
+
+LaTeX Warning: Citation 'fleming2012deterministic' on page 2 undefined on input
+ line 234.
+
+
+LaTeX Warning: Citation 'peyre2019computational' on page 2 undefined on input l
+ine 234.
+
+
+Underfull \hbox (badness 2846) in paragraph at lines 234--235
+ []\T1/ptm/b/n/10 (+20) Dynamical trans-port[] \T1/ptm/m/n/10 (+20) A sep-a-rat
+e body of re-search ap-proaches the prob-lem from the
+ []
+
+
+Underfull \hbox (badness 1005) in paragraph at lines 234--235
+\T1/ptm/m/n/10 (+20) per-spec-tive of stochas-tic op-ti-mal con-trol [[]] and o
+p-ti-mal trans-port
+ []
+
+
+LaTeX Warning: Citation 'vargas2023transport' on page 2 undefined on input line
+ 236.
+
+
+LaTeX Warning: Citation 'tian2024liouville' on page 2 undefined on input line 2
+36.
+
+
+LaTeX Warning: Citation 'fan2024path' on page 2 undefined on input line 236.
+
+
+LaTeX Warning: Citation 'zhang2021path' on page 2 undefined on input line 236.
+
+
+LaTeX Warning: Citation 'albergo2024nets' on page 2 undefined on input line 236
+.
+
+[2 <./img/moving_mean_1D.png> <./img/double_well_1D.png>]
+
+LaTeX Warning: Citation 'albergo2024nets' on page 3 undefined on input line 241
+.
+
+
+LaTeX Warning: Citation 'vargas2023transport' on page 3 undefined on input line
+ 241.
+
+
+LaTeX Warning: Citation 'jarzynski1997nonequilibrium' on page 3 undefined on in
+put line 241.
+
+
+LaTeX Warning: Citation 'crooks1998nonequilibrium' on page 3 undefined on input
+ line 241.
+
+
+LaTeX Warning: Citation 'martinez2016engineered' on page 3 undefined on input l
+ine 243.
+
+
+LaTeX Warning: Citation 'demirplak2003adiabatic' on page 3 undefined on input l
+ine 243.
+
+
+LaTeX Warning: Citation 'patra2017shortcuts' on page 3 undefined on input line 
+243.
+
+
+LaTeX Warning: Citation 'vaikuntanathan2011escorted' on page 3 undefined on inp
+ut line 243.
+
+
+LaTeX Warning: Citation 'guery2019shortcuts' on page 3 undefined on input line 
+243.
+
+
+LaTeX Warning: Citation 'kolodrubetz2017geometry' on page 3 undefined on input 
+line 243.
+
+
+LaTeX Warning: Citation 'sels2017minimizing' on page 3 undefined on input line 
+246.
+
+
+LaTeX Warning: Citation 'vaikuntanathan2011escorted' on page 3 undefined on inp
+ut line 321.
+
+
+LaTeX Warning: Citation 'demirplak2003adiabatic' on page 3 undefined on input l
+ine 322.
+
+
+LaTeX Warning: Citation 'neal2001annealed' on page 3 undefined on input line 32
+3.
+
+
+LaTeX Warning: Citation 'albergo2024nets' on page 3 undefined on input line 324
+.
+
+
+LaTeX Warning: Citation 'vargas2023transport' on page 3 undefined on input line
+ 325.
+
+
+LaTeX Warning: Citation 'arbel2021annealed' on page 3 undefined on input line 3
+26.
+
+
+LaTeX Warning: Citation 'tian2024liouville' on page 3 undefined on input line 3
+27.
+
+
+LaTeX Warning: Citation 'fan2024path' on page 3 undefined on input line 328.
+
+
+LaTeX Warning: Citation 'sun2024dynamical' on page 3 undefined on input line 32
+9.
+
+
+LaTeX Warning: Citation 'zhang2021path' on page 3 undefined on input line 330.
+
+
+Overfull \hbox (97.44139pt too wide) in paragraph at lines 316--334
+ [] 
+ []
+
+[3]
+
+LaTeX Warning: Citation 'chib1995understanding' on page 4 undefined on input li
+ne 389.
+
+
+LaTeX Warning: Citation 'demirplak2003adiabatic' on page 4 undefined on input l
+ine 412.
+
+
+LaTeX Warning: Citation 'berry2009transitionless' on page 4 undefined on input 
+line 412.
+
+
+LaTeX Warning: Citation 'vaikuntanathan2011escorted' on page 4 undefined on inp
+ut line 412.
+
+
+LaTeX Warning: Citation 'guery2023driving' on page 4 undefined on input line 41
+2.
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 412--413
+[]\T1/ptm/m/n/10 (+20) [[]], [[]] and [[],
+ []
+
+
+LaTeX Warning: Citation 'sels2017minimizing' on page 4 undefined on input line 
+425.
+
+[4]
+
+LaTeX Warning: Citation 'doucet2001sequential' on page 5 undefined on input lin
+e 464.
+
+
+LaTeX Warning: Reference `todo' on page 5 undefined on input line 493.
+
+
+LaTeX Warning: Citation 'doucet2001sequential' on page 5 undefined on input lin
+e 495.
+
 Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on in
-put line 533.
-
+put line 516.
+[5]
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
  [6]
@@ -941,36 +1178,58 @@ Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
 
-[7] [8]
+
+LaTeX Warning: Citation 'doucet2001sequential' on page 7 undefined on input lin
+e 636.
+
+
+LaTeX Warning: Citation 'crooks1998nonequilibrium' on page 7 undefined on input
+ line 686.
+
+
+LaTeX Warning: Citation 'todo' on page 7 undefined on input line 686.
+
+[7]
+
+LaTeX Warning: Citation 'dai2022invitation' on page 8 undefined on input line 7
+12.
+
+
+LaTeX Warning: Citation 'zhong2024time' on page 8 undefined on input line 714.
+
+[8]
 LaTeX Font Info:    Trying to load font information for TS1+ptm on input line 7
-62.
+52.
  (/usr/local/texlive/2021/texmf-dist/tex/latex/psnfss/ts1ptm.fd
 File: ts1ptm.fd 2001/06/04 font definitions for TS1/ptm.
-)
-[9] [10] [11] [12] [13] [14] [15]
-Underfull \hbox (badness 5519) in paragraph at lines 1007--1007
-[]\T1/ptm/m/n/10 (+20) Mingzhou Fan et al. ``Path-guided particle-based sam-pli
-ng''. In: \T1/ptm/m/it/10 (+20) arXiv preprint
- []
+) [9]
+[10] [11] [12] [13] [14]
 
-[16] [17] (./neurips_2025.aux)
+LaTeX Warning: Empty bibliography on input line 996.
+
+[15] (./neurips_2025.aux)
 
 LaTeX Warning: There were undefined references.
 
 Package rerunfilecheck Info: File `neurips_2025.out' has not changed.
 (rerunfilecheck)             Checksum: 4684EEDDC8CA1C50FD61BD4282CD71D9;1226.
+
+Package biblatex Warning: Please (re)run Biber on the file:
+(biblatex)                neurips_2025
+(biblatex)                and rerun LaTeX afterwards.
+
 Package logreq Info: Writing requests to 'neurips_2025.run.xml'.
 \openout1 = `neurips_2025.run.xml'.
 
  ) 
 Here is how much of TeX's memory you used:
- 21753 strings out of 478994
- 365302 string characters out of 5858184
- 1118079 words of memory out of 5000000
- 38530 multiletter control sequences out of 15000+600000
- 454787 words of font info for 265 fonts, out of 8000000 for 9000
+ 21599 strings out of 478994
+ 360063 string characters out of 5858184
+ 1118195 words of memory out of 5000000
+ 38437 multiletter control sequences out of 15000+600000
+ 453072 words of font info for 250 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 83i,9n,88p,1372b,1358s stack positions out of 5000i,500n,10000p,200000b,80000s
+ 83i,9n,88p,1372b,1269s stack positions out of 5000i,500n,10000p,200000b,80000s
 {/usr/local/texlive/2021/texmf-dist/fonts/enc/dvips/base/8r.enc}{/usr/local/t
 exlive/2021/texmf-dist/fonts/enc/dvips/cm-super/cm-super-t1.enc}</usr/local/tex
 live/2021/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/local/texl
@@ -994,10 +1253,10 @@ fonts/type1/urw/helvetic/uhvr8a.pfb></usr/local/texlive/2021/texmf-dist/fonts/t
 ype1/urw/times/utmb8a.pfb></usr/local/texlive/2021/texmf-dist/fonts/type1/urw/t
 imes/utmr8a.pfb></usr/local/texlive/2021/texmf-dist/fonts/type1/urw/times/utmri
 8a.pfb>
-Output written on neurips_2025.pdf (17 pages, 945411 bytes).
+Output written on neurips_2025.pdf (15 pages, 933402 bytes).
 PDF statistics:
- 389 PDF objects out of 1000 (max. 8388607)
- 343 compressed objects within 4 object streams
- 109 named destinations out of 1000 (max. 500000)
- 53331 words of extra memory for PDF output out of 61914 (max. 10000000)
+ 275 PDF objects out of 1000 (max. 8388607)
+ 232 compressed objects within 3 object streams
+ 71 named destinations out of 1000 (max. 500000)
+ 51283 words of extra memory for PDF output out of 51595 (max. 10000000)
 

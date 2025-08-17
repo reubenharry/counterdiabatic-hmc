@@ -2399,15 +2399,13 @@
     <bcf:citekey order="48">vaikuntanathan2011escorted</bcf:citekey>
     <bcf:citekey order="48">guery2023driving</bcf:citekey>
     <bcf:citekey order="50">sels2017minimizing</bcf:citekey>
-    <bcf:citekey order="51">crooks1998nonequilibrium</bcf:citekey>
-    <bcf:citekey order="52">zhong2024time</bcf:citekey>
-    <bcf:citekey order="53">zhong2024time</bcf:citekey>
-    <bcf:citekey order="54">doucet2001sequential</bcf:citekey>
-    <bcf:citekey order="55">doucet2001sequential</bcf:citekey>
-    <bcf:citekey order="56">crooks1998nonequilibrium</bcf:citekey>
-    <bcf:citekey order="57">todo</bcf:citekey>
-    <bcf:citekey order="58">dai2022invitation</bcf:citekey>
-    <bcf:citekey order="59">zhong2024time</bcf:citekey>
+    <bcf:citekey order="51">doucet2001sequential</bcf:citekey>
+    <bcf:citekey order="52">doucet2001sequential</bcf:citekey>
+    <bcf:citekey order="53">doucet2001sequential</bcf:citekey>
+    <bcf:citekey order="54">crooks1998nonequilibrium</bcf:citekey>
+    <bcf:citekey order="55">todo</bcf:citekey>
+    <bcf:citekey order="56">dai2022invitation</bcf:citekey>
+    <bcf:citekey order="57">zhong2024time</bcf:citekey>
   </bcf:section>
   <!-- SORTING TEMPLATES -->
   <bcf:sortingtemplate name="nty">

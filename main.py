@@ -20,8 +20,22 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name,
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
     axes = axes.flatten()
     
-    # Get time points
-    times = np.arange(len(list(all_snapshots.values())[0]['naive'])) * delta_t * 10
+    # Get time points - find the first available snapshot key
+    first_snapshot = None
+    for snapshots in all_snapshots.values():
+        if isinstance(snapshots, dict) and any(key in snapshots for key in ['naive', 'naive_weighted', 'cd_post_equil', 'cd_weighted']):
+            for key in ['naive', 'naive_weighted', 'cd_post_equil', 'cd_weighted']:
+                if key in snapshots:
+                    first_snapshot = snapshots[key]
+                    break
+            if first_snapshot:
+                break
+    
+    if not first_snapshot:
+        print("No valid snapshots found for plotting")
+        return
+        
+    times = np.arange(len(first_snapshot)) * delta_t * 10
     
     # Find global range for consistent x-axis
     all_qs = []
@@ -138,8 +152,8 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name,
 def main():
     # Set up the system
     # system_name = "gaussian_moving_mean"
-    # system_name = "gaussian_annealing"
-    system_name = "double_well"
+    system_name = "gaussian_annealing"
+    # system_name = "double_well"
     make_T, make_V, system_description, dim = get_system(system_name)
     
     # Define lambda functions
@@ -149,11 +163,11 @@ def main():
     dot_lam_fn = jax.grad(lam_fn)
     
     # Parameters
-    M = 1000
+    M = 2000
     N_steps = 40
     delta_t = 0.05
     eps = 0.05
-    momentum_refresh_interval =  10.0
+    momentum_refresh_interval =  5.0
     fit_every = 1
     num_initial_iterations = 100000
     num_iterations = 100000
@@ -167,7 +181,7 @@ def main():
     # Storage for all simulation results
     successful_simulations = {}
 
-    naive = True
+    naive = False
     if naive:
     
         # 1. Naive HMC (Unweighted)
@@ -191,18 +205,15 @@ def main():
         print("\n" + "="*50)
         print("Running Naive HMC (Weighted SMC)")
         print("="*50)
-        try:
-            key = jax.random.PRNGKey(1)
-            snapshots_naive_weighted = run_naive_hmc_simulation(
-                M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
-                momentum_refresh_interval=momentum_refresh_interval,
-                make_T=make_T, make_V=make_V, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
-                key=key, dim=dim, use_weights=True, ess_threshold=ess_threshold
-            )
-            successful_simulations['naive_weighted'] = snapshots_naive_weighted
-            print("✓ Naive HMC (Weighted SMC) completed successfully")
-        except Exception as e:
-            print(f"✗ Naive HMC (Weighted SMC) failed: {e}")
+        key = jax.random.PRNGKey(0)
+        snapshots_naive_weighted = run_naive_hmc_simulation(
+            M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
+            momentum_refresh_interval=momentum_refresh_interval,
+            make_T=make_T, make_V=make_V, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
+            key=key, dim=dim, use_weights=True, ess_threshold=ess_threshold
+        )
+        successful_simulations['naive_weighted'] = snapshots_naive_weighted
+        print("✓ Naive HMC (Weighted SMC) completed successfully")
         
     counterdiabatic = True
     if counterdiabatic:
@@ -211,7 +222,7 @@ def main():
         print("Running Counterdiabatic HMC (Unweighted)")
         print("="*50)
         try:
-            key = jax.random.PRNGKey(2)
+            key = jax.random.PRNGKey(0)
             _, snapshots_cd_unweighted, loss_histories_cd_unweighted, param_history_cd_unweighted = run_simulation(
                 M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
                 momentum_refresh_interval=momentum_refresh_interval,
@@ -233,7 +244,7 @@ def main():
         print("Running Counterdiabatic HMC (Weighted) - Same seed as unweighted")
         print("="*50)
         try:
-            key = jax.random.PRNGKey(2)  # Same seed as unweighted
+            key = jax.random.PRNGKey(0)  # Same seed as unweighted
             _, snapshots_cd_weighted, loss_histories_cd_weighted, param_history_cd_weighted = run_simulation(
                 M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
                 momentum_refresh_interval=momentum_refresh_interval,

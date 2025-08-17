@@ -40,11 +40,11 @@ def calculate_gaussian_expectations(lam_final, dim=1):
         'mean': mu,  # E[q] = λ
         'variance': sigma**2,  # Var[q] = 1
         'second_moment': mu**2 + sigma**2,  # E[q²] = λ² + 1
-        'third_moment': mu**3 + 3*mu*sigma**2,  # E[q³] = λ³ + 3λ
-        'fourth_moment': mu**4 + 6*mu**2*sigma**2 + 3*sigma**4,  # E[q⁴] = λ⁴ + 6λ² + 3
-        'potential_energy': 0.5,  # E[V(q)] = 0.5 * E[(q-λ)²] = 0.5 * Var[q] = 0.5
-        'kinetic_energy': 0.5,  # E[T(p)] = 0.5 * E[p²] = 0.5 (assuming p ~ N(0,1))
-        'total_energy': 1.0,  # E[H] = E[T] + E[V] = 0.5 + 0.5 = 1.0
+        # 'third_moment': mu**3 + 3*mu*sigma**2,  # E[q³] = λ³ + 3λ
+        # 'fourth_moment': mu**4 + 6*mu**2*sigma**2 + 3*sigma**4,  # E[q⁴] = λ⁴ + 6λ² + 3
+        # 'potential_energy': 0.5,  # E[V(q)] = 0.5 * E[(q-λ)²] = 0.5 * Var[q] = 0.5
+        # 'kinetic_energy': 0.5,  # E[T(p)] = 0.5 * E[p²] = 0.5 (assuming p ~ N(0,1))
+        # 'total_energy': 1.0,  # E[H] = E[T] + E[V] = 0.5 + 0.5 = 1.0
     }
     
     return expectations
@@ -66,12 +66,12 @@ def run_benchmark_comparison(system_name="gaussian_moving_mean", M=1000, N_steps
     dot_lam_fn = jax.grad(lam_fn)
     
     # Parameters
-    momentum_refresh_interval = 1/eps
+    momentum_refresh_interval = 5.0
     fit_every = 1
-    num_initial_iterations = 1000
-    num_iterations = 1000
+    num_initial_iterations = 100000
+    num_iterations = 100000
     learning_rate = 1e-4
-    re_equil_steps = 100
+    re_equil_steps = 0
     
     # Create ansatz
     ansatz = PolynomialAnsatz(max_degree=2, dim=dim)
@@ -84,8 +84,7 @@ def run_benchmark_comparison(system_name="gaussian_moving_mean", M=1000, N_steps
     }
     
     # Expectations to test
-    expectation_names = ['mean', 'variance', 'second_moment', 'third_moment', 
-                        'fourth_moment', 'potential_energy', 'kinetic_energy', 'total_energy']
+    expectation_names = ['mean', 'variance', 'second_moment']
     
     for trial in range(num_trials):
         print(f"\nTrial {trial + 1}/{num_trials}")

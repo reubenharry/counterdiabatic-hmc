@@ -77,6 +77,16 @@
 \abx@aux@segm{0}{0}{zhang2021path}
 \abx@aux@cite{albergo2024nets}
 \abx@aux@segm{0}{0}{albergo2024nets}
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:moving_mean}{{1a}{2}{A Gaussian with a mean $\lambda (t)$, which moves at constant velocity from $\lambda =0$ to $\lambda =1$, and then remains at $1$. Simply running HMC at each intermediate time step (blue) results in a lag, which is accounted for by the counterdiabatic driving term (red).\relax }{figure.caption.2}{}}
+\newlabel{sub@fig:moving_mean}{{a}{2}{A Gaussian with a mean $\lambda (t)$, which moves at constant velocity from $\lambda =0$ to $\lambda =1$, and then remains at $1$. Simply running HMC at each intermediate time step (blue) results in a lag, which is accounted for by the counterdiabatic driving term (red).\relax }{figure.caption.2}{}}
+\newlabel{fig:double_well}{{1b}{2}{An interpolation between a Gaussian at $t=1$ and a double well at $t=1$. The counterdiabatic driving does not result in a perfect transport, but clearly accelerates the process.\relax }{figure.caption.2}{}}
+\newlabel{sub@fig:double_well}{{b}{2}{An interpolation between a Gaussian at $t=1$ and a double well at $t=1$. The counterdiabatic driving does not result in a perfect transport, but clearly accelerates the process.\relax }{figure.caption.2}{}}
+\@writefile{lof}{\defcounter {refsection}{0}\relax }\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Illustration of counterdiabatic driving in Hamiltonian Monte Carlo. Left: Moving mean example showing lag and correction. Right: Double well example showing accelerated transport.\relax }}{2}{figure.caption.2}\protected@file@percent }
+\newlabel{fig:counterdiabatic_examples}{{1}{2}{Illustration of counterdiabatic driving in Hamiltonian Monte Carlo. Left: Moving mean example showing lag and correction. Right: Double well example showing accelerated transport.\relax }{figure.caption.2}{}}
+\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {section}{\numberline {2}Related work}{2}{section.2}\protected@file@percent }
+\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Sequential Monte Carlo}{2}{section*.3}\protected@file@percent }
+\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Dynamical transport}{2}{section*.4}\protected@file@percent }
 \abx@aux@cite{albergo2024nets}
 \abx@aux@segm{0}{0}{albergo2024nets}
 \abx@aux@cite{vargas2023transport}
@@ -97,16 +107,6 @@
 \abx@aux@segm{0}{0}{guery2019shortcuts}
 \abx@aux@cite{kolodrubetz2017geometry}
 \abx@aux@segm{0}{0}{kolodrubetz2017geometry}
-\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
-\newlabel{fig:moving_mean}{{1a}{2}{A Gaussian with a mean $\lambda (t)$, which moves at constant velocity from $\lambda =0$ to $\lambda =1$, and then remains at $1$. Simply running HMC at each intermediate time step (blue) results in a lag, which is accounted for by the counterdiabatic driving term (red).\relax }{figure.caption.2}{}}
-\newlabel{sub@fig:moving_mean}{{a}{2}{A Gaussian with a mean $\lambda (t)$, which moves at constant velocity from $\lambda =0$ to $\lambda =1$, and then remains at $1$. Simply running HMC at each intermediate time step (blue) results in a lag, which is accounted for by the counterdiabatic driving term (red).\relax }{figure.caption.2}{}}
-\newlabel{fig:double_well}{{1b}{2}{An interpolation between a Gaussian at $t=1$ and a double well at $t=1$. The counterdiabatic driving does not result in a perfect transport, but clearly accelerates the process.\relax }{figure.caption.2}{}}
-\newlabel{sub@fig:double_well}{{b}{2}{An interpolation between a Gaussian at $t=1$ and a double well at $t=1$. The counterdiabatic driving does not result in a perfect transport, but clearly accelerates the process.\relax }{figure.caption.2}{}}
-\@writefile{lof}{\defcounter {refsection}{0}\relax }\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Illustration of counterdiabatic driving in Hamiltonian Monte Carlo. Left: Moving mean example showing lag and correction. Right: Double well example showing accelerated transport.\relax }}{2}{figure.caption.2}\protected@file@percent }
-\newlabel{fig:counterdiabatic_examples}{{1}{2}{Illustration of counterdiabatic driving in Hamiltonian Monte Carlo. Left: Moving mean example showing lag and correction. Right: Double well example showing accelerated transport.\relax }{figure.caption.2}{}}
-\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {section}{\numberline {2}Related work}{2}{section.2}\protected@file@percent }
-\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Sequential Monte Carlo}{2}{section*.3}\protected@file@percent }
-\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Dynamical transport}{2}{section*.4}\protected@file@percent }
 \abx@aux@cite{sels2017minimizing}
 \abx@aux@segm{0}{0}{sels2017minimizing}
 \abx@aux@cite{vaikuntanathan2011escorted}
@@ -134,7 +134,6 @@
 \newlabel{table1}{{2}{3}{Contributions}{section*.6}{}}
 \@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {section}{\numberline {3}Counterdiabatic Monte Carlo}{3}{section.3}\protected@file@percent }
 \@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Hamiltonian dynamics}{3}{section*.7}\protected@file@percent }
-\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Poisson bracket}{3}{section*.8}\protected@file@percent }
 \abx@aux@cite{chib1995understanding}
 \abx@aux@segm{0}{0}{chib1995understanding}
 \abx@aux@cite{demirplak2003adiabatic}
@@ -147,35 +146,33 @@
 \abx@aux@segm{0}{0}{guery2023driving}
 \abx@aux@cite{sels2017minimizing}
 \abx@aux@segm{0}{0}{sels2017minimizing}
+\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Poisson bracket}{4}{section*.8}\protected@file@percent }
 \@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Canonical distribution}{4}{section*.9}\protected@file@percent }
 \@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Hamiltonian Monte Carlo}{4}{section*.10}\protected@file@percent }
 \@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Counterdiabatic driving}{4}{subsection.3.1}\protected@file@percent }
-\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Learning the counterdiabatic gauge potential}{4}{section*.11}\protected@file@percent }
-\abx@aux@cite{crooks1998nonequilibrium}
-\abx@aux@segm{0}{0}{crooks1998nonequilibrium}
-\abx@aux@cite{zhong2024time}
-\abx@aux@segm{0}{0}{zhong2024time}
-\abx@aux@cite{zhong2024time}
-\abx@aux@segm{0}{0}{zhong2024time}
 \abx@aux@cite{doucet2001sequential}
 \abx@aux@segm{0}{0}{doucet2001sequential}
+\abx@aux@cite{doucet2001sequential}
+\abx@aux@segm{0}{0}{doucet2001sequential}
+\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Learning the counterdiabatic gauge potential}{5}{section*.11}\protected@file@percent }
 \@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Weighting}{5}{subsection.3.2}\protected@file@percent }
 \@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {section}{\numberline {4}Algorithm design}{5}{section.4}\protected@file@percent }
+\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Numerical Integration}{5}{section*.12}\protected@file@percent }
+\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Choice of step size}{5}{section*.13}\protected@file@percent }
 \@writefile{loa}{\defcounter {refsection}{0}\relax }\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces Fit adiabatic gauge potential $A_\phi $ at a given $\lambda $\relax }}{6}{algorithm.1}\protected@file@percent }
 \newlabel{alg:fit-agp}{{1}{6}{Fit adiabatic gauge potential $A_\phi $ at a given $\lambda $\relax }{algorithm.1}{}}
 \@writefile{loa}{\defcounter {refsection}{0}\relax }\@writefile{loa}{\contentsline {algorithm}{\numberline {2}{\ignorespaces Counterdiabatic HMC (CHMC) with population and weighting\relax }}{6}{algorithm.2}\protected@file@percent }
 \newlabel{alg:cd-hmc}{{2}{6}{Counterdiabatic HMC (CHMC) with population and weighting\relax }{algorithm.2}{}}
-\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Numerical Integration}{6}{section*.12}\protected@file@percent }
-\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Choice of step size}{6}{section*.13}\protected@file@percent }
+\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {section}{\numberline {5}Evaluation}{6}{section.5}\protected@file@percent }
 \abx@aux@cite{doucet2001sequential}
 \abx@aux@segm{0}{0}{doucet2001sequential}
 \abx@aux@cite{crooks1998nonequilibrium}
 \abx@aux@segm{0}{0}{crooks1998nonequilibrium}
 \abx@aux@cite{todo}
 \abx@aux@segm{0}{0}{todo}
-\@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {section}{\numberline {5}Evaluation}{7}{section.5}\protected@file@percent }
 \@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{7}{section.6}\protected@file@percent }
 \@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {section}{\numberline {A}Counterdiabatic HMC as an SMC sampler}{7}{appendix.A}\protected@file@percent }
+\newlabel{app:smc}{{A}{7}{Counterdiabatic HMC as an SMC sampler}{appendix.A}{}}
 \newlabel{eq:Q-path}{{3}{7}{Counterdiabatic HMC as an SMC sampler}{equation.A.3}{}}
 \@writefile{toc}{\defcounter {refsection}{0}\relax }\@writefile{toc}{\contentsline {paragraph}{Importance sampling on path space (Feynman--Kac).}{7}{section*.14}\protected@file@percent }
 \newlabel{eq:FK-path}{{4}{7}{Importance sampling on path space (Feynman--Kac)}{equation.A.4}{}}
@@ -186,41 +183,7 @@
 \abx@aux@segm{0}{0}{dai2022invitation}
 \abx@aux@cite{zhong2024time}
 \abx@aux@segm{0}{0}{zhong2024time}
-\abx@aux@read@bbl@mdfivesum{A6D8FFA5E9AC6B24D3E6EB2041D24328}
+\abx@aux@read@bbl@mdfivesum{D41D8CD98F00B204E9800998ECF8427E}
+\abx@aux@read@bblrerun
 \abx@aux@refcontextdefaultsdone
-\abx@aux@defaultrefcontext{0}{albergo2024nets}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{arbel2021annealed}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{bernton2019schr}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{berry2009transitionless}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{betancourt2017conceptual}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{chib1995understanding}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{crooks1998nonequilibrium}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{dai2022invitation}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{del2006sequential}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{demirplak2003adiabatic}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{doucet2001introduction}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{fan2024path}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{fleming2012deterministic}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{gamerman2006markov}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{gelman2015stan}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{guery2023driving}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{guery2019shortcuts}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{heng2020controlled}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{hoffman2014no}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{jarzynski1997nonequilibrium}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{kolodrubetz2017geometry}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{martinez2016engineered}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{neal2001annealed}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{patra2017shortcuts}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{peyre2019computational}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{sels2017minimizing}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{sivak2013using}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{sun2024dynamical}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{tian2024liouville}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{tuckerman2023statistical}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{vaikuntanathan2011escorted}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{vargas2023transport}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{von2011bayesian}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{zhang2021path}{nty/global//global/global}
-\abx@aux@defaultrefcontext{0}{zhong2024time}{nty/global//global/global}
-\gdef \@abspage@last{17}
+\gdef \@abspage@last{15}
