@@ -23,8 +23,8 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name,
     # Get time points - find the first available snapshot key
     first_snapshot = None
     for snapshots in all_snapshots.values():
-        if isinstance(snapshots, dict) and any(key in snapshots for key in ['naive', 'naive_weighted', 'cd_post_equil', 'cd_weighted']):
-            for key in ['naive', 'naive_weighted', 'cd_post_equil', 'cd_weighted']:
+        if isinstance(snapshots, dict) and any(key in snapshots for key in ['naive', 'naive_weighted', 'cd_pre_equil', 'cd_weighted']):
+            for key in ['naive', 'naive_weighted', 'cd_pre_equil', 'cd_weighted']:
                 if key in snapshots:
                     first_snapshot = snapshots[key]
                     break
@@ -45,7 +45,7 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name,
         elif method == 'naive_weighted':
             all_qs.extend(snapshots['naive_weighted'])
         elif method == 'cd_unweighted':
-            all_qs.extend(snapshots['cd_post_equil'])
+            all_qs.extend(snapshots['cd_pre_equil'])  # Fixed: use cd_pre_equil instead of cd_post_equil
         elif method == 'cd_weighted':
             all_qs.extend(snapshots['cd_weighted'])
     x_min = np.min(np.concatenate(all_qs)) - 0.5
@@ -78,7 +78,7 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name,
             snapshot_key = 'naive_weighted'
             weights_key = 'weights_naive'
         elif method == 'cd_unweighted':
-            snapshot_key = 'cd_post_equil'
+            snapshot_key = 'cd_pre_equil'
             weights_key = None
         elif method == 'cd_weighted':
             snapshot_key = 'cd_weighted'
@@ -89,7 +89,7 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name,
         
         # Choose the correct lambda values for each method
         if method in ['cd_unweighted', 'cd_weighted']:
-            lam_key = 'lam_post_equil'
+            lam_key = 'lam_pre_equil'
         else:
             lam_key = 'lam_pre_equil'
         
@@ -163,7 +163,7 @@ def main():
     dot_lam_fn = jax.grad(lam_fn)
     
     # Parameters
-    M = 2000
+    M = 1000
     N_steps = 40
     delta_t = 0.05
     eps = 0.05
@@ -181,7 +181,7 @@ def main():
     # Storage for all simulation results
     successful_simulations = {}
 
-    naive = False
+    naive = True
     if naive:
     
         # 1. Naive HMC (Unweighted)
@@ -271,14 +271,18 @@ def main():
             print("Creating detailed distribution plot...")
             loss_histories = successful_simulations.get('loss_histories_cd_unweighted', [])
             param_history = successful_simulations.get('param_history_cd_unweighted', None)
+            naive_snapshots = successful_simulations.get('naive_unweighted', None)
             plot_results(successful_simulations['cd_unweighted'], loss_histories, delta_t, make_V, lam_fn, 
-                        param_history=param_history, ansatz=ansatz, potential_name=system_name, dim=dim, plot_ansatz=False, make_T=make_T)
+                        param_history=param_history, ansatz=ansatz, potential_name=system_name, dim=dim, plot_ansatz=False, make_T=make_T, naive_snapshots=naive_snapshots)
         elif 'cd_weighted' in successful_simulations:
             print("Creating detailed distribution plot...")
             loss_histories = successful_simulations.get('loss_histories_cd_weighted', [])
             param_history = successful_simulations.get('param_history_cd_weighted', None)
+            naive_snapshots = successful_simulations.get('naive_weighted', None)
             plot_results(successful_simulations['cd_weighted'], loss_histories, delta_t, make_V, lam_fn, 
-                        param_history=param_history, ansatz=ansatz, potential_name=system_name, dim=dim, plot_ansatz=False, make_T=make_T)
+                        param_history=param_history, ansatz=ansatz, potential_name=system_name, dim=dim, plot_ansatz=False, make_T=make_T, naive_snapshots=naive_snapshots)
+        
+
     else:
         print("No successful simulations to plot.")
 

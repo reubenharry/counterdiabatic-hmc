@@ -63,6 +63,7 @@ def make_leapfrog_step(T, V, T_next, V_next, lam_fn=None, dot_lam_fn=None):
     # T_next = T
 
     def leapfrog(q, p, eps, t=None):
+        
         p_half = p_update(q, p, eps*0.5)
         q_new = x_update(q, p_half, eps)
         p_new = p_update(q_new, p_half, eps*0.5)
@@ -93,7 +94,7 @@ def with_maruyama(integrator):
         return q, p, weight
     return maruyama
 
-clip_value = 20.0
+clip_value = 100.0
 
 def make_cd_euler_step(T, V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next):
     """Create a counterdiabatic Euler step function."""
@@ -177,6 +178,11 @@ def compute_counterdiabatic_work(q, p, lam_k, lam_k1, A_ansatz, make_T, make_V):
         grad_H_p = jax.grad(H, argnums=1)(q, p)
         
         v_q, v_p = compute_v(q, p)
+        # jax.debug.print("grad_H_dot_v: {x}", x=(
+        #     jax.grad(A_ansatz, argnums=1)(jnp.array([10.0]), jnp.array([10.0])),
+        #     jax.grad(A_ansatz, argnums=0)(jnp.array([10.0]), jnp.array([10.0])),
+
+        #     ))
         
         # ∇H · v = ∂H/∂q * v_q + ∂H/∂p * v_p
         return grad_H_q.dot(v_q) + grad_H_p.dot(v_p)
@@ -188,19 +194,21 @@ def compute_counterdiabatic_work(q, p, lam_k, lam_k1, A_ansatz, make_T, make_V):
     def compute_work_single(q, p):
         div_v = compute_div_v(q, p)
         grad_H_dot_v = compute_grad_H_dot_v(q, p, lam_k)
-        dH_dt = lambda qq, pp: (jax.grad(lambda qqq, ppp, lam: H(lam)(qqq, ppp), argnums=2)(qq, pp, lam_k))
+        dH_dl = lambda qq, pp: (jax.grad(lambda qqq, ppp, lam: H(lam)(qqq, ppp), argnums=2)(qq, pp, lam_k))
 
+        # jax.debug.print("dH_dl: {x}", x=dH_dl(jnp.array([10.0]), jnp.array([10.0])))
         
         # Combine terms: (-∇ · v + ∇H · v + ∂_t H)
         # work = div_v - jnp.linalg.norm(p) + grad_H_dot_v + dH_dt(q,p)*(lam_k1 - lam_k)
         # work = 0
         # jax.debug.print("grad_H_dot_v: {x}", x=grad_H_dot_v)
         # jax.debug.print("dH_dt: {x}", x=dH_dt(q,p)*(lam_k1 - lam_k))
-        work = grad_H_dot_v + dH_dt(q,p)*(lam_k1 - lam_k)
+        # jax.debug.print("terms {x}", x=(grad_H_dot_v, dH_dl(q, p), grad_H_dot_v - dH_dl(q, p)))
+        work = grad_H_dot_v + dH_dl(q, p) #  + dH_dt(q,p)*(lam_k1 - lam_k)
         # work = dH_dt(q,p)*(lam_k1 - lam_k)
 
         
-        return work
+        return -work
     
     # Vectorize over particles
     work_vals = (compute_work_single)(q, p)
@@ -251,7 +259,7 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
         q_new = q_half + 0.5 * eps * (jax.grad(T)(p_new) + dot_lam * dA_dp_new)
         
         
-        log_weight = compute_counterdiabatic_work(q, p, lam, lam_next, A_ansatz, make_T, make_V)
+        log_weight = compute_counterdiabatic_work(q, p, lam, lam_next, A_ansatz, make_T, make_V)*eps
         
         return q_new, p_new, log_weight
     return cd_leapfrog 

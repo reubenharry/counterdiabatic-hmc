@@ -76,11 +76,13 @@ def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None):
     
     # Compute {A,H} if A_ansatz is provided
     avg_A_H = 0.0
+    avg_A_H_sq = 0.0
     if A_ansatz is not None:
         from .physics import poisson_bracket_fn
         H_fixed = lambda q, p: T(p) + V(q)
         A_H_vals = jax.vmap(lambda qr, pr: poisson_bracket_fn(A_ansatz, H_fixed)(qr, pr))(q, p)
         avg_A_H = float(jnp.mean(A_H_vals))
+        avg_A_H_sq = float(jnp.mean(A_H_vals ** 2))
     
     return {
         'avg_H': float(avg_H),
@@ -88,6 +90,7 @@ def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None):
         'avg_dH_dlam': float(avg_dH_dlam),
         'avg_dH_dlam_sq': float(avg_dH_dlam_sq),
         'avg_A_H': avg_A_H,
+        'avg_A_H_sq': avg_A_H_sq,
         'H_vals': H_vals  # Store individual H values
     }
 
@@ -214,6 +217,13 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval
     snapshots = {'naive': [], 'naive_weighted': [], 'lam_pre_equil': [], 'weights_naive': [], 'resampling_events_naive': []}
     resampling_count = 0  # Track number of resampling events
 
+    # Store previous energy values for computing changes
+    prev_naive_H_vals = None
+    
+    # Arrays to store energy statistics at every timestep
+    all_energy_stats = []
+    all_times = []
+
     for k in range(N_steps + 1):
         t_k = k * delta_t
         lam_k = float(lam_fn(t_k))
@@ -226,6 +236,34 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval
         if jnp.isnan(dot_lam_k):
             print(f"⚠️  NaN detected in dot_lam_k at step {k}")
             break
+
+        # Compute energy statistics at every timestep
+        naive_stats = compute_energy_stats(q_naive, p_naive, lam_k, make_T, make_V, A_ansatz=None)
+        
+        # Compute energy changes if we have previous values
+        if prev_naive_H_vals is not None:
+            # Compute individual particle energy changes
+            naive_delta_H_vals = naive_stats['H_vals'] - prev_naive_H_vals
+            
+            # Average the individual changes
+            naive_avg_delta_H = jnp.mean(naive_delta_H_vals)
+            
+            # Add change statistics to the stats dictionaries
+            naive_stats['avg_delta_H'] = float(naive_avg_delta_H)
+            naive_stats['avg_delta_H_sq'] = float(jnp.mean(naive_delta_H_vals ** 2))
+        else:
+            # First timestep - no change to compute
+            naive_stats['avg_delta_H'] = 0.0
+            naive_stats['avg_delta_H_sq'] = 0.0
+        
+        # Store energy statistics for this timestep
+        all_energy_stats.append({
+            'naive': naive_stats
+        })
+        all_times.append(t_k)
+        
+        # Update previous energy values for next iteration
+        prev_naive_H_vals = naive_stats['H_vals']
 
         # Record snapshots every 10 steps
         if k % 10 == 0:
@@ -294,7 +332,11 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval
             # Keep weights at 1 (log_weights = 0) when not using weights
             log_weights = jnp.zeros(M)
 
-    print(f"Simulat(energy_new - energy_old)ion completed after {k} steps")
+    # Add the detailed energy statistics to snapshots
+    snapshots['detailed_energy_stats'] = all_energy_stats
+    snapshots['detailed_times'] = all_times
+
+    print(f"Simulation completed after {k} steps")
     if use_weights:
         print(f"Total resampling events: {resampling_count}")
     
@@ -306,6 +348,7 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
     initial_lam = float(lam_fn(0.0))
     print(f"Generating initial samples with λ = {initial_lam}")
     q_cd, p_cd = generate_initial_samples(M, make_T, make_V, initial_lam, key, dim)
+    # jax.debug.print("q_cd {x}", x=q_cd[0])
     
 
     # Check initial samples
@@ -460,7 +503,7 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
             if use_weights:
                 
                 # Update log weights using the step log weights
-                print("shape", step_weights_cd.shape)
+                # print("shape", step_weights_cd.shape)
                 log_weights_cd = log_weights_cd + step_weights_cd
             # else:
             #     q_cd, p_cd, _ = jax.jit(cd_step)(q_cd, p_cd, lam_k, lam_k1, dot_lam_k, dot_lam_k1, eps, subs, t_k)
@@ -574,6 +617,17 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
         # If no post-equilibration snapshots exist or the last step wasn't captured
         snapshots['cd_post_equil'].append(np.array(q_cd))
         snapshots['lam_post_equil'].append(lam_k)
+    
+    # Also ensure the final state is captured in pre-equilibration snapshots
+    # This is needed when the loop ends at k = N_steps and k % 10 == 0
+    if (k % 10 == 0) and (len(snapshots['cd_pre_equil']) == 0 or snapshots['cd_pre_equil'][-1].shape != q_cd.shape):
+        # If the last step wasn't captured in pre-equilibration snapshots
+        snapshots['cd_pre_equil'].append(np.array(q_cd))
+        snapshots['lam_pre_equil'].append(lam_k)
+        if use_weights:
+            snapshots['cd_weighted'].append(np.array(q_cd))
+            snapshots['weights_cd'].append(np.array(log_weights_cd))
+            snapshots['resampling_events_cd'].append(resampling_count_cd)
 
     # Add the detailed energy statistics to snapshots
     snapshots['detailed_energy_stats'] = all_energy_stats

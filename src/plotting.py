@@ -126,11 +126,29 @@ def compute_weighted_kde(samples, weights=None, x_grid=None):
         weights = np.exp(weights - np.max(weights))  # Subtract max for numerical stability
         weights = weights / np.sum(weights)  # Normalize
         
-        # Compute weighted histogram
-        hist, bin_edges = np.histogram(samples, bins=50, weights=weights, density=True, 
-                                      range=(np.min(x_grid), np.max(x_grid)))
-        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-        density = np.interp(x_grid, bin_centers, hist)
+        # Check if weights are effectively uniform (all equal)
+        if np.allclose(weights, weights[0]):
+            # Use unweighted KDE for uniform weights to ensure consistency
+            try:
+                kde = gaussian_kde(samples.flatten())
+                density = kde(x_grid)
+            except:
+                # Fallback to histogram if KDE fails
+                hist, bin_edges = np.histogram(samples, bins=50, density=True, 
+                                              range=(np.min(x_grid), np.max(x_grid)))
+                bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+                density = np.interp(x_grid, bin_centers, hist)
+        else:
+            # Use weighted KDE for non-uniform weights
+            try:
+                kde = gaussian_kde(samples.flatten(), weights=weights)
+                density = kde(x_grid)
+            except:
+                # Fallback to weighted histogram if KDE fails
+                hist, bin_edges = np.histogram(samples, bins=50, weights=weights, density=True, 
+                                              range=(np.min(x_grid), np.max(x_grid)))
+                bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+                density = np.interp(x_grid, bin_centers, hist)
     else:
         # Unweighted KDE
         try:
@@ -302,7 +320,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     plt.savefig(f"{ansatz_dir}/ridge_plot_{potential_name}.png", dpi=300, bbox_inches='tight')
     plt.close()
 
-def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_history=None, ansatz=None, potential_name="harmonic", dim=1, plot_ansatz=False, make_T=None):
+def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_history=None, ansatz=None, potential_name="harmonic", dim=1, plot_ansatz=False, make_T=None, naive_snapshots=None):
     """Simplified plotting function that only creates two figures:
     1. Comparison ridge plot (handled in main.py)
     2. Distributions plot (this function)
@@ -334,12 +352,12 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
     
     # Create distributions plot with diagnostic information
     create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, has_re_equil, 
-                            loss_histories=loss_histories, param_history=param_history, make_T=make_T)
+                            loss_histories=loss_histories, param_history=param_history, make_T=make_T, naive_snapshots=naive_snapshots)
     
     print(f"Saved distributions plot to {ansatz_dir}/distributions_{potential_name}.png")
 
 
-def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, has_re_equil, loss_histories=None, param_history=None, make_T=None):
+def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, has_re_equil, loss_histories=None, param_history=None, make_T=None, naive_snapshots=None):
     """Create the distributions plot showing histograms and diagnostic plots."""
     # Create figure with subplots for distributions and diagnostics
     fig = plt.figure(figsize=(20, 18))
@@ -364,6 +382,12 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
             cd_snap = snapshots['cd_pre_equil'][i]
             if len(cd_snap) > 0:
                 ax.hist(cd_snap.flatten(), bins=50, alpha=0.6, label='CD-HMC', density=True, color='red')
+        
+        # Plot naive HMC distribution if available
+        if naive_snapshots and 'naive' in naive_snapshots and i < len(naive_snapshots['naive']):
+            naive_snap = naive_snapshots['naive'][i]
+            if len(naive_snap) > 0:
+                ax.hist(naive_snap.flatten(), bins=50, alpha=0.6, label='Naive HMC', density=True, color='blue')
         
         # Plot true distribution
         x_grid = np.linspace(-5, 5, 1000)
@@ -397,45 +421,53 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         # Create time array for energy statistics (every timestep, not every 10 steps)
         energy_times = np.arange(len(energy_stats)) * delta_t
         
-        # Plot <H> over time
-        ax_H = fig.add_subplot(gs[2, 1])
-        H_vals = [stats['cd']['avg_H'] for stats in energy_stats]
-        ax_H.plot(energy_times, H_vals, 'b-', label='CD-HMC')
-        ax_H.set_xlabel('Time')
-        ax_H.set_ylabel('<H>')
-        ax_H.set_title('Average Energy')
-        ax_H.legend()
-        ax_H.grid(True, alpha=0.3)
-        
-        # Plot <ΔH²> over time
-        ax_dH2 = fig.add_subplot(gs[2, 2])
-        dH2_vals = [stats['cd']['avg_delta_H_sq'] for stats in energy_stats]
-        ax_dH2.plot(energy_times, dH2_vals, 'r-', label='CD-HMC')
-        ax_dH2.set_xlabel('Time')
-        ax_dH2.set_ylabel('<ΔH²>')
-        ax_dH2.set_title('Energy Variance')
-        ax_dH2.legend()
-        ax_dH2.grid(True, alpha=0.3)
-        
         # Plot <∂H/∂λ> over time
-        ax_dH_dlam = fig.add_subplot(gs[2, 3])
+        ax_dH_dlam = fig.add_subplot(gs[2, 1])
         dH_dlam_vals = [stats['cd']['avg_dH_dlam'] for stats in energy_stats]
-        ax_dH_dlam.plot(energy_times, dH_dlam_vals, 'g-', label='CD-HMC')
+        ax_dH_dlam.plot(energy_times, dH_dlam_vals, 'r-', label='CD-HMC', linewidth=2)
+        
+        # Add naive HMC energy derivative if available
+        if naive_snapshots and 'detailed_energy_stats' in naive_snapshots and len(naive_snapshots['detailed_energy_stats']) > 0:
+            naive_energy_stats = naive_snapshots['detailed_energy_stats']
+            naive_energy_times = np.arange(len(naive_energy_stats)) * delta_t
+            naive_dH_dlam_vals = [stats['naive']['avg_dH_dlam'] for stats in naive_energy_stats]
+            ax_dH_dlam.plot(naive_energy_times, naive_dH_dlam_vals, 'b-', label='Naive HMC', linewidth=2)
+        
         ax_dH_dlam.set_xlabel('Time')
         ax_dH_dlam.set_ylabel('<∂H/∂λ>')
         ax_dH_dlam.set_title('Energy Derivative')
         ax_dH_dlam.legend()
         ax_dH_dlam.grid(True, alpha=0.3)
         
-        # Plot <{A,H}> over time (Poisson bracket)
-        ax_A_H = fig.add_subplot(gs[3, 0])
-        A_H_vals = [stats['cd']['avg_A_H'] for stats in energy_stats]
-        ax_A_H.plot(energy_times, A_H_vals, 'm-', label='CD-HMC')
-        ax_A_H.set_xlabel('Time')
-        ax_A_H.set_ylabel('<{A,H}>')
-        ax_A_H.set_title('Poisson Bracket')
-        ax_A_H.legend()
-        ax_A_H.grid(True, alpha=0.3)
+        # Plot <ΔH²> over time
+        ax_dH2 = fig.add_subplot(gs[2, 2])
+        dH2_vals = [stats['cd']['avg_delta_H_sq'] for stats in energy_stats]
+        ax_dH2.plot(energy_times, dH2_vals, 'r-', label='CD-HMC', linewidth=2)
+        
+        # Add naive HMC energy variance if available
+        if naive_snapshots and 'detailed_energy_stats' in naive_snapshots and len(naive_snapshots['detailed_energy_stats']) > 0:
+            naive_energy_stats = naive_snapshots['detailed_energy_stats']
+            naive_energy_times = np.arange(len(naive_energy_stats)) * delta_t
+            naive_dH2_vals = [stats['naive']['avg_delta_H_sq'] for stats in naive_energy_stats]
+            ax_dH2.plot(naive_energy_times, naive_dH2_vals, 'b-', label='Naive HMC', linewidth=2)
+        
+        ax_dH2.set_xlabel('Time')
+        ax_dH2.set_ylabel('<ΔH²>')
+        ax_dH2.set_title('Energy Change Variance')
+        ax_dH2.legend()
+        ax_dH2.grid(True, alpha=0.3)
+        
+
+        
+        # Plot <{A,H}²> over time (Poisson bracket squared)
+        ax_A_H_sq = fig.add_subplot(gs[3, 0])
+        A_H_sq_vals = [stats['cd']['avg_A_H_sq'] for stats in energy_stats]
+        ax_A_H_sq.plot(energy_times, A_H_sq_vals, 'm-', label='CD-HMC', linewidth=2)
+        ax_A_H_sq.set_xlabel('Time')
+        ax_A_H_sq.set_ylabel('<{A,H}²>')
+        ax_A_H_sq.set_title('Poisson Bracket Squared')
+        ax_A_H_sq.legend()
+        ax_A_H_sq.grid(True, alpha=0.3)
     
     # Plot parameter history if available (bottom row, spanning 3 columns)
     if param_history and len(param_history) > 0:
@@ -455,6 +487,8 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     plt.tight_layout()
     plt.savefig(f"{ansatz_dir}/distributions_{potential_name}.png", dpi=300, bbox_inches='tight')
     plt.close()
+
+
 
 # Removed unnecessary plotting functions - only keeping the essential ones 
 
