@@ -165,13 +165,13 @@ One proposed solution to this problem is a Sequential Monte Carlo (SMC) sampler 
 
 In the setting of HMC, moving through a series of distributions in this way corresponds to time evolution of a physical system while changing the system's parameters, a central topic of thermodynamics and statistical mechanics. From this perspective, varying the parameters too quickly results in \emph{lag}, or more physically \emph{dissipation} \cite{vaikuntanathan2011escorted}, where the Hamiltonian flow cannot return to equilibrium quickly enough as the system's parameters change.
 
-% The lag shown in each step corresponds to dissipation or heat transfer \cite{}, while the setting where the jumps between neighbouring distributions are arbitrarily small is known as an \emph{adiabatic} process\footnote{In the language of thermodynamics, \emph{quasistatic} would be the more appropriate term, we use adiabatic in the sense of \cite{sels2017minimizing}}.
+% The lag shown in each step corresponds to dissipation or heat transfer \cite{crooks1998nonequilibrium}, while the setting where the jumps between neighbouring distributions are arbitrarily small is known as an \emph{adiabatic} process\footnote{In the language of thermodynamics, \emph{quasistatic} would be the more appropriate term, we use adiabatic in the sense of \cite{sels2017minimizing}}.
 
 Several papers \cite{demirplak2003adiabatic, berry2009transitionless}, both in the quantum and classical setting, have noted that one can compensate for this lag by adding a \emph{counterdiabatic driving term} to the Hamiltonian. More recently, a scheme to approximate this term variationally has been proposed in a quantum setting \cite{sels2017minimizing}. 
 We adapt this approach to a classical setting, to obtain a method for transitioning efficiently between a simple tractable distribution and a challenging distribution of interest. We show that our approach is closely related to the proposals of \cite{albergo2024nets, vargas2023transport, arbel2021annealed} among others, but in a Hamiltonian setting.
 
 
-% Being able to varying a system quickly while staying close to equilibrium (i.e. to the current stationary distribution) is of interest both in classical and quantum physics, and various works \cite{} have proposed adding a driving term to the physical dynamics which allow faster variation of a system's parameters. This is often referred to as \emph{counterdiabatic} driving. 
+% Being able to varying a system quickly while staying close to equilibrium (i.e. to the current stationary distribution) is of interest both in classical and quantum physics, and various works \cite{crooks1998nonequilibrium} have proposed adding a driving term to the physical dynamics which allow faster variation of a system's parameters. This is often referred to as \emph{counterdiabatic} driving. 
 
 
 % This method is best suited to a multi-chain setting, so that instead of a single particle, 
@@ -206,7 +206,7 @@ We adapt this approach to a classical setting, to obtain a method for transition
 % Hamiltonian Monte Carlo works by interpreting the space on which an arbitrary distribution with density $\pi$ lives as a physical position space, and chooses a Hamiltonian $H$ in such a way that if $\rho$ is the canonical distribution, then $\pi(q) = \int \rho(q,p)dp$. Since Hamiltonian dynamics can be numerically integrated, this gives rise to a Markov Chain Monte Carlo kernel which approximately 
 
 
-% Annealing \cite{} and Sequential Monte Carlo (SMC) \cite{} are examples of such approaches. 
+% Annealing \cite{crooks1998nonequilibrium} and Sequential Monte Carlo (SMC) \cite{crooks1998nonequilibrium} are examples of such approaches. 
 
 \section{Related work}
 
@@ -253,7 +253,7 @@ The above papers focus on analytic solutions to the driving term for particular 
 % Several also use weights in order to correct for bias, in particular NETS and CMCD.
 
 
-% The central difference between these methods and ours is our focus on Hamiltonian Monte Carlo in particular, and therefore on exploiting the special features of Hamiltonian dynamics. While the above methods are concerned with differential equations on the $\mathbb{R}^d$ space on which the target distribution $P$ lives, we consider Hamiltonian dynamics on the phase space of position and momentum, and use the special features of its geometry \cite{} to our advantage. 
+% The central difference between these methods and ours is our focus on Hamiltonian Monte Carlo in particular, and therefore on exploiting the special features of Hamiltonian dynamics. While the above methods are concerned with differential equations on the $\mathbb{R}^d$ space on which the target distribution $P$ lives, we consider Hamiltonian dynamics on the phase space of position and momentum, and use the special features of its geometry \cite{crooks1998nonequilibrium} to our advantage. 
 % Moreover, we are not learning a drift directly, but rather a term in the Hamiltonian.
 
 
@@ -265,7 +265,7 @@ The above papers focus on analytic solutions to the driving term for particular 
 
 
 
-% In addition, fluctuation theorems from nonequilibrium statistical physics such as Crooks' theorem \cite{} and Jarzynski's equality \cite{} play a key role in schemes to calculate the change in the normalizing constant of the distribution (known in physics as the free energy), which are of use in weighting schemes, as in SMC, and are discussed in \cite{vaikuntanathan2011escorted} and \cite{zhong2024time} as well as in a machine learning context in \cite{vargas2023transport, vaikuntanathan2011escorted, albergo2024nets}.
+% In addition, fluctuation theorems from nonequilibrium statistical physics such as Crooks' theorem \cite{crooks1998nonequilibrium} and Jarzynski's equality \cite{crooks1998nonequilibrium} play a key role in schemes to calculate the change in the normalizing constant of the distribution (known in physics as the free energy), which are of use in weighting schemes, as in SMC, and are discussed in \cite{vaikuntanathan2011escorted} and \cite{zhong2024time} as well as in a machine learning context in \cite{vargas2023transport, vaikuntanathan2011escorted, albergo2024nets}.
 
 
 % One notable approach in this area is Escorted Free Energy (EFE) \cite{vaikuntanathan2011escorted}, which is primarly concerned with learning the free energy (normalization constant) of the final distribution, and does so by adding a term $\dot\lambda u$ to Hamiltonian dynamics, which amounts to the gauge potential we propose. 
@@ -407,9 +407,9 @@ $$
 
 
 
-% One way to deal with this discrepancy is to make $\partial_\lambda H$ small, by changing time very slowly. In physical terms, this corresponds to adiabatic change of $H$. \cite{} shows how to vary $\lambda$ adiabatically), but for difficult distributions, this will naturally be slow. Another option is to take many steps of the kernel at each value of $t$, to re-equilibrate. This suffers from essentially the original problem: potentially slow thermalization.
+% One way to deal with this discrepancy is to make $\partial_\lambda H$ small, by changing time very slowly. In physical terms, this corresponds to adiabatic change of $H$. \cite{crooks1998nonequilibrium} shows how to vary $\lambda$ adiabatically), but for difficult distributions, this will naturally be slow. Another option is to take many steps of the kernel at each value of $t$, to re-equilibrate. This suffers from essentially the original problem: potentially slow thermalization.
 
-\cite{demirplak2003adiabatic}, \cite{berry2009transitionless} and \cite{vaikuntanathan2011escorted, guery2023driving} note\footnote{Here, the focus is on quantum systems, but by the correspondence between Poisson brackets and commutators, the central insight may be translated to a classical setting, as explained in \cite{}.} that one can offset the lag by introducing a term $A$, known as the \emph{counterdiabatic gauge potential}, with the property that $\{A, H\} = \partial_\lambda H - \langle \partial_\lambda H\rangle_t$. Then we would have:
+\cite{demirplak2003adiabatic}, \cite{berry2009transitionless} and \cite{vaikuntanathan2011escorted, guery2023driving} note\footnote{Here, the focus is on quantum systems, but by the correspondence between Poisson brackets and commutators, the central insight may be translated to a classical setting, as explained in \cite{crooks1998nonequilibrium}.} that one can offset the lag by introducing a term $A$, known as the \emph{counterdiabatic gauge potential}, with the property that $\{A, H\} = \partial_\lambda H - \langle \partial_\lambda H\rangle_t$. Then we would have:
 
 $$
 \partial_\lambda\rho_{H(\lambda(t))} = \{H, A\}\rho_{H(\lambda(t))} = \{\rho_{H(\lambda(t))}, -A\} = \{A, \rho_{H(\lambda(t))}\} 
@@ -435,6 +435,60 @@ We now note that when $\partial_\lambda H = \{A, H\}$, we have that $\langle \pa
 % But we can see that a minimum of the following:
 % $R(q,p) = \langle |\{A, H\}(q,p) - \partial_\lambda H(q,p)|^2 \rangle = \langle \{A, H\}(q,p)^2 -2\{A, H\}(q,p)\partial_\lambda H(q,p) + (\partial_\lambda H(q,p))^2 \rangle$
 
+\begin{algorithm}[t]
+    \caption{Fit adiabatic gauge potential $A_\phi$ at a given $\lambda$}
+    \label{alg:fit-agp}
+    \begin{algorithmic}[1]
+    \Require Real-valued function $A_\phi(q,p;\lambda)$, optimizer (e.g. Adam)\;, schedule $\lambda_i$, population of particles $\{q_i,p_i\}_{i=1}^N$ and weights $w_{i=1}^N$, and $T$ iterations.
+    \For{$t=1,\dots,T$}
+    %   \State Sample $q \sim \pi_\lambda(q) \propto e^{-U(q;\lambda)}$\; and $p \sim \mathcal{N}(0,I)$
+    % = \mathbb{E}[r^2(q,p,\lambda;\phi)]
+      \State Compute $l  \gets \sum_{i=1}^N w_i \left(\{A_\phi,H_\lambda\}(q_i,p_i) - \partial_\lambda V(q_i;\lambda)\right)^2$
+      \State Update $\phi$ using optimizer with loss $l$
+    \EndFor
+    \State \Return $\phi$
+    \end{algorithmic}
+    \end{algorithm}
+
+\begin{algorithm}[t]
+    \caption{Counterdiabatic HMC (CHMC) with population and weighting}
+    \label{alg:cd-hmc}
+    \begin{algorithmic}[1]
+    \Require Population $\{q_i^{(0)}\}_{i=1}^N$ from initial distribution\;; potential $U(q;\lambda)$ and gradients\;; step size $\varepsilon$\;; schedule $\{\lambda_k\}_{k=1}^L$ with $\lambda_1=0$ (easy) and $\lambda_L=1$ (target)\;.
+    \State Initialize weights $w_i^{(0)} = 1/N$ for all $i$
+    \For{$k=1$ to $L-1$}
+      \For{$i=1$ to $N$}
+        \State Sample $p_i \sim \mathcal{N}(0,I)$
+        \State Set $(q,p) \leftarrow (q_i^{(k-1)}, p_i)$; set $W_i \leftarrow 0$
+        \State \textbf{Half-step drift} (kinetic \& CD-$p$ flow):
+        \[
+          q_{\text{half}} \leftarrow q + \tfrac{\varepsilon}{2}\Big(p + \dot{\lambda}_k\, \nabla_p A_\phi(q,p;\lambda_k)\Big)
+        \]
+        \State \textbf{Full-step kick} (potential \& CD-$q$ force): 
+        \[
+          p \leftarrow p - \varepsilon\Big(\nabla_q U(q_{\text{half}};\lambda_{k+1}) + \dot{\lambda}_{k+1}\,\nabla_q A_\phi(q_{\text{half}},p;\lambda_{k+1})\Big)
+        \]
+        \State \textbf{Half-step drift} (kinetic \& CD-$p$ flow):
+        \[
+          q \leftarrow q_{\text{half}} + \tfrac{\varepsilon}{2}\Big(p + \dot{\lambda}_k\, \nabla_p A_\phi(q_{\text{half}},p;\lambda_k)\Big)
+        \]
+        \State \textbf{Protocol work increment} (discrete $\partial_t H + \nabla H \cdot v$):
+        \[
+          W_i \leftarrow W_i + \Big(U(q;\lambda_{k+1}) - U(q;\lambda_k)\Big) 
+          + \dot{\lambda}_k \nabla H(q,p;\lambda_k) \cdot \Big(\nabla_p A_\phi(q,p;\lambda_k), -\nabla_q A_\phi(q,p;\lambda_k)\Big)
+        \]
+        \State Update particle: $q_i^{(k)} \leftarrow q$
+        \State Update weight: $w_i^{(k)} \leftarrow w_i^{(k-1)} \exp(-W_i)$
+      \EndFor
+      \State Normalize weights: $w_i^{(k)} \leftarrow w_i^{(k)} / \sum_j w_j^{(k)}$
+      \State Optionally resample if effective sample size is low
+      \State Learn $A_{\lambda_{k+1}}$ using the weighted population (Algorithm 1)
+    \EndFor
+    \State \Return weighted population $\{(q_i^{(L)}, w_i^{(L)})\}_{i=1}^N$
+    \end{algorithmic}
+    \end{algorithm}
+
+
 
 % the final two terms disappear by the same arguments as above when $\partial_\lambda H = \{A, H\}$.
 This means that we can minimize the loss $\mathcal{L}_H(A)$ instead, which is simple to calculate.
@@ -450,7 +504,7 @@ This means that we can minimize the loss $\mathcal{L}_H(A)$ instead, which is si
 
 % Let $\rho_H$ be the canonical distribution, i.e. $\rho_H(q,p) \propto e^{-H(q,p)}$. Exact Hamiltonian flow under a given $H$ preserves $\rho_H$. That is, $\partial_t\rho_H = \{H, \rho_H\} = 0$ and $\phi_H^*(t')\rho_H = \rho_H$, where $\phi$ is the flow of the differential equation. 
 
-% In practice, Hamiltonian Monte Carlo uses discretized Hamiltonian dynamics as a kernel, and accounts for the bias induced by discretization by the Metropolis-Hastings algorithm \cite{}. To ensure ergodicity, momentum can be refreshed every $n$ steps, or partially refreshed every step, which corresponds to the discretization of underdamped Langevin dynamics \cite{}. 
+% In practice, Hamiltonian Monte Carlo uses discretized Hamiltonian dynamics as a kernel, and accounts for the bias induced by discretization by the Metropolis-Hastings algorithm \cite{crooks1998nonequilibrium}. To ensure ergodicity, momentum can be refreshed every $n$ steps, or partially refreshed every step, which corresponds to the discretization of underdamped Langevin dynamics \cite{crooks1998nonequilibrium}. 
 
 % When running HMC, one initializes by drawing an initial sample $q$ (or population of samples $q_i$) from a simple distribution, such as a Gaussian, and the momentum $p$ similarly, to obtain a state $z=(q,p)$. As one evolves $z$ according to the kernel, the distribution it follows evolves towards $\rho_H$. This phase of the algorithm is known in the language of statistical physics as thermalization, i.e. the process of the ensemble evolving to thermal equilibrium. Typically, one only wants to collect samples after this phase, so one discards early samples, a procedure known as burn-in. Furthermore, early steps of the algorithm may be used to choose hyperparameters, such as the discretization step size.
 
@@ -492,7 +546,7 @@ The fact that we can learn an approximation of $A$ suggests an algorithm for sam
 
 We then initialize a population of particles in $\pi(\cdot ; \lambda(0))$, distributed according to $\rho_{H(\lambda(0))}$. At each time $t$, discretized in steps of length $\epsilon$, we minimize the \emph{expectation} of $R$, under the empirical distribution of the current population, to obtain an estimate of $A$ (Algorithm \ref{alg:fit-agp}). We use $H(\cdot ; \lambda(t)) + \dot\lambda A(\cdot ; \lambda(t))$ as our Hamiltonian at a given time $t$. Further, we have the option of computing weights according to \eqref{todo} after each time step, which correct for the bias introduced by the numerical discretization of the dynamics and the approximation of $A$. This is summarized in Algorithm \ref{alg:cd-hmc}.
 
-This can be understood as a special case of the general framework of Sequential Monte Carlo samplers \cite{doucet2001sequential}, as shown in appendix TODO.
+This can be understood as a special case of the general framework of Sequential Monte Carlo samplers \cite{doucet2001sequential}, as shown in appendix \ref{app:smc}.
 
 \paragraph{Numerical Integration} A key complication is that $A$ is not separatable into a term depending on $p$ and a term depending on $q$. This means that the Velocity Verlet integrator is not symplectic.
 
@@ -512,57 +566,6 @@ This can be understood as a special case of the general framework of Sequential 
 % Counterdiabatic Hamiltonian: H^{\text{CD}}(q,p,t) = H_{\lambda(t)}(q,p) + \dot{\lambda}(t)\,A_\phi(q,p;\lambda(t)).
 % Poisson bracket: \{A,H\} = \nabla_q A \cdot p - \nabla_q U(q;\lambda) \cdot \nabla_p A.
 
-\begin{algorithm}[t]
-    \caption{Fit adiabatic gauge potential $A_\phi$ at a given $\lambda$}
-    \label{alg:fit-agp}
-    \begin{algorithmic}[1]
-    \Require Real-valued function $A_\phi(q,p;\lambda)$, optimizer (e.g. Adam)\;, schedule $\lambda_i$, population of particles $\{q_i,p_i\}_{i=1}^N$, number of iterations $T$.
-    \For{$t=1,\dots,T$}
-    %   \State Sample $q \sim \pi_\lambda(q) \propto e^{-U(q;\lambda)}$\; and $p \sim \mathcal{N}(0,I)$
-    % = \mathbb{E}[r^2(q,p,\lambda;\phi)]
-      \State Compute $l  \gets \frac{1}{N}\sum_{i=1}^N \{A_\phi,H_\lambda\}(q_i,p_i) - \partial_\lambda U(q_i;\lambda)$
-      \State Update $\phi$ using optimizer with loss $l$
-    \EndFor
-    \State \Return $\phi$
-    \end{algorithmic}
-    \end{algorithm}
-    
-    \begin{algorithm}[t]
-    \caption{Counterdiabatic HMC (CHMC) with population and weighting}
-    \label{alg:cd-hmc}
-    \begin{algorithmic}[1]
-    \Require Population $\{q_i^{(0)}\}_{i=1}^N$ from initial distribution\;; potential $U(q;\lambda)$ and gradients\;; step size $\varepsilon$\;; schedule $\{\lambda_k\}_{k=1}^L$ with $\lambda_1=0$ (easy) and $\lambda_L=1$ (target)\;; learned $A_\phi(q,p;\lambda)$ and its partials $\nabla_q A_\phi,\nabla_p A_\phi$.
-    \State Initialize weights $w_i^{(0)} = 1/N$ for all $i$
-    \For{$k=1$ to $L-1$}
-      \For{$i=1$ to $N$}
-        \State Sample $p_i \sim \mathcal{N}(0,I)$
-        \State Set $(q,p) \leftarrow (q_i^{(k-1)}, p_i)$; set $W_i \leftarrow 0$
-        \State \textbf{Half-kick} (potential \& CD-$q$ force): 
-        \[
-          p \leftarrow p - \tfrac{\varepsilon}{2}\Big(\nabla_q U(q;\lambda_k) + \dot{\lambda}_k \,\nabla_q A_\phi(q,p;\lambda_k)\Big)
-        \]
-        \State \textbf{Drift} (kinetic \& CD-$p$ flow):
-        \[
-          q \leftarrow q + \varepsilon\Big(p + \dot{\lambda}_k\, \nabla_p A_\phi(q,p;\lambda_k)\Big)
-        \]
-        \State \textbf{Protocol work increment} (discrete $\partial_t H^{\text{CD}}$):
-        \[
-          W_i \leftarrow W_i + \Big(U(q;\lambda_{k+1}) - U(q;\lambda_k)\Big) 
-          + \Big(\dot{\lambda}_{k+1}A_\phi(q,p;\lambda_{k+1}) - \dot{\lambda}_k A_\phi(q,p;\lambda_k)\Big)
-        \]
-        \State \textbf{Half-kick} (with updated waypoint):
-        \[
-          p \leftarrow p - \tfrac{\varepsilon}{2}\Big(\nabla_q U(q;\lambda_{k+1}) + \dot{\lambda}_{k+1}\,\nabla_q A_\phi(q,p;\lambda_{k+1})\Big)
-        \]
-        \State Update particle: $q_i^{(k)} \leftarrow q$
-        \State Update weight: $w_i^{(k)} \leftarrow w_i^{(k-1)} \exp(-W_i)$
-      \EndFor
-      \State Normalize weights: $w_i^{(k)} \leftarrow w_i^{(k)} / \sum_j w_j^{(k)}$
-      \State Optionally resample if effective sample size is low
-    \EndFor
-    \State \Return weighted population $\{(q_i^{(L)}, w_i^{(L)})\}_{i=1}^N$
-    \end{algorithmic}
-    \end{algorithm}
 
 \paragraph{Choice of step size} As in standard HMC, the choice of $\epsilon$ is a trade-off between the accuracy of the dynamics and the efficiency of the algorithm. We propose to tune step size by monitoring the error in $H$; in the limit of small step size and perfect $A$, $H$ should be preserved exactly. 
 

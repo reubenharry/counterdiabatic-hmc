@@ -94,9 +94,9 @@ def with_maruyama(integrator):
         return q, p, weight
     return maruyama
 
-clip_value = 100.0
+clip_value = 5.0
 
-def make_cd_euler_step(T, V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next):
+def make_cd_euler_step(T, V, A_ansatz, lam, lam_next,  dot_lam, dot_lam_next):
     """Create a counterdiabatic Euler step function."""
     dA_dq_scalar = jax.grad(A_ansatz, argnums=0)
     dA_dp_scalar = jax.grad(A_ansatz, argnums=1)

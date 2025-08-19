@@ -492,68 +492,68 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
         # Naive HMC is only used in re-equilibration
 
         # --- CD step ---
-        try:
-            L = eps*momentum_refresh_interval
-            key, sub = jax.random.split(key)
-            subs = jax.random.split(sub, M)
+        L = eps*momentum_refresh_interval
+        key, sub = jax.random.split(key)
+        subs = jax.random.split(sub, M)
+        
+        # Create integrator with weight calculation if using weights
+        # cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, eps, rng_key, t: with_maruyama(make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=eps, L=L, rng_key=rng_key, t=t), in_axes=(0, 0, None, None, None, None, None, 0, None))
+        cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, eps, rng_key, t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=eps, t=t), in_axes=(0, 0, None, None, None, None, None, 0, None))
+        q_cd, p_cd, step_weights_cd = jax.jit(cd_step)(q_cd, p_cd, lam_k, lam_k1, dot_lam_k, dot_lam_k1, eps, subs, t_k)
+        if use_weights:
             
-            # Create integrator with weight calculation if using weights
-            cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, eps, rng_key, t: with_maruyama(make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=eps, L=L, rng_key=rng_key, t=t), in_axes=(0, 0, None, None, None, None, None, 0, None))
-            q_cd, p_cd, step_weights_cd = jax.jit(cd_step)(q_cd, p_cd, lam_k, lam_k1, dot_lam_k, dot_lam_k1, eps, subs, t_k)
-            if use_weights:
-                
-                # Update log weights using the step log weights
-                # print("shape", step_weights_cd.shape)
-                log_weights_cd = log_weights_cd + step_weights_cd
-            # else:
-            #     q_cd, p_cd, _ = jax.jit(cd_step)(q_cd, p_cd, lam_k, lam_k1, dot_lam_k, dot_lam_k1, eps, subs, t_k)
+            # Update log weights using the step log weights
+            # print("shape", step_weights_cd.shape)
+            log_weights_cd = log_weights_cd + step_weights_cd
+        # else:
+        #     q_cd, p_cd, _ = jax.jit(cd_step)(q_cd, p_cd, lam_k, lam_k1, dot_lam_k, dot_lam_k1, eps, subs, t_k)
 
-            # --- Check for NaNs in CD weights and handle resampling ---
-            if use_weights:
-                # Check for NaNs in CD weights
-                if check_nans("log_weights_cd", log_weights_cd, k):
-                    print(f"  Stopping simulation due to NaNs in CD weights at step {k}")
-                    break
-                
-                # Check if resampling is needed for CD-HMC
-                ess_cd = compute_ess(log_weights_cd)
-                ess_ratio_cd = ess_cd / M
-                
-                if ess_ratio_cd < ess_threshold:
-                    print(f"  Resampling CD-HMC at step {k}: ESS = {ess_cd:.1f}/{M} ({ess_ratio_cd:.3f})")
-                    key, sub = jax.random.split(key)
-                    q_cd, p_cd, log_weights_cd = multinomial_resample(q_cd, p_cd, log_weights_cd, sub, M)
-                    resampling_count_cd += 1
-                    print(f"    CD-HMC resampling completed. Total resampling events: {resampling_count_cd}")
-            else:
-                # Keep weights at 1 (log_weights = 0) when not using weights
-                log_weights_cd = jnp.zeros(M)
-
-            # if k % 10 == 0 and k > 0:
-            #         key, sub = jax.random.split(key)
-            #         p_cd = jax.random.normal(sub, (M, dim))
+        # --- Check for NaNs in CD weights and handle resampling ---
+        if use_weights:
+            # Check for NaNs in CD weights
+            if check_nans("log_weights_cd", log_weights_cd, k):
+                print(f"  Stopping simulation due to NaNs in CD weights at step {k}")
+                break
             
-            # Check for NaNs in CD HMC
-            if check_nans("q_cd", q_cd, k):
-                print(f"  Stopping simulation due to NaNs in CD HMC at step {k}")
-                # Debug: check ansatz values for the problematic samples
-                if not isinstance(A_ansatz, AnalyticAnsatz):
-                    print(f"  Debugging ansatz values at step {k}:")
-                    # Check a few samples for ansatz values
-                    for i in range(min(5, len(q_cd))):
-                        try:
-                            ansatz_val = A_ansatz(q_cd[i], p_cd[i])
-                            print(f"    Sample {i}: q={q_cd[i]}, p={p_cd[i]}, A={ansatz_val}")
-                        except:
-                            print(f"    Sample {i}: Error computing ansatz value")
-                break
-            if check_nans("p_cd", p_cd, k):
-                print(f"  Stopping simulation due to NaNs in CD HMC at step {k}")
-                break
-                
-        except Exception as e:
-            print(f"⚠️  Error in CD step at step {k}: {e}")
+            # Check if resampling is needed for CD-HMC
+            ess_cd = compute_ess(log_weights_cd)
+            ess_ratio_cd = ess_cd / M
+            
+            if ess_ratio_cd < ess_threshold:
+                print(f"  Resampling CD-HMC at step {k}: ESS = {ess_cd:.1f}/{M} ({ess_ratio_cd:.3f})")
+                key, sub = jax.random.split(key)
+                q_cd, p_cd, log_weights_cd = multinomial_resample(q_cd, p_cd, log_weights_cd, sub, M)
+                resampling_count_cd += 1
+                print(f"    CD-HMC resampling completed. Total resampling events: {resampling_count_cd}")
+        else:
+            # Keep weights at 1 (log_weights = 0) when not using weights
+            log_weights_cd = jnp.zeros(M)
+
+        if k % int(momentum_refresh_interval) == 0 and k > 0:
+                key, sub = jax.random.split(key)
+                p_cd = jax.random.normal(sub, (M, dim))
+        
+        # Check for NaNs in CD HMC
+        if check_nans("q_cd", q_cd, k):
+            print(f"  Stopping simulation due to NaNs in CD HMC at step {k}")
+            # Debug: check ansatz values for the problematic samples
+            if not isinstance(A_ansatz, AnalyticAnsatz):
+                print(f"  Debugging ansatz values at step {k}:")
+                # Check a few samples for ansatz values
+                for i in range(min(5, len(q_cd))):
+                    try:
+                        ansatz_val = A_ansatz(q_cd[i], p_cd[i])
+                        print(f"    Sample {i}: q={q_cd[i]}, p={p_cd[i]}, A={ansatz_val}")
+                    except:
+                        print(f"    Sample {i}: Error computing ansatz value")
             break
+        if check_nans("p_cd", p_cd, k):
+            print(f"  Stopping simulation due to NaNs in CD HMC at step {k}")
+            break
+                
+        # except Exception as e:
+        #     print(f"⚠️  Error in CD step at step {k}: {e}")
+        #     break
 
         # --- Re-equilibration steps after CD step ---
         if re_equil_steps > 0:

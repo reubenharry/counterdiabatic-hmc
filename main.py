@@ -151,9 +151,9 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name,
 
 def main():
     # Set up the system
-    # system_name = "gaussian_moving_mean"
+    system_name = "gaussian_moving_mean"
     # system_name = "gaussian_annealing"
-    system_name = "double_well"
+    # system_name = "double_well"
     make_T, make_V, system_description, dim = get_system(system_name)
     
     # Define lambda functions
@@ -164,19 +164,20 @@ def main():
     
     # Parameters
     M = 1000
-    N_steps = 40
-    delta_t = 0.05
-    eps = 0.05
-    momentum_refresh_interval =  5.0
-    fit_every = 1
-    num_initial_iterations = 100000
-    num_iterations = 100000
+    N_steps = 10
+    delta_t = 0.2
+    eps = 0.2
+    momentum_refresh_interval =  10.0
+    fit_every = 10
+    num_initial_iterations = 1000
+    num_iterations = 1000
     learning_rate = 1e-4
     re_equil_steps = 0
     ess_threshold = 0.5
     
     # Create ansatz
-    ansatz = PolynomialAnsatz(max_degree=5, dim=dim)
+    # ansatz = PolynomialAnsatz(max_degree=6, dim=dim)
+    ansatz = NeuralNetworkAnsatz(dims=[2,32,32,1], dim=dim, key=jax.random.PRNGKey(0))
     
     # Storage for all simulation results
     successful_simulations = {}
