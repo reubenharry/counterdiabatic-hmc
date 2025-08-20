@@ -120,7 +120,7 @@ def make_cd_euler_step(T, V, A_ansatz, lam, lam_next,  dot_lam, dot_lam_next):
     return cd_euler 
 
 
-def compute_counterdiabatic_work(q, p, lam_k, lam_k1, A_ansatz, make_T, make_V):
+def compute_counterdiabatic_work(q, p, q_next, p_next, lam_k, lam_k1, dot_lam_k, dot_lam_k1, A_ansatz, make_T, make_V, delta_t):
     """Compute the differential work for counterdiabatic driving.
     
     The work is given by: (-∇ · v_t(X_t) + ∇U_t(X_t) · v_t(X_t) + ∂_t U_t(X_t))
@@ -190,11 +190,14 @@ def compute_counterdiabatic_work(q, p, lam_k, lam_k1, A_ansatz, make_T, make_V):
   
     H = lambda lam: lambda q, p: make_T(lam)(p) + make_V(lam)(q)
     
+    energy_diff = H(lam_k1)(q, p) - H(lam_k)(q_next, p_next)
+    
     # Define the complete work computation for a single particle
     def compute_work_single(q, p):
         div_v = compute_div_v(q, p)
         grad_H_dot_v = compute_grad_H_dot_v(q, p, lam_k)
         dH_dl = lambda qq, pp: (jax.grad(lambda qqq, ppp, lam: H(lam)(qqq, ppp), argnums=2)(qq, pp, lam_k))
+
 
         # jax.debug.print("dH_dl: {x}", x=dH_dl(jnp.array([10.0]), jnp.array([10.0])))
         
@@ -205,13 +208,14 @@ def compute_counterdiabatic_work(q, p, lam_k, lam_k1, A_ansatz, make_T, make_V):
         # jax.debug.print("dH_dt: {x}", x=dH_dt(q,p)*(lam_k1 - lam_k))
         # jax.debug.print("terms {x}", x=(grad_H_dot_v, dH_dl(q, p), grad_H_dot_v - dH_dl(q, p)))
         work = grad_H_dot_v + dH_dl(q, p) #  + dH_dt(q,p)*(lam_k1 - lam_k)
-        # work = dH_dt(q,p)*(lam_k1 - lam_k)
+        # work = grad_H_dot_v*delta_t + energy_diff
+
 
         
         return -work
     
     # Vectorize over particles
-    work_vals = (compute_work_single)(q, p)
+    work_vals = (compute_work_single)(q, p)*dot_lam_k*delta_t
 
     # print("work_vals", work_vals)
     
@@ -262,7 +266,7 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
         q_new = q_half + 0.5 * eps * (dot_lam * dA_dp_new)
         
         
-        log_weight = compute_counterdiabatic_work(q, p, lam, lam_next, A_ansatz, make_T, make_V)*eps
+        log_weight = compute_counterdiabatic_work(q, p, q_new, p_new, lam, lam_next, dot_lam, dot_lam_next, A_ansatz, make_T, make_V, eps)
         
         return q_new, p_new, log_weight
     return cd_leapfrog 
