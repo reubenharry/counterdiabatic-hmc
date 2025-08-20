@@ -246,17 +246,20 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
         dA_dp = jnp.clip(dA_dp, -clip_value, clip_value)
 
         # q half-step: q_half = q + (eps/2) * (dT/dp + dot_lam * dA/dp)
-        q_half = q + 0.5 * eps * (jax.grad(T)(p) + dot_lam * dA_dp)
+        # q_half = q + 0.5 * eps * (jax.grad(T)(p) + dot_lam * dA_dp)
+        q_half = q + 0.5 * eps * (dot_lam * dA_dp)
         
         # p full-step: p_new = p - eps * (dV/dq + dot_lam * dA/dq) at q_half
         dA_dq_half = dA_dq_scalar(q_half, p)
         dA_dq_half = jnp.clip(dA_dq_half, -clip_value, clip_value)
-        p_new = p - eps * (jax.grad(V)(q_half) + dot_lam * dA_dq_half)
+        # p_new = p - eps * (jax.grad(V)(q_half) + dot_lam * dA_dq_half)
+        p_new = p - eps * (dot_lam * dA_dq_half)
         
         # q half-step: q_new = q_half + (eps/2) * (dT/dp + dot_lam * dA/dp) at p_new
         dA_dp_new = dA_dp_scalar(q_half, p_new)
         dA_dp_new = jnp.clip(dA_dp_new, -clip_value, clip_value)
-        q_new = q_half + 0.5 * eps * (jax.grad(T)(p_new) + dot_lam * dA_dp_new)
+        # q_new = q_half + 0.5 * eps * (jax.grad(T)(p_new) + dot_lam * dA_dp_new)
+        q_new = q_half + 0.5 * eps * (dot_lam * dA_dp_new)
         
         
         log_weight = compute_counterdiabatic_work(q, p, lam, lam_next, A_ansatz, make_T, make_V)*eps

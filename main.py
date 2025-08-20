@@ -199,15 +199,15 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
     
     # Define lambda functions
     v = 0.5
-    max_lam = 1.0
+    max_lam = 4.0
     lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
     dot_lam_fn = jax.grad(lam_fn)
     
     # Parameters
     M = 1000
-    N_steps = 10
-    delta_t = 0.2
-    momentum_refresh_interval = 2.0
+    N_steps = 1
+    delta_t = 4.0
+    momentum_refresh_interval = 1.0
     fit_every = 1
     num_initial_iterations = 15000
     num_iterations = 15000
