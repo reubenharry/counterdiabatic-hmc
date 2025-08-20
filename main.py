@@ -49,7 +49,6 @@ def save_simulation_data_to_file(snapshots, simulation_name, system_name, save_f
             np.save(final_filename, final_samples)
 
 
-
 def load_and_plot_precomputed_data(system_name, ansatz_type="neural_network"):
     """Load precomputed data and generate standard plots including ridge plots and <A²> analysis.
     
@@ -70,15 +69,6 @@ def load_and_plot_precomputed_data(system_name, ansatz_type="neural_network"):
     
     # Parameters will be loaded from saved data
     # (These are just placeholders, actual values come from simulation_params in saved files)
-    delta_t = None
-    eps = None
-    momentum_refresh_interval = None
-    fit_every = None
-    num_initial_iterations = None
-    num_iterations = None
-    learning_rate = None
-    re_equil_steps = None
-    ess_threshold = None
     
     # Create ansatz (needed for plotting)
     if ansatz_type == "neural_network":
@@ -92,8 +82,6 @@ def load_and_plot_precomputed_data(system_name, ansatz_type="neural_network"):
     
     # Load saved complete snapshots
     successful_simulations = {}
-    # loss_histories = {}
-    # param_histories = {}
     
     # Try to load each simulation type
     simulation_types = ['naive_unweighted', 'naive_weighted', 'cd_unweighted', 'cd_weighted']
@@ -116,20 +104,25 @@ def load_and_plot_precomputed_data(system_name, ansatz_type="neural_network"):
     if len(successful_simulations) == 0:
         print("No precomputed data found!")
         return
-    
+        
     print(f"\nFound {len(successful_simulations)} simulation types. Generating full plots...")
     
     # Generate plots using the same logic as main()
     if len(successful_simulations) > 1:
         # Create comparison ridge plot with all simulation types
         print("Creating comparison ridge plot with all simulation types...")
-        create_comparison_plots(system_name, make_V, lam_fn, dim, ansatz_type)
+        create_comparison_plots(system_name, make_V, lam_fn, dim, ansatz_type, subsample=2)  # Show every other snapshot
     else:
         # Fallback to single simulation ridge plot
         print("Creating single simulation ridge plot...")
         sim_type = list(successful_simulations.keys())[0]
         snapshots = successful_simulations[sim_type]
-        create_ridge_plot(snapshots, delta_t, make_V, lam_fn, system_name, ansatz_type)
+        # Get delta_t from snapshots or use fallback
+        if 'simulation_params' in snapshots:
+            saved_delta_t = snapshots['simulation_params'].get('delta_t', 0.02)
+        else:
+            saved_delta_t = 0.02
+        create_ridge_plot(snapshots, saved_delta_t, make_V, lam_fn, system_name, ansatz_type, subsample=2)  # Show every other snapshot
     
     # Create detailed distribution plots for CD simulations (includes <A²> plots)
     for sim_type in ['cd_unweighted', 'cd_weighted']:
@@ -211,11 +204,10 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
     M = 1000
     N_steps = 10
     delta_t = 0.2
-    eps = 0.2
-    momentum_refresh_interval = 2.0
+    momentum_refresh_interval = 10.0
     fit_every = 1
-    num_initial_iterations = 150000
-    num_iterations = 150000
+    num_initial_iterations = 15000
+    num_iterations = 15000
     learning_rate = 1e-4
     ess_threshold = 0.5
     snapshot_interval = 1  # Take snapshots every 10 steps
@@ -235,6 +227,15 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
     
     print(f"\nRunning simulations for {system_name} with {ansatz_type} ansatz...")
     
+    # Save simulation parameters
+    simulation_params = {
+        'delta_t': delta_t,
+        'momentum_refresh_interval': momentum_refresh_interval,
+        'M': M,
+        'N_steps': N_steps,
+        'snapshot_interval': snapshot_interval
+    }
+    
     # 1. Naive HMC (Unweighted)
     print("\n" + "="*50)
     print("Running Naive HMC (Unweighted)")
@@ -242,20 +243,11 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
     try:
         key = jax.random.PRNGKey(0)
         snapshots_naive_unweighted = run_naive_hmc_simulation(
-            M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
+            M=M, N_steps=N_steps, delta_t=delta_t,
             momentum_refresh_interval=momentum_refresh_interval,
             make_T=make_T, make_V=make_V, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
             key=key, dim=dim, use_weights=False, snapshot_interval=snapshot_interval
         )
-        # Save simulation parameters
-        simulation_params = {
-            'delta_t': delta_t,
-            'eps': eps,
-            'momentum_refresh_interval': momentum_refresh_interval,
-            'M': M,
-            'N_steps': N_steps,
-            'snapshot_interval': snapshot_interval
-        }
         save_simulation_data_to_file(snapshots_naive_unweighted, 'naive_unweighted', system_name, save_final_samples, simulation_params)
         print("✓ Naive HMC (Unweighted) completed successfully")
     except Exception as e:
@@ -268,7 +260,7 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
     try:
         key = jax.random.PRNGKey(0)
         snapshots_naive_weighted = run_naive_hmc_simulation(
-            M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
+            M=M, N_steps=N_steps, delta_t=delta_t,
             momentum_refresh_interval=momentum_refresh_interval,
             make_T=make_T, make_V=make_V, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
             key=key, dim=dim, use_weights=True, ess_threshold=ess_threshold, snapshot_interval=snapshot_interval
@@ -277,65 +269,67 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
         print("✓ Naive HMC (Weighted SMC) completed successfully")
     except Exception as e:
         print(f"✗ Naive HMC (Weighted SMC) failed: {e}")
-
-    if False:
     
-        # 3. Counterdiabatic HMC (Unweighted)
-        print("\n" + "="*50)
-        print("Running Counterdiabatic HMC (Unweighted)")
-        print("="*50)
-        try:
-            key = jax.random.PRNGKey(0)
-            _, snapshots_cd_unweighted, loss_histories_cd_unweighted, param_history_cd_unweighted = run_simulation(
-                M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
-                momentum_refresh_interval=momentum_refresh_interval,
-                fit_every=fit_every, num_initial_iterations=num_initial_iterations,
-                num_iterations=num_iterations, make_T=make_T, make_V=make_V,
-                A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
-                key=key, dim=dim, learning_rate=learning_rate,
-                use_weights=False, snapshot_interval=snapshot_interval
-            )
-            save_simulation_data_to_file(snapshots_cd_unweighted, 'cd_unweighted', system_name, save_final_samples, simulation_params)
-            print("✓ Counterdiabatic HMC (Unweighted) completed successfully")
-        except Exception as e:
-            print(f"✗ Counterdiabatic HMC (Unweighted) failed: {e}")
-        
-        # 4. Counterdiabatic HMC (Weighted) - Using same seed as unweighted
-        print("\n" + "="*50)
-        print("Running Counterdiabatic HMC (Weighted) - Same seed as unweighted")
-        print("="*50)
-        try:
-            key = jax.random.PRNGKey(0)  # Same seed as unweighted
-            _, snapshots_cd_weighted, loss_histories_cd_weighted, param_history_cd_weighted = run_simulation(
-                M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
-                momentum_refresh_interval=momentum_refresh_interval,
-                fit_every=fit_every, num_initial_iterations=num_initial_iterations,
-                num_iterations=num_iterations, make_T=make_T, make_V=make_V,
-                A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
-                key=key, dim=dim, learning_rate=learning_rate,
-                use_weights=True, ess_threshold=ess_threshold, snapshot_interval=snapshot_interval
-            )
-            save_simulation_data_to_file(snapshots_cd_weighted, 'cd_weighted', system_name, save_final_samples, simulation_params)
-            print("✓ Counterdiabatic HMC (Weighted) completed successfully")
-        except Exception as e:
-            print(f"✗ Counterdiabatic HMC (Weighted) failed: {e}")
+    # 3. Counterdiabatic HMC (Unweighted)
+    print("\n" + "="*50)
+    print("Running Counterdiabatic HMC (Unweighted)")
+    print("="*50)
+    try:
+        key = jax.random.PRNGKey(0)
+        _, snapshots_cd_unweighted, loss_histories_cd_unweighted, param_history_cd_unweighted = run_simulation(
+            M=M, N_steps=N_steps, delta_t=delta_t,
+            momentum_refresh_interval=momentum_refresh_interval,
+            fit_every=fit_every, num_initial_iterations=num_initial_iterations,
+            num_iterations=num_iterations, make_T=make_T, make_V=make_V,
+            A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
+            key=key, dim=dim, learning_rate=learning_rate,
+            use_weights=False, snapshot_interval=snapshot_interval
+        )
+        save_simulation_data_to_file(snapshots_cd_unweighted, 'cd_unweighted', system_name, save_final_samples, simulation_params)
+        print("✓ Counterdiabatic HMC (Unweighted) completed successfully")
+    except Exception as e:
+        print(f"✗ Counterdiabatic HMC (Unweighted) failed: {e}")
+    
+    # 4. Counterdiabatic HMC (Weighted) - Using same seed as unweighted
+    print("\n" + "="*50)
+    print("Running Counterdiabatic HMC (Weighted) - Same seed as unweighted")
+    print("="*50)
+    try:
+        key = jax.random.PRNGKey(0)  # Same seed as unweighted
+        _, snapshots_cd_weighted, loss_histories_cd_weighted, param_history_cd_weighted = run_simulation(
+            M=M, N_steps=N_steps, delta_t=delta_t,
+            momentum_refresh_interval=momentum_refresh_interval,
+            fit_every=fit_every, num_initial_iterations=num_initial_iterations,
+            num_iterations=num_iterations, make_T=make_T, make_V=make_V,
+            A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
+            key=key, dim=dim, learning_rate=learning_rate,
+            use_weights=True, ess_threshold=ess_threshold, snapshot_interval=snapshot_interval
+        )
+        save_simulation_data_to_file(snapshots_cd_weighted, 'cd_weighted', system_name, save_final_samples, simulation_params)
+        print("✓ Counterdiabatic HMC (Weighted) completed successfully")
+    except Exception as e:
+        print(f"✗ Counterdiabatic HMC (Weighted) failed: {e}")
     
     print(f"\nAll simulations completed for {system_name} with {ansatz_type} ansatz!")
     print("Data saved to data/ folder. Use load_and_plot_precomputed_data() to generate plots.")
 
 if __name__ == "__main__":
     # Step 1: Run simulations and save data
+
+    ansatz_type = "polynomial"
+    system_name = "gaussian_annealing"
+
     # print("="*60)
-    print("STEP 1: Running simulations and saving data")
-    print("="*60)
-    run_simulations_and_save_data("double_well", "neural_network")
+    # print("STEP 1: Running simulations and saving data")
+    # print("="*60)
+    # run_simulations_and_save_data(system_name, ansatz_type)
     
     # Step 2: Load precomputed data and generate plots
     print("\n" + "="*60)
     print("STEP 2: Loading data and generating plots")
     print("="*60)
-    load_and_plot_precomputed_data("double_well", "neural_network")
+    load_and_plot_precomputed_data(system_name, ansatz_type)
     
     print("\n" + "="*60)
     print("All done! Check the figures/ folder for generated plots.")
-    print("="*60) 
+    print("="*60)

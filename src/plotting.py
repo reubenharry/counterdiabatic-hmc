@@ -166,7 +166,7 @@ def compute_weighted_kde(samples, weights=None, x_grid=None):
     
     return density
 
-def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmonic", ansatz_type="polynomial"):
+def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmonic", ansatz_type="polynomial", subsample=1):
     """Create a ridge plot showing the evolution of 1D distributions over time.
     
     Args:
@@ -185,8 +185,8 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     # Check if weights are available
     has_weights = 'weights_cd' in snapshots and any(w is not None for w in snapshots['weights_cd'])
     
-    # Get time points
-    times = np.arange(len(snapshots['cd'])) * delta_t * 10  # *10 because we record every 10 steps
+    # Get time points (with subsampling)
+    times = np.arange(len(snapshots['cd'][::subsample])) * delta_t * 10 * subsample  # *10 because we record every 10 steps
     
     # Create figure with appropriate layout (simplified - only CD-HMC)
     if has_weights:
@@ -233,9 +233,9 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     # Create x grid for smooth curves
     x_grid = np.linspace(x_min, x_max, 200)
     
-    # Plot CD HMC distributions
+    # Plot CD HMC distributions (with subsampling)
     cd_ax = ax2 if has_weights else ax1  # Use appropriate axis based on layout
-    for i, (t, cd_snap, lam_val) in enumerate(zip(times, snapshots['cd'], snapshots['lam'])):
+    for i, (t, cd_snap, lam_val) in enumerate(zip(times, snapshots['cd'][::subsample], snapshots['lam'][::subsample])):
         # Create histogram with more bins (100 instead of 50)
         hist, bin_edges = np.histogram(cd_snap.flatten(), bins=100, density=True, range=(x_min, x_max))
         
@@ -522,10 +522,22 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
 
 # Removed unnecessary plotting functions - only keeping the essential ones 
 
-def create_comparison_plots(system_name, make_V, lam_fn, dim, ansatz_dir_name=None):
-    """Create comparison ridge plots for all simulation types."""
+def create_comparison_plots(system_name, make_V, lam_fn, dim, ansatz_dir_name=None, subsample=1):
+    """Create comparison ridge plots for all simulation types.
+    
+    Args:
+        system_name: Name of the system (e.g., "double_well", "gaussian_annealing")
+        make_V: Function to create potential energy
+        lam_fn: Lambda function for time evolution
+        dim: Dimension of the system
+        ansatz_dir_name: Directory name for saving plots (default: "polynomial")
+        subsample: Only plot every nth snapshot (default: 1, i.e., all snapshots)
+    """
     import pickle
     import os
+    
+    # Single scaling factor for histogram heights - change this one number to adjust all heights
+    HEIGHT_SCALE = 50.0  # Increased significantly to be visible relative to time spacing
     
     # Create figures directory if it doesn't exist
     os.makedirs("figures", exist_ok=True)
@@ -601,20 +613,30 @@ def create_comparison_plots(system_name, make_V, lam_fn, dim, ansatz_dir_name=No
         snapshots = dataset[snapshot_key]
         lam_values = dataset['lam']
         
-        # Create histograms spaced by time
-        for j, (snap, lam_val) in enumerate(zip(snapshots, lam_values)):
-            t = j * delta_t * 10  # time spacing
+        # Set axis limits and create consistent bin edges for all histograms
+        all_samples = np.concatenate([snap.flatten() for snap in snapshots])
+        x_min, x_max = np.min(all_samples) - 0.5, np.max(all_samples) + 0.5
+        ax.set_xlim(x_min, x_max)
+        
+        # Create consistent bin edges for all histograms in this subplot
+        bin_edges = np.linspace(x_min, x_max, 101)  # 101 edges for 100 bins
+        bin_width = bin_edges[1] - bin_edges[0]
+        
+        # Create histograms spaced by time (with subsampling)
+        for j, (snap, lam_val) in enumerate(zip(snapshots[::subsample], lam_values[::subsample])):
+            t = j * delta_t * 10 * subsample  # time spacing (accounting for subsampling)
             
-            # Create histogram
-            hist, bin_edges = np.histogram(snap.flatten(), bins=100, density=True)
+            # Create histogram using consistent bin edges
+            hist, _ = np.histogram(snap.flatten(), bins=bin_edges, density=True)
             bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-            bin_width = bin_edges[1] - bin_edges[0]
             
             # Histogram is already normalized to integrate to 1 by density=True
-            offset = t * 2.0
+            # Scale the histogram heights higher for better visibility
+            hist_scaled = hist * HEIGHT_SCALE  # Scale histogram heights
+            offset = t * 3.0  # Increased from 2.0 to 3.0
             
             # Plot histogram bars
-            for center, height in zip(bin_centers, hist):
+            for center, height in zip(bin_centers, hist_scaled):
                 if height > 0:
                     ax.bar(center, height, width=bin_width, bottom=offset, 
                            color=colors[sim_type], alpha=0.4, edgecolor=colors[sim_type], linewidth=0.5)
@@ -623,23 +645,21 @@ def create_comparison_plots(system_name, make_V, lam_fn, dim, ansatz_dir_name=No
             x_grid = np.linspace(bin_edges[0], bin_edges[-1], 200)
             potential_fn = make_V(lam_val)
             rho = np.array([np.exp(-potential_fn(x)) for x in x_grid])
-            # Normalize exact density to integrate to 1
+            # Normalize exact density to integrate to 1, then scale to match histogram
             dx = x_grid[1] - x_grid[0]
             rho_normalized = rho / (np.sum(rho) * dx) if np.sum(rho) > 0 else rho
-            ax.plot(x_grid, offset + rho_normalized, 'k--', linewidth=1.5, alpha=0.8)
+            rho_scaled = rho_normalized * HEIGHT_SCALE  # Scale to match histogram heights
+            ax.plot(x_grid, offset + rho_scaled, 'k--', linewidth=1.5, alpha=0.8)
             
             # Add lambda value as text
-            ax.text(0.02, offset + 0.9, f'λ={lam_val:.3f}', transform=ax.get_yaxis_transform(), 
+            ax.text(0.02, offset + 1.2, f'λ={lam_val:.3f}', transform=ax.get_yaxis_transform(), 
                    fontsize=10, va='bottom')
         
-        # Set axis limits
-        all_samples = np.concatenate([snap.flatten() for snap in snapshots])
-        x_min, x_max = np.min(all_samples) - 0.5, np.max(all_samples) + 0.5
-        ax.set_xlim(x_min, x_max)
-        
-        times = np.arange(len(snapshots)) * delta_t * 10
+        # Update y-axis limits to account for subsampling and higher scaling
+        times = np.arange(len(snapshots[::subsample])) * delta_t * 10 * subsample
         if len(times) > 0:
-            ax.set_ylim(times[0] * 2.0 - 0.1, times[-1] * 2.0 + 2.0)
+            # Add extra space at the top to accommodate taller histograms
+            ax.set_ylim(times[0] * 3.0 - 0.1, times[-1] * 3.0 + 25.0)  # Increased top margin from 3.0 to 25.0
     
     plt.tight_layout()
     plt.savefig(f"{ansatz_dir}/comparison_ridge_plot_{system_name}.png", dpi=300, bbox_inches='tight')

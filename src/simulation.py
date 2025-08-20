@@ -202,7 +202,7 @@ def generate_initial_samples(M, make_T, make_V, lam, key, dim, variance=None):
     
     return q, p
 
-def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, make_V, lam_fn, dot_lam_fn, key, dim, use_weights=False, ess_threshold=0.5, snapshot_interval=10):
+def run_naive_hmc_simulation(M, N_steps, delta_t, momentum_refresh_interval, make_T, make_V, lam_fn, dot_lam_fn, key, dim, use_weights=False, ess_threshold=0.5, snapshot_interval=10):
     """Run naive HMC simulation without fitting the ansatz (for efficiency)."""
     
     # Generate initial samples from the correct distribution
@@ -305,18 +305,18 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval
         key, sub = jax.random.split(key)
         subs = jax.random.split(sub, M)
         
-        naive_step = jax.vmap(lambda q, p, lam, lam_next, eps, L, rng_key, t: with_maruyama(make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, eps, L=L, rng_key=rng_key, t=t), in_axes=(0, 0, None, None, None, None, 0, None))
+        naive_step = jax.vmap(lambda q, p, lam, lam_next, delta_t, L, rng_key, t: with_maruyama(make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t, L=L, rng_key=rng_key, t=t), in_axes=(0, 0, None, None, None, None, 0, None))
         # Create integrator with weight calculation if using weights
         if use_weights:
             # --- Naïve step with weight calculation ---
-            q_naive, p_naive, step_weights = jax.jit(naive_step)(q_naive, p_naive, lam_k, lam_k1, eps, eps*momentum_refresh_interval, subs, t_k)
+            q_naive, p_naive, step_weights = jax.jit(naive_step)(q_naive, p_naive, lam_k, lam_k1, delta_t, delta_t*momentum_refresh_interval, subs, t_k)
             
             # Update log weights using the step log weights
             log_weights = log_weights + step_weights
         else:
-            # naive_step = jax.vmap(lambda q, p, lam, lam_next, eps, L, rng_key: with_maruyama(make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam), make_V(lam_next)))(q, p, eps, L=L, rng_key=rng_key), in_axes=(0, 0, None, None, None, None, 0))
+            # naive_step = jax.vmap(lambda q, p, lam, lam_next, delta_t, L, rng_key: with_maruyama(make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam), make_V(lam_next)))(q, p, delta_t, L=L, rng_key=rng_key), in_axes=(0, 0, None, None, None, None, 0))
             # --- Naïve step without weight calculation ---
-            q_naive, p_naive, _ = jax.jit(naive_step)(q_naive, p_naive, lam_k, lam_k1, eps, eps*momentum_refresh_interval, subs, t_k)
+            q_naive, p_naive, _ = jax.jit(naive_step)(q_naive, p_naive, lam_k, lam_k1, delta_t, delta_t*momentum_refresh_interval, subs, t_k)
 
         # Check for NaNs in naive HMC
         if check_nans("q_naive", q_naive, k):
@@ -369,7 +369,7 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval
     
     return snapshots
 
-def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_every, num_initial_iterations, num_iterations, make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, key, dim, learning_rate=1e-4, use_weights=False, ess_threshold=0.5, snapshot_interval=10):
+def run_simulation(M, N_steps, delta_t, momentum_refresh_interval, fit_every, num_initial_iterations, num_iterations, make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, key, dim, learning_rate=1e-4, use_weights=False, ess_threshold=0.5, snapshot_interval=10):
     
     # Generate initial samples from the correct distribution
     initial_lam = float(lam_fn(0.0))
@@ -524,14 +524,14 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
         # Naive HMC is only used in re-equilibration
 
         # --- CD step ---
-        L = eps*momentum_refresh_interval
+        L = delta_t*momentum_refresh_interval
         key, sub = jax.random.split(key)
         subs = jax.random.split(sub, M)
         
         # Create integrator with weight calculation if using weights
-        # cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, eps, rng_key, t: with_maruyama(make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=eps, L=L, rng_key=rng_key, t=t), in_axes=(0, 0, None, None, None, None, None, 0, None))
-        cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, eps, rng_key, t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=eps, t=t), in_axes=(0, 0, None, None, None, None, None, 0, None))
-        q_cd, p_cd, step_weights_cd = jax.jit(cd_step)(q_cd, p_cd, lam_k, lam_k1, dot_lam_k, dot_lam_k1, eps, subs, t_k)
+        # cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, rng_key, t: with_maruyama(make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t, L=L, rng_key=rng_key, t=t), in_axes=(0, 0, None, None, None, None, None, 0, None))
+        cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, rng_key, t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t, t=t), in_axes=(0, 0, None, None, None, None, None, 0, None))
+        q_cd, p_cd, step_weights_cd = jax.jit(cd_step)(q_cd, p_cd, lam_k, lam_k1, dot_lam_k, dot_lam_k1, delta_t, subs, t_k)
         if use_weights:
             
             # Update log weights using the step log weights
