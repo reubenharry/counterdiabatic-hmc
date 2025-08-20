@@ -43,14 +43,18 @@ def make_p_update(V):
     """Create momentum update function for potential V."""
     def p_update(q, p, eps):
         # Assume V returns a scalar
-        return p - eps * jax.grad(V)(q)
+        return p + eps * jax.grad(V)(q)
     return p_update
 
 def make_x_update(T):
     """Create position update function for kinetic energy T."""
     def x_update(q, p, eps):
         # Assume T returns a scalar
-        return q + eps * jax.grad(T)(p)
+        
+        return q - eps * jax.grad(T)(p)
+        # return q + eps * jax.grad(T)(p)
+        # import numpy as np
+        # return q + eps * (-jax.random.normal(jax.random.PRNGKey(np.ceil(q[0].item()).astype(int)), shape=q.shape))
     return x_update
 
 # =============================================================================
@@ -81,6 +85,8 @@ def make_leapfrog_step(T, V, T_next, V_next, lam_fn=None, dot_lam_fn=None):
         
         # Log weight change: -(H_new - H_old)
         weight = -(H_new - H_old)
+
+        return q_new,p_new,weight
         
         return q_new, p_new, weight
     return leapfrog
