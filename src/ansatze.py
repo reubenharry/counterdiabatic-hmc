@@ -5,17 +5,13 @@ import itertools
 
 def check_nans(name, value):
     """Helper function to check for NaNs and print warnings."""
-    # Convert to numpy for checking to avoid JAX tracing issues
-    if hasattr(value, 'numpy'):
-        value_np = value.numpy()
-    else:
-        value_np = value
+    # Use JAX operations to avoid tracing issues
+    has_nan = jnp.isnan(value).any()
+    count = jnp.isnan(value).sum()
     
-    if jnp.isnan(value_np).any():
-        count = jnp.isnan(value_np).sum()
-        print(f"⚠️  NaN detected in {name} (count: {count})")
-        return True
-    return False
+    # Use jax.debug.print for JAX-compatible printing
+    jax.debug.print("⚠️  NaN detected in {} (count: {})", name, count)
+    return has_nan
 
 class A_ansatz(eqx.Module):
     """Base class for gauge potential ansatz."""
@@ -196,20 +192,13 @@ class NeuralNetworkAnsatz(A_ansatz):
             layer = eqx.nn.Linear(
                 dims[i], 
                 dims[i+1], 
-                key=keys[i],
-                w_init=lambda key, shape: jax.random.normal(key, shape) * scale,
-                b_init=lambda key, shape: jax.random.normal(key, shape) * 0.01
+                key=keys[i]
             )
             self.layers.append(layer)
 
     def __call__(self, q, p):
-        # Check inputs for NaNs
-        check_nans("nn_input_q", q)
-        check_nans("nn_input_p", p)
-        
         # Concatenate q and p for input to MLP
         x = jnp.concatenate([q, p])
-        check_nans("nn_concat_input", x)
         
         for i, layer in enumerate(self.layers[:-1]):
             x = (layer)(x)
@@ -220,6 +209,5 @@ class NeuralNetworkAnsatz(A_ansatz):
         x = (final_layer)(x)
         
         result = x.squeeze()
-        check_nans("nn_final_result", result)
         
         return result 

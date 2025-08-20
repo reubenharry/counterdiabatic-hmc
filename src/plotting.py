@@ -161,6 +161,9 @@ def compute_weighted_kde(samples, weights=None, x_grid=None):
             bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
             density = np.interp(x_grid, bin_centers, hist)
     
+    # Ensure density is non-negative (fix for interpolation issues)
+    density = np.maximum(density, 0.0)
+    
     return density
 
 def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmonic", ansatz_type="polynomial"):
@@ -472,17 +475,33 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     # Plot parameter history if available (bottom row, spanning 3 columns)
     if param_history and len(param_history) > 0:
         ax_params = fig.add_subplot(gs[3, 1:])
-        param_history_array = np.array(param_history)
-        # Create time array for parameter history (every 10 steps)
-        param_times = np.arange(len(param_history_array)) * delta_t * 10
-        for i in range(param_history_array.shape[1]):
-            ax_params.plot(param_times, param_history_array[:, i], 
-                          label=f'Param {i}', alpha=0.7)
-        ax_params.set_xlabel('Time')
-        ax_params.set_ylabel('Parameter Value')
-        ax_params.set_title('Parameter History')
-        ax_params.legend()
-        ax_params.grid(True, alpha=0.3)
+        
+        # Handle different parameter history structures
+        if isinstance(param_history[0], dict):
+            # Neural network case - parameter history is a list of dictionaries
+            # For now, skip parameter plotting for neural networks
+            ax_params.text(0.5, 0.5, 'Parameter history not plotted for neural networks', 
+                          ha='center', va='center', transform=ax_params.transAxes)
+            ax_params.set_title('Parameter History (Neural Network)')
+        else:
+            # Polynomial case - parameter history is a list of arrays
+            try:
+                param_history_array = np.array(param_history)
+                # Create time array for parameter history (every 10 steps)
+                param_times = np.arange(len(param_history_array)) * delta_t * 10
+                for i in range(param_history_array.shape[1]):
+                    ax_params.plot(param_times, param_history_array[:, i], 
+                                  label=f'Param {i}', alpha=0.7)
+                ax_params.set_xlabel('Time')
+                ax_params.set_ylabel('Parameter Value')
+                ax_params.set_title('Parameter History')
+                ax_params.legend()
+                ax_params.grid(True, alpha=0.3)
+            except:
+                # If conversion fails, skip parameter plotting
+                ax_params.text(0.5, 0.5, 'Parameter history could not be plotted', 
+                              ha='center', va='center', transform=ax_params.transAxes)
+                ax_params.set_title('Parameter History')
     
     plt.tight_layout()
     plt.savefig(f"{ansatz_dir}/distributions_{potential_name}.png", dpi=300, bbox_inches='tight')
