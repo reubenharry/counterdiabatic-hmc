@@ -204,10 +204,10 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
     M = 1000
     N_steps = 10
     delta_t = 0.2
-    momentum_refresh_interval = 10.0
+    momentum_refresh_interval = 2.0
     fit_every = 1
-    num_initial_iterations = 15000
-    num_iterations = 15000
+    num_initial_iterations = 150000
+    num_iterations = 150000
     learning_rate = 1e-4
     ess_threshold = 0.5
     snapshot_interval = 1  # Take snapshots every 10 steps
@@ -316,13 +316,13 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
 if __name__ == "__main__":
     # Step 1: Run simulations and save data
 
-    ansatz_type = "polynomial"
-    system_name = "gaussian_annealing"
+    ansatz_type = "neural_network"
+    system_name = "double_well"
 
-    # print("="*60)
-    # print("STEP 1: Running simulations and saving data")
-    # print("="*60)
-    # run_simulations_and_save_data(system_name, ansatz_type)
+    print("="*60)
+    print("STEP 1: Running simulations and saving data")
+    print("="*60)
+    run_simulations_and_save_data(system_name, ansatz_type)
     
     # Step 2: Load precomputed data and generate plots
     print("\n" + "="*60)

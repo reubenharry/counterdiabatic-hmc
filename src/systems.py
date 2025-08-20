@@ -18,8 +18,8 @@ def make_V_gaussian_annealing(lam):
 
 def make_V_double_well(lam):
     """Double well potential: V(q) = (1-λ)*0.5*q^2 + λ*(q^2 - 3)^2"""
-    return lambda q: jnp.sum((1-lam)*0.5*(q**2) + lam*(((q-2)**2 - 2)**2))
-    # return lambda q: (1-lam)*jnp.sum(0.5*(q**2)) + lam*jnp.sum(((q**2-5))**2)
+    # return lambda q: jnp.sum((1-lam)*0.5*(q**2) + lam*(((q-2)**2 - 2)**2))
+    return lambda q: (1-lam)*jnp.sum(0.5*(q**2)) + lam*jnp.sum(((q**2-5))**2)
     # return lambda q: jnp.sum((1-lam)*0.5*(q**2) + lam*(((q)**2 - 3)**2))
 
 def make_V_2d_gaussian_moving_mean(lam):
