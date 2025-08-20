@@ -2,166 +2,167 @@ import jax
 import jax.numpy as jnp
 
 from src.simulation import run_simulation, run_naive_hmc_simulation
-from src.plotting import plot_results, create_ridge_plot
+from src.plotting import plot_results, create_ridge_plot, create_comparison_plots
 from src.ansatze import PolynomialAnsatz, NeuralNetworkAnsatz, AnalyticAnsatz
 from src.systems import get_system
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-def create_neural_network_ridge_plot(snapshots, delta_t, make_V, lam_fn, system_name, ansatz):
-    """Create a ridge plot specifically for neural network ansatz results."""
-    # Create figures directory
-    os.makedirs("figures", exist_ok=True)
-    ansatz_dir = f"figures/neural_network"
-    os.makedirs(ansatz_dir, exist_ok=True)
-    
-    # Get time points
-    times = np.arange(len(snapshots['cd_pre_equil'])) * delta_t * 10
-    
-    # Find global range for consistent x-axis
-    all_qs = []
-    all_qs.extend(snapshots['cd_pre_equil'])
-    if 'cd_post_equil' in snapshots:
-        all_qs.extend(snapshots['cd_post_equil'])
-    
-    x_min = np.min(np.concatenate(all_qs)) - 0.5
-    x_max = np.max(np.concatenate(all_qs)) + 0.5
-    x_grid = np.linspace(x_min, x_max, 200)
-    
-    # Create figure
-    fig, ax = plt.subplots(1, 1, figsize=(10, 8))
-    ax.set_title(f"Neural Network Ansatz - {system_name.replace('_', ' ').title()}", fontsize=16, fontweight='bold')
-    ax.set_xlabel("Position q", fontsize=12)
-    ax.set_ylabel("Time t", fontsize=12)
-    
-    # Plot CD-HMC distributions
-    for j, (t, snap, lam_val) in enumerate(zip(times, snapshots['cd_pre_equil'], snapshots['lam_pre_equil'])):
-        # Compute KDE
-        try:
-            from scipy.stats import gaussian_kde
-            kde = gaussian_kde(snap.flatten())
-            density = kde(x_grid)
-        except:
-            # Fallback to histogram
-            hist, bin_edges = np.histogram(snap, bins=50, density=True, range=(x_min, x_max))
-            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-            density = np.interp(x_grid, bin_centers, hist)
-        
-        # Ensure density is non-negative
-        density = np.maximum(density, 0.0)
-        
-        # Normalize and offset for ridge plot
-        density = density / np.max(density) * 1.8
-        offset = t * 2.0
-        
-        # Plot the ridge
-        ax.fill_between(x_grid, offset, offset + density, 
-                       color='red', alpha=0.4, edgecolor='red', linewidth=0.5)
-        
-        # Add true distribution
-        potential_fn = make_V(lam_val)
-        rho = np.array([np.exp(-potential_fn(x)) for x in x_grid])
-        rho = rho / np.max(rho) * 1.8
-        ax.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
-    
-    # Add post-equilibration snapshots if available
-    if 'cd_post_equil' in snapshots and len(snapshots['cd_post_equil']) > 0:
-        post_equil_times = np.arange(1, len(snapshots['cd_post_equil']) + 1) * delta_t * 10
-        for j, (t, snap, lam_val) in enumerate(zip(post_equil_times, snapshots['cd_post_equil'], snapshots['lam_post_equil'])):
-            # Compute KDE
-            try:
-                from scipy.stats import gaussian_kde
-                kde = gaussian_kde(snap.flatten())
-                density = kde(x_grid)
-            except:
-                # Fallback to histogram
-                hist, bin_edges = np.histogram(snap, bins=50, density=True, range=(x_min, x_max))
-                bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-                density = np.interp(x_grid, bin_centers, hist)
-            
-            # Ensure density is non-negative
-            density = np.maximum(density, 0.0)
-            
-            # Normalize and offset for ridge plot
-            density = density / np.max(density) * 1.8
-            offset = t * 2.0
-            
-            # Plot the ridge (post-equilibration in different color)
-            ax.fill_between(x_grid, offset, offset + density, 
-                           color='blue', alpha=0.4, edgecolor='blue', linewidth=0.5)
-            
-            # Add true distribution
-            potential_fn = make_V(lam_val)
-            rho = np.array([np.exp(-potential_fn(x)) for x in x_grid])
-            rho = rho / np.max(rho) * 1.8
-            ax.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
-    
-    # Set limits
-    ax.set_xlim(x_min, x_max)
-    ax.set_ylim(times[0] * 2.0 - 0.1, times[-1] * 2.0 + 2.0)
-    ax.set_yticks(times * 2.0)
-    
-    # Add legend
-    from matplotlib.patches import Patch
-    legend_elements = [
-        Patch(facecolor='red', alpha=0.4, label='CD-HMC (Pre-equilibration)'),
-        Patch(facecolor='blue', alpha=0.4, label='CD-HMC (Post-equilibration)'),
-        plt.Line2D([0], [0], color='k', linestyle='--', linewidth=1.5, label='True Distribution')
-    ]
-    ax.legend(handles=legend_elements, loc='upper right')
-    
-    plt.tight_layout()
-    plt.savefig(f"{ansatz_dir}/ridge_plot_{system_name}.png", dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    print(f"Saved neural network ridge plot to {ansatz_dir}/ridge_plot_{system_name}.png")
 
-def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name, dim):
-    """Create comparison plots for all four simulation methods."""
-    # Create figures directory
-    os.makedirs("figures", exist_ok=True)
-    ansatz_dir = f"figures/polynomial"
-    os.makedirs(ansatz_dir, exist_ok=True)
-    
-    # Create a comprehensive comparison ridge plot
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    axes = axes.flatten()
-    
-    # Get time points - find the first available snapshot key
-    first_snapshot = None
-    for snapshots in all_snapshots.values():
-        if isinstance(snapshots, dict) and any(key in snapshots for key in ['naive', 'naive_weighted', 'cd_pre_equil', 'cd_weighted']):
-            for key in ['naive', 'naive_weighted', 'cd_pre_equil', 'cd_weighted']:
-                if key in snapshots:
-                    first_snapshot = snapshots[key]
-                    break
-            if first_snapshot:
-                break
-    
-    if not first_snapshot:
-        print("No valid snapshots found for plotting")
+def save_simulation_data_to_file(snapshots, simulation_name, system_name, save_final_samples=True, simulation_params=None):
+    """Save complete simulation data including all snapshots and auxiliary data."""
+    if not save_final_samples:
         return
         
-    times = np.arange(len(first_snapshot)) * delta_t * 10
+    # Create data directory if it doesn't exist
+    os.makedirs("data", exist_ok=True)
     
-    # Find global range for consistent x-axis
-    all_qs = []
-    for method, snapshots in all_snapshots.items():
-        if method == 'naive_unweighted':
-            all_qs.extend(snapshots['naive'])
-        elif method == 'naive_weighted':
-            all_qs.extend(snapshots['naive_weighted'])
-        elif method == 'cd_unweighted':
-            all_qs.extend(snapshots['cd_pre_equil'])  # Fixed: use cd_pre_equil instead of cd_post_equil
-        elif method == 'cd_weighted':
-            all_qs.extend(snapshots['cd_weighted'])
-    x_min = np.min(np.concatenate(all_qs)) - 0.5
-    x_max = np.max(np.concatenate(all_qs)) + 0.5
-    x_grid = np.linspace(x_min, x_max, 200)
+    # Add simulation parameters to the snapshots if provided
+    if simulation_params is not None:
+        snapshots['simulation_params'] = simulation_params
     
-    # Plot each method
-    colors = {'naive_unweighted': 'blue', 'naive_weighted': 'green', 'cd_unweighted': 'red', 'cd_weighted': 'orange'}
+    # Save the complete snapshots dictionary as a pickle file
+    filename = f"data/{simulation_name}_snapshots_{system_name}.pkl"
+    
+    import pickle
+    with open(filename, 'wb') as f:
+        pickle.dump(snapshots, f)
+    
+    print(f"Saved complete simulation data to {filename}")
+    
+    # Also save just the final samples as before (for backward compatibility)
+    if simulation_name == 'naive_unweighted':
+        if 'naive' in snapshots and len(snapshots['naive']) > 0:
+            final_samples = snapshots['naive'][-1]
+            final_filename = f"data/naive_unweighted_samples_{system_name}.npy"
+            np.save(final_filename, final_samples)
+    elif simulation_name == 'naive_weighted':
+        if 'naive_weighted' in snapshots and len(snapshots['naive_weighted']) > 0:
+            final_samples = snapshots['naive_weighted'][-1]
+            final_filename = f"data/naive_weighted_samples_{system_name}.npy"
+            np.save(final_filename, final_samples)
+    elif simulation_name in ['cd_unweighted', 'cd_weighted']:
+        if 'cd' in snapshots and len(snapshots['cd']) > 0:
+            final_samples = snapshots['cd'][-1]
+            final_filename = f"data/{simulation_name}_samples_{system_name}.npy"
+            np.save(final_filename, final_samples)
+
+
+
+def load_and_plot_precomputed_data(system_name, ansatz_type="neural_network"):
+    """Load precomputed data and generate standard plots including ridge plots and <A²> analysis.
+    
+    Args:
+        system_name: Name of the system (e.g., "double_well", "gaussian_moving_mean")
+        ansatz_type: Type of ansatz used ("neural_network", "polynomial", "analytic")
+    """
+    print(f"Loading precomputed data for {system_name} with {ansatz_type} ansatz...")
+    
+    # Get system functions
+    make_T, make_V, system_description, dim = get_system(system_name)
+    
+    # Define lambda functions (same as in main)
+    v = 0.5
+    max_lam = 1.0
+    lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
+    # dot_lam_fn = jax.grad(lam_fn)
+    
+    # Parameters will be loaded from saved data
+    # (These are just placeholders, actual values come from simulation_params in saved files)
+    delta_t = None
+    eps = None
+    momentum_refresh_interval = None
+    fit_every = None
+    num_initial_iterations = None
+    num_iterations = None
+    learning_rate = None
+    re_equil_steps = None
+    ess_threshold = None
+    
+    # Create ansatz (needed for plotting)
+    if ansatz_type == "neural_network":
+        ansatz = NeuralNetworkAnsatz(dims=[2,32,32,1], dim=dim, key=jax.random.PRNGKey(0))
+    elif ansatz_type == "polynomial":
+        ansatz = PolynomialAnsatz(max_degree=2, dim=dim)
+    elif ansatz_type == "analytic":
+        ansatz = AnalyticAnsatz()
+    else:
+        raise ValueError(f"Unknown ansatz type: {ansatz_type}")
+    
+    # Load saved complete snapshots
+    successful_simulations = {}
+    # loss_histories = {}
+    # param_histories = {}
+    
+    # Try to load each simulation type
+    simulation_types = ['naive_unweighted', 'naive_weighted', 'cd_unweighted', 'cd_weighted']
+    
+    import pickle
+    
+    for sim_type in simulation_types:
+        filename = f"data/{sim_type}_snapshots_{system_name}.pkl"
+        try:
+            with open(filename, 'rb') as f:
+                snapshots = pickle.load(f)
+            print(f"✓ Loaded {sim_type}: complete snapshots")
+            successful_simulations[sim_type] = snapshots
+            
+        except FileNotFoundError:
+            print(f"✗ {sim_type}: File not found ({filename})")
+        except Exception as e:
+            print(f"✗ {sim_type}: Error loading {e}")
+    
+    if len(successful_simulations) == 0:
+        print("No precomputed data found!")
+        return
+    
+    print(f"\nFound {len(successful_simulations)} simulation types. Generating full plots...")
+    
+    # Generate plots using the same logic as main()
+    if len(successful_simulations) > 1:
+        # Create comparison ridge plot with all simulation types
+        print("Creating comparison ridge plot with all simulation types...")
+        create_comparison_plots(system_name, make_V, lam_fn, dim, ansatz_type)
+    else:
+        # Fallback to single simulation ridge plot
+        print("Creating single simulation ridge plot...")
+        sim_type = list(successful_simulations.keys())[0]
+        snapshots = successful_simulations[sim_type]
+        create_ridge_plot(snapshots, delta_t, make_V, lam_fn, system_name, ansatz_type)
+    
+    # Create detailed distribution plots for CD simulations (includes <A²> plots)
+    for sim_type in ['cd_unweighted', 'cd_weighted']:
+        if sim_type in successful_simulations:
+            print(f"Creating detailed distribution plot for {sim_type}...")
+            snapshots = successful_simulations[sim_type]
+            
+            # Get corresponding naive snapshots for comparison
+            naive_snapshots = None
+            if sim_type == 'cd_unweighted' and 'naive_unweighted' in successful_simulations:
+                naive_snapshots = successful_simulations['naive_unweighted']
+            elif sim_type == 'cd_weighted' and 'naive_weighted' in successful_simulations:
+                naive_snapshots = successful_simulations['naive_weighted']
+            
+            # Load simulation parameters from saved data
+            if 'simulation_params' in snapshots:
+                saved_delta_t = snapshots['simulation_params'].get('delta_t', 0.02)
+            else:
+                saved_delta_t = 0.02  # fallback
+            
+            # Use empty lists for loss and param history since we don't save those yet
+            # Create a modified potential name to avoid overwriting
+            modified_potential_name = f"{system_name}_{sim_type}"
+            plot_results(snapshots, [], saved_delta_t, make_V, lam_fn, 
+                        param_history=None, ansatz=ansatz, potential_name=modified_potential_name, 
+                        dim=dim, plot_ansatz=False, make_T=make_T, naive_snapshots=naive_snapshots, sim_type=sim_type)
+    
+    # Create summary statistics table
+    print("\nFinal Distribution Statistics:")
+    print("-" * 80)
+    print(f"{'Method':<25} {'Mean':<10} {'Std':<10} {'Min':<10} {'Max':<10}")
+    print("-" * 80)
+    
     titles = {
         'naive_unweighted': 'Naive HMC (Unweighted)',
         'naive_weighted': 'Naive HMC (Weighted SMC)',
@@ -169,102 +170,35 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name,
         'cd_weighted': 'Counterdiabatic HMC (Weighted)'
     }
     
-    # Filter out non-snapshot keys (like loss_histories and param_history)
-    snapshot_methods = {k: v for k, v in all_snapshots.items() if k in titles}
+    for sim_type, snapshots in successful_simulations.items():
+        # Get final samples
+        if sim_type.startswith('naive'):
+            if 'naive' in snapshots and len(snapshots['naive']) > 0:
+                final_samples = snapshots['naive'][-1]
+            elif 'naive_weighted' in snapshots and len(snapshots['naive_weighted']) > 0:
+                final_samples = snapshots['naive_weighted'][-1]
+            else:
+                continue
+        else:  # cd simulations
+            if sim_type == 'cd_unweighted' and 'cd_unweighted' in snapshots and len(snapshots['cd_unweighted']) > 0:
+                final_samples = snapshots['cd_unweighted'][-1]
+            elif sim_type == 'cd_weighted' and 'cd_weighted' in snapshots and len(snapshots['cd_weighted']) > 0:
+                final_samples = snapshots['cd_weighted'][-1]
+            else:
+                continue
+        
+        mean_val = np.mean(final_samples)
+        std_val = np.std(final_samples)
+        min_val = np.min(final_samples)
+        max_val = np.max(final_samples)
+        print(f"{titles[sim_type]:<25} {mean_val:<10.3f} {std_val:<10.3f} {min_val:<10.3f} {max_val:<10.3f}")
     
-    for i, (method, snapshots) in enumerate(snapshot_methods.items()):
-        ax = axes[i]
-        ax.set_title(titles[method], fontsize=14, fontweight='bold')
-        ax.set_xlabel("Position q", fontsize=12)
-        ax.set_ylabel("Time t", fontsize=12)
-        
-        # Choose the correct snapshot key for each method
-        if method == 'naive_unweighted':
-            snapshot_key = 'naive'
-            weights_key = None
-        elif method == 'naive_weighted':
-            snapshot_key = 'naive_weighted'
-            weights_key = 'weights_naive'
-        elif method == 'cd_unweighted':
-            snapshot_key = 'cd_pre_equil'
-            weights_key = None
-        elif method == 'cd_weighted':
-            snapshot_key = 'cd_weighted'
-            weights_key = 'weights_cd'
-        else:
-            snapshot_key = 'naive'  # fallback
-            weights_key = None
-        
-        # Choose the correct lambda values for each method
-        if method in ['cd_unweighted', 'cd_weighted']:
-            lam_key = 'lam_pre_equil'
-        else:
-            lam_key = 'lam_pre_equil'
-        
-        # Plot distributions
-        for j, (t, snap, lam_val) in enumerate(zip(times, snapshots[snapshot_key], snapshots[lam_key])):
-            # Get weights if available
-            weights = None
-            if weights_key and snapshots[weights_key][j] is not None:
-                log_weights = snapshots[weights_key][j]
-                # Check if all log weights are zero (unit weights)
-                if np.allclose(log_weights, 0.0):
-                    weights = None  # Use unweighted histogram
-                else:
-                    weights = np.exp(log_weights - np.max(log_weights))
-                    weights = weights / np.sum(weights)
-            
-            # Compute KDE
-            try:
-                from scipy.stats import gaussian_kde
-                if weights is not None:
-                    # Use weighted KDE
-                    kde = gaussian_kde(snap.flatten(), weights=weights)
-                else:
-                    kde = gaussian_kde(snap.flatten())
-                density = kde(x_grid)
-            except:
-                # Fallback to histogram
-                if weights is not None:
-                    hist, bin_edges = np.histogram(snap, bins=50, density=True, range=(x_min, x_max), weights=weights)
-                else:
-                    hist, bin_edges = np.histogram(snap, bins=50, density=True, range=(x_min, x_max))
-                bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-                density = np.interp(x_grid, bin_centers, hist)
-            
-            # Ensure density is non-negative (fix for interpolation issues)
-            density = np.maximum(density, 0.0)
-            
-            # Normalize and offset for ridge plot
-            density = density / np.max(density) * 1.8
-            offset = t * 2.0  # Increased spacing between plots to reduce overlap
-            
-            # Plot the ridge
-            ax.fill_between(x_grid, offset, offset + density, 
-                           color=colors[method], alpha=0.4, edgecolor=colors[method], linewidth=0.5)
-            
-            # Add true distribution
-            potential_fn = make_V(lam_val)
-            rho = np.array([np.exp(-potential_fn(x)) for x in x_grid])
-            rho = rho / np.max(rho) * 1.8
-            ax.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
-        
-        # Set limits
-        ax.set_xlim(x_min, x_max)
-        ax.set_ylim(times[0] * 2.0 - 0.1, times[-1] * 2.0 + 2.0)  # Adjusted for increased spacing
-        ax.set_yticks(times * 2.0)
-    
-    plt.tight_layout()
-    plt.savefig(f"{ansatz_dir}/comparison_ridge_plot_{system_name}.png", dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    print(f"Saved comparison ridge plot to {ansatz_dir}/comparison_ridge_plot_{system_name}.png")
+    print("Plot generation completed!")
 
-def main():
-    # Set up the system
-    # system_name = "gaussian_moving_mean"
-    # system_name = "gaussian_annealing"
-    system_name = "double_well"
+def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural_network"):
+    """Run all simulations and save data to files. Returns nothing - just saves data."""
+    
+    # Get system functions
     make_T, make_V, system_description, dim = get_system(system_name)
     
     # Define lambda functions
@@ -278,58 +212,75 @@ def main():
     N_steps = 10
     delta_t = 0.2
     eps = 0.2
-    momentum_refresh_interval =  1.0
+    momentum_refresh_interval = 2.0
     fit_every = 1
-    num_initial_iterations = 100000
-    num_iterations = 100000
+    num_initial_iterations = 150000
+    num_iterations = 150000
     learning_rate = 1e-4
-    re_equil_steps = 0
     ess_threshold = 0.5
+    snapshot_interval = 1  # Take snapshots every 10 steps
     
-    # Create ansatz
-    # ansatz = PolynomialAnsatz(max_degree=6, dim=dim)
-    ansatz = NeuralNetworkAnsatz(dims=[2,32,32,1], dim=dim, key=jax.random.PRNGKey(0))
+    # Save final particle populations
+    save_final_samples = True
     
-    # Storage for all simulation results
-    successful_simulations = {}
-
-    naive = False
-    if naive:
+    # Create ansatz based on type
+    if ansatz_type == "neural_network":
+        ansatz = NeuralNetworkAnsatz(dims=[2,32,32,1], dim=dim, key=jax.random.PRNGKey(0))
+    elif ansatz_type == "polynomial":
+        ansatz = PolynomialAnsatz(max_degree=2, dim=dim)
+    elif ansatz_type == "analytic":
+        ansatz = AnalyticAnsatz()
+    else:
+        raise ValueError(f"Unknown ansatz type: {ansatz_type}")
     
-        # 1. Naive HMC (Unweighted)
-        print("\n" + "="*50)
-        print("Running Naive HMC (Unweighted)")
-        print("="*50)
-        try:
-            key = jax.random.PRNGKey(0)
-            snapshots_naive_unweighted = run_naive_hmc_simulation(
-                M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
-                momentum_refresh_interval=momentum_refresh_interval,
-                make_T=make_T, make_V=make_V, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
-                key=key, dim=dim, use_weights=False
-            )
-            successful_simulations['naive_unweighted'] = snapshots_naive_unweighted
-            print("✓ Naive HMC (Unweighted) completed successfully")
-        except Exception as e:
-            print(f"✗ Naive HMC (Unweighted) failed: {e}")
-        
-        # 2. Naive HMC (Weighted SMC)
-        print("\n" + "="*50)
-        print("Running Naive HMC (Weighted SMC)")
-        print("="*50)
+    print(f"\nRunning simulations for {system_name} with {ansatz_type} ansatz...")
+    
+    # 1. Naive HMC (Unweighted)
+    print("\n" + "="*50)
+    print("Running Naive HMC (Unweighted)")
+    print("="*50)
+    try:
+        key = jax.random.PRNGKey(0)
+        snapshots_naive_unweighted = run_naive_hmc_simulation(
+            M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
+            momentum_refresh_interval=momentum_refresh_interval,
+            make_T=make_T, make_V=make_V, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
+            key=key, dim=dim, use_weights=False, snapshot_interval=snapshot_interval
+        )
+        # Save simulation parameters
+        simulation_params = {
+            'delta_t': delta_t,
+            'eps': eps,
+            'momentum_refresh_interval': momentum_refresh_interval,
+            'M': M,
+            'N_steps': N_steps,
+            'snapshot_interval': snapshot_interval
+        }
+        save_simulation_data_to_file(snapshots_naive_unweighted, 'naive_unweighted', system_name, save_final_samples, simulation_params)
+        print("✓ Naive HMC (Unweighted) completed successfully")
+    except Exception as e:
+        print(f"✗ Naive HMC (Unweighted) failed: {e}")
+    
+    # 2. Naive HMC (Weighted SMC)
+    print("\n" + "="*50)
+    print("Running Naive HMC (Weighted SMC)")
+    print("="*50)
+    try:
         key = jax.random.PRNGKey(0)
         snapshots_naive_weighted = run_naive_hmc_simulation(
             M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
             momentum_refresh_interval=momentum_refresh_interval,
             make_T=make_T, make_V=make_V, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
-            key=key, dim=dim, use_weights=True, ess_threshold=ess_threshold
+            key=key, dim=dim, use_weights=True, ess_threshold=ess_threshold, snapshot_interval=snapshot_interval
         )
-        successful_simulations['naive_weighted'] = snapshots_naive_weighted
+        save_simulation_data_to_file(snapshots_naive_weighted, 'naive_weighted', system_name, save_final_samples, simulation_params)
         print("✓ Naive HMC (Weighted SMC) completed successfully")
-        
-    counterdiabatic = True
-    if counterdiabatic:
-    # 3. Counterdiabatic HMC (Unweighted)
+    except Exception as e:
+        print(f"✗ Naive HMC (Weighted SMC) failed: {e}")
+
+    if False:
+    
+        # 3. Counterdiabatic HMC (Unweighted)
         print("\n" + "="*50)
         print("Running Counterdiabatic HMC (Unweighted)")
         print("="*50)
@@ -342,72 +293,49 @@ def main():
                 num_iterations=num_iterations, make_T=make_T, make_V=make_V,
                 A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
                 key=key, dim=dim, learning_rate=learning_rate,
-                re_equil_steps=re_equil_steps, use_weights=False
+                use_weights=False, snapshot_interval=snapshot_interval
             )
-            successful_simulations['cd_unweighted'] = snapshots_cd_unweighted
-            successful_simulations['loss_histories_cd_unweighted'] = loss_histories_cd_unweighted
-            successful_simulations['param_history_cd_unweighted'] = param_history_cd_unweighted
+            save_simulation_data_to_file(snapshots_cd_unweighted, 'cd_unweighted', system_name, save_final_samples, simulation_params)
             print("✓ Counterdiabatic HMC (Unweighted) completed successfully")
         except Exception as e:
             print(f"✗ Counterdiabatic HMC (Unweighted) failed: {e}")
         
-        # # 4. Counterdiabatic HMC (Weighted) - Using same seed as unweighted
-        # print("\n" + "="*50)
-        # print("Running Counterdiabatic HMC (Weighted) - Same seed as unweighted")
-        # print("="*50)
-        # try:
-        #     key = jax.random.PRNGKey(0)  # Same seed as unweighted
-        #     _, snapshots_cd_weighted, loss_histories_cd_weighted, param_history_cd_weighted = run_simulation(
-        #         M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
-        #         momentum_refresh_interval=momentum_refresh_interval,
-        #         fit_every=fit_every, num_initial_iterations=num_initial_iterations,
-        #         num_iterations=num_iterations, make_T=make_T, make_V=make_V,
-        #         A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
-        #         key=key, dim=dim, learning_rate=learning_rate,
-        #         re_equil_steps=re_equil_steps, use_weights=True, ess_threshold=ess_threshold
-        #     )
-        #     successful_simulations['cd_weighted'] = snapshots_cd_weighted
-        #     successful_simulations['loss_histories_cd_weighted'] = loss_histories_cd_weighted
-        #     successful_simulations['param_history_cd_weighted'] = param_history_cd_weighted
-        #     print("✓ Counterdiabatic HMC (Weighted) completed successfully")
-        # except Exception as e:
-        #     print(f"✗ Counterdiabatic HMC (Weighted) failed: {e}")
+        # 4. Counterdiabatic HMC (Weighted) - Using same seed as unweighted
+        print("\n" + "="*50)
+        print("Running Counterdiabatic HMC (Weighted) - Same seed as unweighted")
+        print("="*50)
+        try:
+            key = jax.random.PRNGKey(0)  # Same seed as unweighted
+            _, snapshots_cd_weighted, loss_histories_cd_weighted, param_history_cd_weighted = run_simulation(
+                M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
+                momentum_refresh_interval=momentum_refresh_interval,
+                fit_every=fit_every, num_initial_iterations=num_initial_iterations,
+                num_iterations=num_iterations, make_T=make_T, make_V=make_V,
+                A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
+                key=key, dim=dim, learning_rate=learning_rate,
+                use_weights=True, ess_threshold=ess_threshold, snapshot_interval=snapshot_interval
+            )
+            save_simulation_data_to_file(snapshots_cd_weighted, 'cd_weighted', system_name, save_final_samples, simulation_params)
+            print("✓ Counterdiabatic HMC (Weighted) completed successfully")
+        except Exception as e:
+            print(f"✗ Counterdiabatic HMC (Weighted) failed: {e}")
     
-    # Create plots
-    if len(successful_simulations) > 0:
-        print(f"\nCreating plots for {len(successful_simulations)} successful simulations...")
-        
-        # Create comparison plots if multiple simulation types are available
-        if len(successful_simulations) > 1:
-            create_comparison_plots(successful_simulations, delta_t, make_V, lam_fn, system_name, dim)
-        
-        # Create ridge plots for neural network ansatz
-        if 'cd_unweighted' in successful_simulations:
-            print("Creating ridge plot for neural network ansatz...")
-            # Create a simple ridge plot for the neural network ansatz
-            create_neural_network_ridge_plot(successful_simulations['cd_unweighted'], delta_t, make_V, lam_fn, system_name, ansatz)
-            
-            print("Creating detailed distribution plot...")
-            loss_histories = successful_simulations.get('loss_histories_cd_unweighted', [])
-            param_history = successful_simulations.get('param_history_cd_unweighted', None)
-            naive_snapshots = successful_simulations.get('naive_unweighted', None)
-            plot_results(successful_simulations['cd_unweighted'], loss_histories, delta_t, make_V, lam_fn, 
-                        param_history=param_history, ansatz=ansatz, potential_name=system_name, dim=dim, plot_ansatz=False, make_T=make_T, naive_snapshots=naive_snapshots)
-        elif 'cd_weighted' in successful_simulations:
-            print("Creating ridge plot for neural network ansatz...")
-            # Create a simple ridge plot for the neural network ansatz
-            create_neural_network_ridge_plot(successful_simulations['cd_weighted'], delta_t, make_V, lam_fn, system_name, ansatz)
-            
-            print("Creating detailed distribution plot...")
-            loss_histories = successful_simulations.get('loss_histories_cd_weighted', [])
-            param_history = successful_simulations.get('param_history_cd_weighted', None)
-            naive_snapshots = successful_simulations.get('naive_weighted', None)
-            plot_results(successful_simulations['cd_weighted'], loss_histories, delta_t, make_V, lam_fn, 
-                        param_history=param_history, ansatz=ansatz, potential_name=system_name, dim=dim, plot_ansatz=False, make_T=make_T, naive_snapshots=naive_snapshots)
-        
-
-    else:
-        print("No successful simulations to plot.")
+    print(f"\nAll simulations completed for {system_name} with {ansatz_type} ansatz!")
+    print("Data saved to data/ folder. Use load_and_plot_precomputed_data() to generate plots.")
 
 if __name__ == "__main__":
-    main() 
+    # Step 1: Run simulations and save data
+    # print("="*60)
+    print("STEP 1: Running simulations and saving data")
+    print("="*60)
+    run_simulations_and_save_data("double_well", "neural_network")
+    
+    # Step 2: Load precomputed data and generate plots
+    print("\n" + "="*60)
+    print("STEP 2: Loading data and generating plots")
+    print("="*60)
+    load_and_plot_precomputed_data("double_well", "neural_network")
+    
+    print("\n" + "="*60)
+    print("All done! Check the figures/ folder for generated plots.")
+    print("="*60) 

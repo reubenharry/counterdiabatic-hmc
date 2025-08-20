@@ -84,8 +84,8 @@ def debug_ridge_plot_differences():
         print(f"Max difference: {np.max(np.abs(poly_all - nn_all))}")
     
     # Check lambda values
-    poly_lam = snapshots_poly['lam_pre_equil']
-    nn_lam = snapshots_nn['lam_pre_equil']
+    poly_lam = snapshots_poly['lam']
+    nn_lam = snapshots_nn['lam']
     print(f"Polynomial lambda values: {poly_lam[:5]}")
     print(f"Neural network lambda values: {nn_lam[:5]}")
     

@@ -74,15 +74,20 @@ def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None):
     avg_dH_dlam = jnp.mean(dH_dlam_vals)
     avg_dH_dlam_sq = jnp.mean(dH_dlam_vals ** 2)
     
-    # Compute {A,H} if A_ansatz is provided
+    # Compute {A,H} and A² if A_ansatz is provided
     avg_A_H = 0.0
     avg_A_H_sq = 0.0
+    avg_A_sq = 0.0
     if A_ansatz is not None:
         from .physics import poisson_bracket_fn
         H_fixed = lambda q, p: T(p) + V(q)
         A_H_vals = jax.vmap(lambda qr, pr: poisson_bracket_fn(A_ansatz, H_fixed)(qr, pr))(q, p)
         avg_A_H = float(jnp.mean(A_H_vals))
         avg_A_H_sq = float(jnp.mean(A_H_vals ** 2))
+        
+        # Compute A² (ansatz squared)
+        A_vals = jax.vmap(lambda qr, pr: A_ansatz(qr, pr))(q, p)
+        avg_A_sq = float(jnp.mean(A_vals ** 2))
     
     return {
         'avg_H': float(avg_H),
@@ -91,6 +96,7 @@ def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None):
         'avg_dH_dlam_sq': float(avg_dH_dlam_sq),
         'avg_A_H': avg_A_H,
         'avg_A_H_sq': avg_A_H_sq,
+        'avg_A_sq': avg_A_sq,
         'H_vals': H_vals  # Store individual H values
     }
 
@@ -128,32 +134,34 @@ def compute_naive_weights(q, p, lam_k, lam_k1, make_T, make_V):
 
 def record_snapshots(snapshots, k, q_cd, lam_k, use_weights, log_weights_cd, 
                     resampling_count_cd, param_history, A_ansatz):
-    """Record snapshots and parameters every 10 steps."""
-    if k % 10 == 0:
-        # Store weighted samples for CD-HMC
+    """Record snapshots and parameters."""
+    # Store CD samples under the appropriate key
+    if use_weights:
         snapshots['cd_weighted'].append(np.array(q_cd))
+    else:
+        snapshots['cd_unweighted'].append(np.array(q_cd))
+    snapshots['lam'].append(lam_k)
+    
+    if use_weights:
         snapshots['weights_cd'].append(np.array(log_weights_cd))
         snapshots['resampling_events_cd'].append(resampling_count_cd)
-        
-        snapshots['cd_pre_equil'].append(np.array(q_cd)) # Store pre-equilibration state
-        snapshots['lam_pre_equil'].append(lam_k) # Store lambda at pre-equilibration
-        
-        # Record parameters
-        if isinstance(A_ansatz, PolynomialAnsatz):
-            param_history.append(np.array(A_ansatz.params))
-            # Check parameters for NaNs
-            check_nans("polynomial_params", A_ansatz.params, k)
-        elif isinstance(A_ansatz, NeuralNetworkAnsatz):
-            # Store just the parameters as a tuple of arrays
-            params = []
-            for layer in A_ansatz.layers:
-                if isinstance(layer, eqx.nn.Linear):
-                    params.append(np.array(layer.weight))
-                    params.append(np.array(layer.bias))
-            param_history.append(tuple(params))
-        elif isinstance(A_ansatz, AnalyticAnsatz):
-            param_history.append(np.array(A_ansatz.params))
-            check_nans("analytic_params", A_ansatz.params, k)
+    
+    # Record parameters
+    if isinstance(A_ansatz, PolynomialAnsatz):
+        param_history.append(np.array(A_ansatz.params))
+        # Check parameters for NaNs
+        check_nans("polynomial_params", A_ansatz.params, k)
+    elif isinstance(A_ansatz, NeuralNetworkAnsatz):
+        # Store just the parameters as a tuple of arrays
+        params = []
+        for layer in A_ansatz.layers:
+            if isinstance(layer, eqx.nn.Linear):
+                params.append(np.array(layer.weight))
+                params.append(np.array(layer.bias))
+        param_history.append(tuple(params))
+    elif isinstance(A_ansatz, AnalyticAnsatz):
+        param_history.append(np.array(A_ansatz.params))
+        check_nans("analytic_params", A_ansatz.params, k)
 
 # =============================================================================
 # 6) SImuLATION: NAÏVE HMC VS CD WITH ONLINE FITTING
@@ -194,7 +202,7 @@ def generate_initial_samples(M, make_T, make_V, lam, key, dim, variance=None):
     
     return q, p
 
-def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, make_V, lam_fn, dot_lam_fn, key, dim, use_weights=False, ess_threshold=0.5):
+def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, make_V, lam_fn, dot_lam_fn, key, dim, use_weights=False, ess_threshold=0.5, snapshot_interval=10):
     """Run naive HMC simulation without fitting the ansatz (for efficiency)."""
     
     # Generate initial samples from the correct distribution
@@ -214,7 +222,11 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval
     else:
         print("Using Sequential Monte Carlo with unit weights (no resampling)")
 
-    snapshots = {'naive': [], 'naive_weighted': [], 'lam_pre_equil': [], 'weights_naive': [], 'resampling_events_naive': []}
+    # Initialize snapshots with the appropriate key based on whether we're using weights
+    if use_weights:
+        snapshots = {'naive_weighted': [], 'lam': [], 'weights_naive': [], 'resampling_events_naive': []}
+    else:
+        snapshots = {'naive': [], 'lam': [], 'weights_naive': [], 'resampling_events_naive': []}
     resampling_count = 0  # Track number of resampling events
 
     # Store previous energy values for computing changes
@@ -265,13 +277,16 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval
         # Update previous energy values for next iteration
         prev_naive_H_vals = naive_stats['H_vals']
 
-        # Record snapshots every 10 steps
-        if k % 10 == 0:
-            snapshots['naive'].append(np.array(q_naive))
-            snapshots['naive_weighted'].append(np.array(q_naive))
+        # Record snapshots every snapshot_interval steps
+        if k % snapshot_interval == 0:
+            # Store under the appropriate key based on whether we're using weights
+            if use_weights:
+                snapshots['naive_weighted'].append(np.array(q_naive))
+            else:
+                snapshots['naive'].append(np.array(q_naive))
             snapshots['weights_naive'].append(np.array(log_weights))
             snapshots['resampling_events_naive'].append(resampling_count)
-            snapshots['lam_pre_equil'].append(lam_k)
+            snapshots['lam'].append(lam_k)
 
         if k == N_steps:
             break
@@ -332,6 +347,18 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval
             # Keep weights at 1 (log_weights = 0) when not using weights
             log_weights = jnp.zeros(M)
 
+    # Ensure the final state is captured (consistent with CD simulation)
+    # Check the appropriate key based on whether we're using weights
+    snapshot_key = 'naive_weighted' if use_weights else 'naive'
+    if len(snapshots[snapshot_key]) == 0 or (k % snapshot_interval != 0):
+        if use_weights:
+            snapshots['naive_weighted'].append(np.array(q_naive))
+        else:
+            snapshots['naive'].append(np.array(q_naive))
+        snapshots['weights_naive'].append(np.array(log_weights))
+        snapshots['resampling_events_naive'].append(resampling_count)
+        snapshots['lam'].append(lam_k)
+
     # Add the detailed energy statistics to snapshots
     snapshots['detailed_energy_stats'] = all_energy_stats
     snapshots['detailed_times'] = all_times
@@ -342,7 +369,7 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval
     
     return snapshots
 
-def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_every, num_initial_iterations, num_iterations, make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, key, dim, learning_rate=1e-4, re_equil_steps=0, use_weights=False, ess_threshold=0.5):
+def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_every, num_initial_iterations, num_iterations, make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, key, dim, learning_rate=1e-4, use_weights=False, ess_threshold=0.5, snapshot_interval=10):
     
     # Generate initial samples from the correct distribution
     initial_lam = float(lam_fn(0.0))
@@ -363,7 +390,11 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
         print("Using Sequential Monte Carlo with unit weights (no resampling)")
 
     loss_histories = []
-    snapshots = {'cd_pre_equil': [], 'cd_post_equil': [], 'cd_weighted': [], 'lam_pre_equil': [], 'lam_post_equil': [], 'energy_stats': [], 'weights_cd': [], 'resampling_events_cd': []}
+    # Initialize snapshots with the appropriate key based on whether we're using weights
+    if use_weights:
+        snapshots = {'cd_weighted': [], 'lam': [], 'energy_stats': [], 'weights_cd': [], 'resampling_events_cd': []}
+    else:
+        snapshots = {'cd_unweighted': [], 'lam': [], 'energy_stats': [], 'weights_cd': [], 'resampling_events_cd': []}
     param_history = []  # Track parameter history
     first_fit = True
     resampling_count_cd = 0     # Track number of resampling events for CD
@@ -461,9 +492,10 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
         # Update previous energy values for next iteration
         prev_cd_H_vals = cd_stats['H_vals']
 
-        # Record snapshots and parameters every 10 steps
-        record_snapshots(snapshots, k, q_cd, lam_k, use_weights, log_weights_cd, 
-                        resampling_count_cd, param_history, A_ansatz)
+        # Record snapshots and parameters every snapshot_interval steps
+        if k % snapshot_interval == 0:
+            record_snapshots(snapshots, k, q_cd, lam_k, use_weights, log_weights_cd, 
+                            resampling_count_cd, param_history, A_ansatz)
 
         # Note: Momentum randomization removed - only CD-HMC is performed here
 
@@ -555,77 +587,18 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
         #     print(f"⚠️  Error in CD step at step {k}: {e}")
         #     break
 
-        # --- Re-equilibration steps after CD step ---
-        if re_equil_steps > 0:
-            # Store pre-equilibration state
-
-            naive_step = jax.vmap(lambda q, p, lam, lam_next, eps, L, rng_key: with_maruyama(make_leapfrog_step(make_T(lam), make_V(lam)))(q,p,eps,L=L, rng_key=rng_key), in_axes=(0, 0, None, None, None, None, 0))
-
-            q_cd_pre_equil = q_cd.copy()
-            p_cd_pre_equil = p_cd.copy()
-            
-            # Perform re-equilibration using naive HMC steps at the CURRENT lambda value
-            # T_current = make_T(lam_k1)  # Use the next lambda value
-            # V_current = make_V(lam_k1)
-            # equil_step = with_maruyama(make_leapfrog_step(T_current, V_current))
-            
-            for equil_idx in range(re_equil_steps):
-                key, sub = jax.random.split(key)
-                subs = jax.random.split(sub, M)
-                equil_eps = 0.05
-                equil_L = 4.0 # eps*momentum_refresh_interval
-                # q_cd_pre_equil, p_cd_pre_equil = generate_initial_samples(M, make_T, make_V, lam_k1, sub, dim, num_steps=1000, eps=0.1, L=4.0)
-                q_cd_pre_equil, p_cd_pre_equil = jax.jit(naive_step)(q_cd_pre_equil, p_cd_pre_equil, lam_k1, None, equil_eps, equil_L, subs)
-                # q_cd_pre_equil, p_cd_pre_equil = jax.vmap(lambda q, p: equil_step(q, p, eps/10, L=eps*momentum_refresh_interval, rng_key=sub))(q_cd_pre_equil, p_cd_pre_equil)
-
-                # q_cd_pre_equil = q_cd_pre_equil
-                # p_cd_pre_equil = p_cd_pre_equil
-
-                
-                # Check for NaNs during re-equilibration
-                if check_nans("re_equil_q", q_cd_pre_equil, f"{k}_{equil_idx}"):
-                    print(f"  Stopping re-equilibration due to NaNs at step {k}, equil {equil_idx}")
-                    break
-                if check_nans("re_equil_p", p_cd_pre_equil, f"{k}_{equil_idx}"):
-                    print(f"  Stopping re-equilibration due to NaNs at step {k}, equil {equil_idx}")
-                    break
-                
-                # Randomize momenta periodically during re-equilibration
-                # if equil_idx % 10 == 0 and equil_idx > 0:
-                #     key, sub = jax.random.split(key)
-                #     p_cd_pre_equil = jax.random.normal(sub, (M, dim))
-            
-            
-            
-            # Store post-equilibration state at the current snapshot time
-            # This represents the state after CD step + re-equilibration at the current lambda
-            if k % 10 == 0:  # Store at the current snapshot time
-                snapshots['cd_post_equil'].append(np.array(q_cd_pre_equil))
-                snapshots['lam_post_equil'].append(lam_k1) # Store lambda at post-equilibration (use lam_k1 since re-equilibration happens at next lambda)
-
-            q_cd = q_cd_pre_equil.copy()
-            p_cd = p_cd_pre_equil.copy()
-        else:
-            # When re_equil_steps = 0, store the CD state directly as post-equilibration
-            if k % 10 == 0:  # Store at the current snapshot time
-                snapshots['cd_post_equil'].append(np.array(q_cd))
-                snapshots['lam_post_equil'].append(lam_k)
+        # Snapshots are now handled by record_snapshots function
     
-    # Ensure the final state is captured in post-equilibration snapshots
-    # This is especially important when re_equil_steps = 0
-    if len(snapshots['cd_post_equil']) == 0 or (k % 10 != 0):
-        # If no post-equilibration snapshots exist or the last step wasn't captured
-        snapshots['cd_post_equil'].append(np.array(q_cd))
-        snapshots['lam_post_equil'].append(lam_k)
-    
-    # Also ensure the final state is captured in pre-equilibration snapshots
-    # This is needed when the loop ends at k = N_steps and k % 10 == 0
-    if (k % 10 == 0) and (len(snapshots['cd_pre_equil']) == 0 or snapshots['cd_pre_equil'][-1].shape != q_cd.shape):
-        # If the last step wasn't captured in pre-equilibration snapshots
-        snapshots['cd_pre_equil'].append(np.array(q_cd))
-        snapshots['lam_pre_equil'].append(lam_k)
+    # Ensure the final state is captured
+    # Check the appropriate key based on whether we're using weights
+    snapshot_key = 'cd_weighted' if use_weights else 'cd_unweighted'
+    if len(snapshots[snapshot_key]) == 0 or (k % snapshot_interval != 0):
         if use_weights:
             snapshots['cd_weighted'].append(np.array(q_cd))
+        else:
+            snapshots['cd_unweighted'].append(np.array(q_cd))
+        snapshots['lam'].append(lam_k)
+        if use_weights:
             snapshots['weights_cd'].append(np.array(log_weights_cd))
             snapshots['resampling_events_cd'].append(resampling_count_cd)
 
@@ -634,8 +607,6 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
     snapshots['detailed_times'] = all_times
 
     print(f"Simulation completed after {k} steps")
-    if re_equil_steps > 0:
-        print(f"Performed {re_equil_steps} re-equilibration steps after each CD step")
     if use_weights:
         print(f"Total resampling events - CD-HMC: {resampling_count_cd}")
     

@@ -111,12 +111,8 @@ def run_benchmark_comparison(system_name="gaussian_moving_mean", M=1000, N_steps
             results['cd_hmc']['times'].append(cd_time)
             
             # Get final samples (post-equilibration)
-            if len(snapshots_cd['cd_post_equil']) > 0:
-                final_samples_cd = snapshots_cd['cd_post_equil'][-1]
-                results['cd_hmc']['final_samples'].append(final_samples_cd)
-            else:
-                final_samples_cd = snapshots_cd['cd_pre_equil'][-1]
-                results['cd_hmc']['final_samples'].append(final_samples_cd)
+            final_samples_cd = snapshots_cd['cd'][-1]
+            results['cd_hmc']['final_samples'].append(final_samples_cd)
                 
         except Exception as e:
             print(f"    CD-HMC failed: {e}")

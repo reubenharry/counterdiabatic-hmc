@@ -170,7 +170,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     """Create a ridge plot showing the evolution of 1D distributions over time.
     
     Args:
-        snapshots: Dictionary containing 'naive', 'naive_weighted', 'cd', 'cd_post_equil', 'lam' arrays
+        snapshots: Dictionary containing 'cd', 'lam' arrays
         delta_t: Time step
         make_V: Function to create potential energy
         lam_fn: Function to compute lambda at a given time
@@ -182,24 +182,11 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     ansatz_dir = f"figures/{ansatz_type}"
     os.makedirs(ansatz_dir, exist_ok=True)
     
-    # Check if re-equilibration was used
-    has_re_equil = 'cd_post_equil' in snapshots and len(snapshots['cd_post_equil']) > 0
-    
     # Check if weights are available
-    has_weights = 'weights' in snapshots and any(w is not None for w in snapshots['weights'])
+    has_weights = 'weights_cd' in snapshots and any(w is not None for w in snapshots['weights_cd'])
     
     # Get time points
-    times = np.arange(len(snapshots['cd_pre_equil'])) * delta_t * 10  # *10 because we record every 10 steps
-    
-    # For post-equilibration snapshots, the timing is different
-    # They represent the state after CD step + re-equilibration, so they should be plotted
-    # at the time after the CD step (i.e., at the next timestep)
-    if has_re_equil:
-        # Post-equilibration snapshots are stored at the end of timesteps
-        # So they should be plotted at the next timestep's time
-        post_equil_times = np.arange(1, len(snapshots['cd_post_equil']) + 1) * delta_t * 10
-    else:
-        post_equil_times = np.array([])
+    times = np.arange(len(snapshots['cd'])) * delta_t * 10  # *10 because we record every 10 steps
     
     # Create figure with appropriate layout (simplified - only CD-HMC)
     if has_weights:
@@ -239,37 +226,31 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
         ax1_lambda.tick_params(axis='y', labelcolor='red')
     
     # Find global range for consistent x-axis
-    all_qs = np.concatenate(snapshots['cd_pre_equil'])
-    if has_re_equil:
-        # Flatten all arrays to 1D before concatenation
-        all_qs_flat = all_qs.flatten()
-        cd_post_equil_flat = np.concatenate(snapshots['cd_post_equil']).flatten()
-        all_qs = np.concatenate([all_qs_flat, cd_post_equil_flat])
-    else:
-        all_qs = all_qs.flatten()
+    all_qs = np.concatenate(snapshots['cd']).flatten()
     x_min = np.min(all_qs) - 0.5
     x_max = np.max(all_qs) + 0.5
     
     # Create x grid for smooth curves
     x_grid = np.linspace(x_min, x_max, 200)
     
-    # Note: Naive HMC plotting removed since naive HMC is not performed in run_simulation
-    
-    # Note: Naive HMC weighted plotting removed since naive HMC is not performed in run_simulation
-    
-    # Plot CD HMC distributions (pre-equilibration)
+    # Plot CD HMC distributions
     cd_ax = ax2 if has_weights else ax1  # Use appropriate axis based on layout
-    for i, (t, cd_snap, lam_val) in enumerate(zip(times, snapshots['cd_pre_equil'], snapshots['lam_pre_equil'])):
-        # Compute KDE for smooth curve
-        density = compute_weighted_kde(cd_snap.flatten(), weights=None, x_grid=x_grid)
+    for i, (t, cd_snap, lam_val) in enumerate(zip(times, snapshots['cd'], snapshots['lam'])):
+        # Create histogram with more bins (100 instead of 50)
+        hist, bin_edges = np.histogram(cd_snap.flatten(), bins=100, density=True, range=(x_min, x_max))
         
-        # Normalize and offset for ridge plot - increased height for more overlap
-        density = density / np.max(density) * 1.8  # Increased from 1.2 to 1.8 for more overlap
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        bin_width = bin_edges[1] - bin_edges[0]
+        
+        # Normalize and offset for ridge plot
+        hist_normalized = hist / np.max(hist) * 1.8
         offset = t * 2.0  # Increased spacing between plots to reduce overlap
         
-        # Plot the ridge with transparency for overlap
-        cd_ax.fill_between(x_grid, offset, offset + density, 
-                        color='red', alpha=0.4, edgecolor='red', linewidth=0.5)
+        # Plot the histogram bars
+        for k, (center, height) in enumerate(zip(bin_centers, hist_normalized)):
+            if height > 0:  # Only plot non-zero bars
+                cd_ax.bar(center, height, width=bin_width, bottom=offset, 
+                       color='red', alpha=0.4, edgecolor='red', linewidth=0.5)
         
         # Add true distribution at each time step
         potential_fn = make_V(lam_val)
@@ -295,7 +276,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     
     # Configure lambda axes (secondary y-axes)
     # Get lambda values for the time points
-    lambda_values = snapshots['lam_pre_equil']
+    lambda_values = snapshots['lam']
     
     # Configure lambda axes based on layout
     ax1_lambda.set_ylim(ax1.get_ylim())  # Same limits as time axis
@@ -323,7 +304,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     plt.savefig(f"{ansatz_dir}/ridge_plot_{potential_name}.png", dpi=300, bbox_inches='tight')
     plt.close()
 
-def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_history=None, ansatz=None, potential_name="harmonic", dim=1, plot_ansatz=False, make_T=None, naive_snapshots=None):
+def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_history=None, ansatz=None, potential_name="harmonic", dim=1, plot_ansatz=False, make_T=None, naive_snapshots=None, sim_type=None):
     """Simplified plotting function that only creates two figures:
     1. Comparison ridge plot (handled in main.py)
     2. Distributions plot (this function)
@@ -346,51 +327,69 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
     
     # Debug information
     print(f"Plotting for ansatz type: {ansatz_type}")
-    print(f"Number of snapshots: naive={len(snapshots.get('naive', []))}, cd_pre_equil={len(snapshots.get('cd_pre_equil', []))}")
-    if 'cd_post_equil' in snapshots:
-        print(f"Number of post-equilibration snapshots: {len(snapshots['cd_post_equil'])}")
+    # Determine the correct CD key based on sim_type
+    cd_key = 'cd'
+    if sim_type == 'cd_weighted':
+        cd_key = 'cd_weighted'
+    elif sim_type == 'cd_unweighted':
+        cd_key = 'cd_unweighted'
+    print(f"Number of snapshots: cd={len(snapshots.get(cd_key, []))}")
     
-    # Check if re-equilibration was used
-    has_re_equil = 'cd_post_equil' in snapshots and len(snapshots['cd_post_equil']) > 0
+    # No more equilibration logic
+    has_re_equil = False
     
     # Create distributions plot with diagnostic information
-    create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, has_re_equil, 
-                            loss_histories=loss_histories, param_history=param_history, make_T=make_T, naive_snapshots=naive_snapshots)
+    create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, 
+                            loss_histories=loss_histories, param_history=param_history, make_T=make_T, naive_snapshots=naive_snapshots, sim_type=sim_type)
     
     print(f"Saved distributions plot to {ansatz_dir}/distributions_{potential_name}.png")
 
 
-def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, has_re_equil, loss_histories=None, param_history=None, make_T=None, naive_snapshots=None):
+def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, loss_histories=None, param_history=None, make_T=None, naive_snapshots=None, sim_type=None):
     """Create the distributions plot showing histograms and diagnostic plots."""
     # Create figure with subplots for distributions and diagnostics
     fig = plt.figure(figsize=(20, 18))
     
-    # Create grid layout: 2 rows, 4 columns
-    gs = fig.add_gridspec(4, 4, height_ratios=[1, 1, 1, 1], width_ratios=[1, 1, 1, 1])
+    # Use correct data keys based on simulation type
+    if sim_type == 'cd_weighted':
+        cd_data_key = 'cd_weighted'
+    elif sim_type == 'cd_unweighted':
+        cd_data_key = 'cd_unweighted'
+    else:
+        cd_data_key = 'cd'  # fallback
+    lam_data_key = 'lam'
+    
+    # Calculate number of rows needed for all snapshots (4 columns)
+    num_snapshots = len(snapshots[cd_data_key])
+    num_rows = (num_snapshots + 3) // 4  # Ceiling division to get enough rows
+    
+    # Create grid layout: num_rows for snapshots + 2 rows for diagnostics
+    gs = fig.add_gridspec(num_rows + 2, 4, height_ratios=[1]*num_rows + [1, 1], width_ratios=[1, 1, 1, 1])
     
     # Define time points to plot (every 10 steps)
-    times = np.arange(len(snapshots['cd_pre_equil'])) * delta_t * 10
+    times = np.arange(len(snapshots[cd_data_key])) * delta_t * 10
     
     # Plot distributions at different time points (top 2 rows)
-    for i, (time, lam_val) in enumerate(zip(times, snapshots['lam_pre_equil'])):
-        if i >= 8:  # Only plot first 8 distributions
+    for i, (time, lam_val) in enumerate(zip(times, snapshots[lam_data_key])):
+        if i >= len(snapshots[cd_data_key]):  # Plot all available snapshots
             break
             
         row = i // 4
         col = i % 4
         ax = fig.add_subplot(gs[row, col])
         
-        # Plot CD-HMC distribution (pre-equilibration)
-        if 'cd_pre_equil' in snapshots and i < len(snapshots['cd_pre_equil']):
-            cd_snap = snapshots['cd_pre_equil'][i]
+        # Plot CD-HMC distribution (use correct data based on simulation type)
+        if cd_data_key in snapshots and i < len(snapshots[cd_data_key]):
+            cd_snap = snapshots[cd_data_key][i]
             if len(cd_snap) > 0:
-                ax.hist(cd_snap.flatten(), bins=50, alpha=0.6, label='CD-HMC', density=True, color='red')
+                ax.hist(cd_snap.flatten(), bins=100, alpha=0.6, label='CD-HMC', density=True, color='red')
         
         # Plot naive HMC distribution if available
-        if naive_snapshots and 'naive' in naive_snapshots and i < len(naive_snapshots['naive']):
-            naive_snap = naive_snapshots['naive'][i]
+        naive_data_key = 'naive_weighted' if sim_type == 'cd_weighted' else 'naive'
+        if naive_snapshots and naive_data_key in naive_snapshots and i < len(naive_snapshots[naive_data_key]):
+            naive_snap = naive_snapshots[naive_data_key][i]
             if len(naive_snap) > 0:
-                ax.hist(naive_snap.flatten(), bins=50, alpha=0.6, label='Naive HMC', density=True, color='blue')
+                ax.hist(naive_snap.flatten(), bins=100, alpha=0.6, label='Naive HMC', density=True, color='blue')
         
         # Plot true distribution
         x_grid = np.linspace(-5, 5, 1000)
@@ -407,7 +406,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     
     # Plot loss curves (bottom left)
     if loss_histories and len(loss_histories) > 0:
-        ax_loss = fig.add_subplot(gs[2, 0])
+        ax_loss = fig.add_subplot(gs[num_rows, 0])
         for i, loss_history in enumerate(loss_histories):
             if len(loss_history) > 0:
                 ax_loss.plot(loss_history, label=f'Step {i}', alpha=0.7)
@@ -425,7 +424,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         energy_times = np.arange(len(energy_stats)) * delta_t
         
         # Plot <∂H/∂λ> over time
-        ax_dH_dlam = fig.add_subplot(gs[2, 1])
+        ax_dH_dlam = fig.add_subplot(gs[num_rows, 1])
         dH_dlam_vals = [stats['cd']['avg_dH_dlam'] for stats in energy_stats]
         ax_dH_dlam.plot(energy_times, dH_dlam_vals, 'r-', label='CD-HMC', linewidth=2)
         
@@ -443,7 +442,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         ax_dH_dlam.grid(True, alpha=0.3)
         
         # Plot <ΔH²> over time
-        ax_dH2 = fig.add_subplot(gs[2, 2])
+        ax_dH2 = fig.add_subplot(gs[num_rows, 2])
         dH2_vals = [stats['cd']['avg_delta_H_sq'] for stats in energy_stats]
         ax_dH2.plot(energy_times, dH2_vals, 'r-', label='CD-HMC', linewidth=2)
         
@@ -463,7 +462,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
 
         
         # Plot <{A,H}²> over time (Poisson bracket squared)
-        ax_A_H_sq = fig.add_subplot(gs[3, 0])
+        ax_A_H_sq = fig.add_subplot(gs[num_rows + 1, 0])
         A_H_sq_vals = [stats['cd']['avg_A_H_sq'] for stats in energy_stats]
         ax_A_H_sq.plot(energy_times, A_H_sq_vals, 'm-', label='CD-HMC', linewidth=2)
         ax_A_H_sq.set_xlabel('Time')
@@ -471,10 +470,20 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         ax_A_H_sq.set_title('Poisson Bracket Squared')
         ax_A_H_sq.legend()
         ax_A_H_sq.grid(True, alpha=0.3)
+        
+        # Plot <A²> over time (ansatz squared)
+        ax_A_sq = fig.add_subplot(gs[num_rows + 1, 1])
+        A_sq_vals = [stats['cd']['avg_A_sq'] for stats in energy_stats]
+        ax_A_sq.plot(energy_times, A_sq_vals, 'g-', label='CD-HMC', linewidth=2)
+        ax_A_sq.set_xlabel('Time')
+        ax_A_sq.set_ylabel('<A²>')
+        ax_A_sq.set_title('Ansatz Squared')
+        ax_A_sq.legend()
+        ax_A_sq.grid(True, alpha=0.3)
     
-    # Plot parameter history if available (bottom row, spanning 3 columns)
+    # Plot parameter history if available (bottom right)
     if param_history and len(param_history) > 0:
-        ax_params = fig.add_subplot(gs[3, 1:])
+        ax_params = fig.add_subplot(gs[num_rows + 1, 2])
         
         # Handle different parameter history structures
         if isinstance(param_history[0], dict):
@@ -512,3 +521,128 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
 # Removed unnecessary plotting functions - only keeping the essential ones 
 
 # Removed unnecessary plotting functions - only keeping the essential ones 
+
+def create_comparison_plots(system_name, make_V, lam_fn, dim, ansatz_dir_name=None):
+    """Create comparison ridge plots for all simulation types."""
+    import pickle
+    import os
+    
+    # Create figures directory if it doesn't exist
+    os.makedirs("figures", exist_ok=True)
+    if ansatz_dir_name is None:
+        ansatz_dir = f"figures/polynomial"
+    else:
+        ansatz_dir = f"figures/{ansatz_dir_name}"
+    os.makedirs(ansatz_dir, exist_ok=True)
+    
+    # Load all 4 pickle files
+    files = {
+        'naive_unweighted': f"data/naive_unweighted_snapshots_{system_name}.pkl",
+        'naive_weighted': f"data/naive_weighted_snapshots_{system_name}.pkl", 
+        'cd_unweighted': f"data/cd_unweighted_snapshots_{system_name}.pkl",
+        'cd_weighted': f"data/cd_weighted_snapshots_{system_name}.pkl"
+    }
+    
+    data = {}
+    for sim_type, filename in files.items():
+        try:
+            with open(filename, 'rb') as f:
+                data[sim_type] = pickle.load(f)
+                print(f"Loaded {sim_type} from {filename}")
+        except FileNotFoundError:
+            print(f"File not found: {filename}")
+            continue
+    
+    if len(data) == 0:
+        print("No data loaded!")
+        return
+    
+    # Get delta_t from first available dataset
+    delta_t = 0.02  # fallback
+    for dataset in data.values():
+        if 'simulation_params' in dataset:
+            delta_t = dataset['simulation_params']['delta_t']
+            break
+    
+    # Create 2x2 subplot grid
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    axes = axes.flatten()
+    
+    colors = {'naive_unweighted': 'blue', 'naive_weighted': 'green', 'cd_unweighted': 'red', 'cd_weighted': 'orange'}
+    titles = {
+        'naive_unweighted': 'Naive HMC (Unweighted)',
+        'naive_weighted': 'Naive HMC (Weighted SMC)',
+        'cd_unweighted': 'Counterdiabatic HMC (Unweighted)',
+        'cd_weighted': 'Counterdiabatic HMC (Weighted)'
+    }
+    
+    # Determine snapshot keys for each simulation type
+    snapshot_keys = {
+        'naive_unweighted': 'naive',
+        'naive_weighted': 'naive_weighted', 
+        'cd_unweighted': 'cd_unweighted',
+        'cd_weighted': 'cd_weighted'
+    }
+    
+    for i, sim_type in enumerate(['naive_unweighted', 'naive_weighted', 'cd_unweighted', 'cd_weighted']):
+        ax = axes[i]
+        ax.set_title(titles[sim_type], fontsize=14, fontweight='bold')
+        ax.set_xlabel("Position q", fontsize=12)
+        ax.set_ylabel("Time t", fontsize=12)
+        
+        if sim_type not in data:
+            ax.text(0.5, 0.5, 'Data not available', ha='center', va='center', transform=ax.transAxes)
+            continue
+            
+        dataset = data[sim_type]
+        snapshot_key = snapshot_keys[sim_type]
+        
+        # Get snapshots and lambda values
+        snapshots = dataset[snapshot_key]
+        lam_values = dataset['lam']
+        
+        # Create histograms spaced by time
+        for j, (snap, lam_val) in enumerate(zip(snapshots, lam_values)):
+            t = j * delta_t * 10  # time spacing
+            
+            # Create histogram
+            hist, bin_edges = np.histogram(snap.flatten(), bins=100, density=True)
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            bin_width = bin_edges[1] - bin_edges[0]
+            
+            # Histogram is already normalized to integrate to 1 by density=True
+            offset = t * 2.0
+            
+            # Plot histogram bars
+            for center, height in zip(bin_centers, hist):
+                if height > 0:
+                    ax.bar(center, height, width=bin_width, bottom=offset, 
+                           color=colors[sim_type], alpha=0.4, edgecolor=colors[sim_type], linewidth=0.5)
+            
+            # Add exact density line using make_V
+            x_grid = np.linspace(bin_edges[0], bin_edges[-1], 200)
+            potential_fn = make_V(lam_val)
+            rho = np.array([np.exp(-potential_fn(x)) for x in x_grid])
+            # Normalize exact density to integrate to 1
+            dx = x_grid[1] - x_grid[0]
+            rho_normalized = rho / (np.sum(rho) * dx) if np.sum(rho) > 0 else rho
+            ax.plot(x_grid, offset + rho_normalized, 'k--', linewidth=1.5, alpha=0.8)
+            
+            # Add lambda value as text
+            ax.text(0.02, offset + 0.9, f'λ={lam_val:.3f}', transform=ax.get_yaxis_transform(), 
+                   fontsize=10, va='bottom')
+        
+        # Set axis limits
+        all_samples = np.concatenate([snap.flatten() for snap in snapshots])
+        x_min, x_max = np.min(all_samples) - 0.5, np.max(all_samples) + 0.5
+        ax.set_xlim(x_min, x_max)
+        
+        times = np.arange(len(snapshots)) * delta_t * 10
+        if len(times) > 0:
+            ax.set_ylim(times[0] * 2.0 - 0.1, times[-1] * 2.0 + 2.0)
+    
+    plt.tight_layout()
+    plt.savefig(f"{ansatz_dir}/comparison_ridge_plot_{system_name}.png", dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Saved comparison ridge plot to {ansatz_dir}/comparison_ridge_plot_{system_name}.png") 

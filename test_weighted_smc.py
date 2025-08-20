@@ -108,7 +108,7 @@ def main():
                  label='Weighted SMC', color='green')
     
     # Add true distribution
-    final_lam = snapshots_unweighted['lam_pre_equil'][final_time_idx]
+    final_lam = snapshots_unweighted['lam'][final_time_idx]
     x_range = np.linspace(np.min(final_unweighted) - 1, np.max(final_unweighted) + 1, 200)
     potential_fn = make_V(final_lam)
     true_density = np.array([jnp.exp(-potential_fn(x)) for x in x_range])
