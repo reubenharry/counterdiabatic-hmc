@@ -191,7 +191,7 @@ def load_and_plot_precomputed_data(system_name, ansatz_type="neural_network"):
     
     print("Plot generation completed!")
 
-def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural_network"):
+def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural_network", adaptive_step_size=True):
     """Run all simulations and save data to files. Returns nothing - just saves data."""
     
     # Get system functions
@@ -287,7 +287,7 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
             A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
             key=key, dim=dim, learning_rate=learning_rate,
             use_weights=False, snapshot_interval=snapshot_interval,
-            adaptive_step_size=True, K=0.2
+            adaptive_step_size=adaptive_step_size, K=0.2
         )
         save_simulation_data_to_file(snapshots_cd_unweighted, 'cd_unweighted', system_name, save_final_samples, simulation_params)
         print("✓ Counterdiabatic HMC (Unweighted) completed successfully")
@@ -308,7 +308,7 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
             A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
             key=key, dim=dim, learning_rate=learning_rate,
             use_weights=True, ess_threshold=ess_threshold, snapshot_interval=snapshot_interval,
-            adaptive_step_size=True, K=0.2
+            adaptive_step_size=adaptive_step_size, K=0.2
         )
         save_simulation_data_to_file(snapshots_cd_weighted, 'cd_weighted', system_name, save_final_samples, simulation_params)
         print("✓ Counterdiabatic HMC (Weighted) completed successfully")
@@ -322,12 +322,14 @@ if __name__ == "__main__":
     # Step 1: Run simulations and save data
 
     ansatz_type = "polynomial"
-    system_name = "double_well"
+    system_name = "gaussian_moving_mean"  # Changed to moving mean
+    adaptive_step_size = False  # Set to False for moving mean
 
     print("="*60)
     print("STEP 1: Running simulations and saving data")
+    print(f"System: {system_name}, Ansatz: {ansatz_type}, Adaptive Step Size: {adaptive_step_size}")
     print("="*60)
-    run_simulations_and_save_data(system_name, ansatz_type)
+    run_simulations_and_save_data(system_name, ansatz_type, adaptive_step_size)
     
     # Step 2: Load precomputed data and generate plots
     print("\n" + "="*60)

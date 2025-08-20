@@ -382,13 +382,25 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         if naive_data_key in naive_snapshots:
             naive_times = np.arange(len(naive_snapshots[naive_data_key])) * delta_t * 10
     
-    # Create union of all time points
-    all_times = set()
+    # Create union of all time points - use tolerance-based deduplication
+    all_times = []
     if cd_times is not None:
-        all_times.update(cd_times)
+        all_times.extend(cd_times)
     if naive_times is not None:
-        all_times.update(naive_times)
-    all_times = sorted(list(all_times))
+        all_times.extend(naive_times)
+    
+    # Remove near-duplicates using tolerance-based approach
+    unique_times = []
+    for t in all_times:
+        is_duplicate = False
+        for existing_t in unique_times:
+            if abs(t - existing_t) < 1e-10:  # Small tolerance for floating point differences
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            unique_times.append(t)
+    
+    all_times = sorted(unique_times)
     
     # Calculate number of rows needed for all time points (4 columns)
     num_all_times = len(all_times)
@@ -403,22 +415,22 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         col = i % 4
         ax = fig.add_subplot(gs[row, col])
         
-        # Find CD data for this time point
+        # Find CD data for this time point (using tolerance-based matching)
         cd_idx = None
         if cd_times is not None:
-            try:
-                cd_idx = cd_times.index(time)
-            except ValueError:
-                cd_idx = None
+            for i, t in enumerate(cd_times):
+                if abs(t - time) < 1e-10:
+                    cd_idx = i
+                    break
         
-        # Find naive data for this time point
+        # Find naive data for this time point (using tolerance-based matching)
         naive_idx = None
         naive_data_key = 'naive_weighted' if sim_type == 'cd_weighted' else 'naive'
         if naive_times is not None and naive_snapshots and naive_data_key in naive_snapshots:
-            try:
-                naive_idx = naive_times.index(time)
-            except ValueError:
-                naive_idx = None
+            for i, t in enumerate(naive_times):
+                if abs(t - time) < 1e-10:
+                    naive_idx = i
+                    break
         
         # Plot CD-HMC distribution if available at this time
         if cd_idx is not None and cd_data_key in snapshots and cd_idx < len(snapshots[cd_data_key]):
