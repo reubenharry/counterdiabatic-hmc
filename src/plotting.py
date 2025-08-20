@@ -366,39 +366,93 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     # Create grid layout: num_rows for snapshots + 2 rows for diagnostics
     gs = fig.add_gridspec(num_rows + 2, 4, height_ratios=[1]*num_rows + [1, 1], width_ratios=[1, 1, 1, 1])
     
-    # Define time points to plot (every 10 steps)
-    times = np.arange(len(snapshots[cd_data_key])) * delta_t * 10
+    # Define time points to plot - use actual time points if available
+    if 'detailed_times' in snapshots:
+        cd_times = snapshots['detailed_times']
+    else:
+        cd_times = np.arange(len(snapshots[cd_data_key])) * delta_t * 10
     
-    # Plot distributions at different time points (top 2 rows)
-    for i, (time, lam_val) in enumerate(zip(times, snapshots[lam_data_key])):
-        if i >= len(snapshots[cd_data_key]):  # Plot all available snapshots
-            break
-            
+    # Get naive times if available
+    naive_times = None
+    if naive_snapshots and 'detailed_times' in naive_snapshots:
+        naive_times = naive_snapshots['detailed_times']
+    elif naive_snapshots:
+        # Fallback to fixed time spacing for naive
+        naive_data_key = 'naive_weighted' if sim_type == 'cd_weighted' else 'naive'
+        if naive_data_key in naive_snapshots:
+            naive_times = np.arange(len(naive_snapshots[naive_data_key])) * delta_t * 10
+    
+    # Create union of all time points
+    all_times = set()
+    if cd_times is not None:
+        all_times.update(cd_times)
+    if naive_times is not None:
+        all_times.update(naive_times)
+    all_times = sorted(list(all_times))
+    
+    # Calculate number of rows needed for all time points (4 columns)
+    num_all_times = len(all_times)
+    num_rows = (num_all_times + 3) // 4  # Ceiling division to get enough rows
+    
+    # Recreate grid layout for the new number of rows
+    gs = fig.add_gridspec(num_rows + 2, 4, height_ratios=[1]*num_rows + [1, 1], width_ratios=[1, 1, 1, 1])
+    
+    # Plot distributions at all time points
+    for i, time in enumerate(all_times):
         row = i // 4
         col = i % 4
         ax = fig.add_subplot(gs[row, col])
         
-        # Plot CD-HMC distribution (use correct data based on simulation type)
-        if cd_data_key in snapshots and i < len(snapshots[cd_data_key]):
-            cd_snap = snapshots[cd_data_key][i]
+        # Find CD data for this time point
+        cd_idx = None
+        if cd_times is not None:
+            try:
+                cd_idx = cd_times.index(time)
+            except ValueError:
+                cd_idx = None
+        
+        # Find naive data for this time point
+        naive_idx = None
+        naive_data_key = 'naive_weighted' if sim_type == 'cd_weighted' else 'naive'
+        if naive_times is not None and naive_snapshots and naive_data_key in naive_snapshots:
+            try:
+                naive_idx = naive_times.index(time)
+            except ValueError:
+                naive_idx = None
+        
+        # Plot CD-HMC distribution if available at this time
+        if cd_idx is not None and cd_data_key in snapshots and cd_idx < len(snapshots[cd_data_key]):
+            cd_snap = snapshots[cd_data_key][cd_idx]
             if len(cd_snap) > 0:
                 ax.hist(cd_snap.flatten(), bins=100, alpha=0.6, label='CD-HMC', density=True, color='red')
         
-        # Plot naive HMC distribution if available
-        naive_data_key = 'naive_weighted' if sim_type == 'cd_weighted' else 'naive'
-        if naive_snapshots and naive_data_key in naive_snapshots and i < len(naive_snapshots[naive_data_key]):
-            naive_snap = naive_snapshots[naive_data_key][i]
+        # Plot naive HMC distribution if available at this time
+        if naive_idx is not None and naive_snapshots and naive_data_key in naive_snapshots and naive_idx < len(naive_snapshots[naive_data_key]):
+            naive_snap = naive_snapshots[naive_data_key][naive_idx]
             if len(naive_snap) > 0:
                 ax.hist(naive_snap.flatten(), bins=100, alpha=0.6, label='Naive HMC', density=True, color='blue')
         
-        # Plot true distribution
+        # Plot true distribution - need to find the appropriate lambda value
+        # Use CD lambda if available, otherwise interpolate or use a default
+        lam_val = 0.0  # default
+        if cd_idx is not None and cd_idx < len(snapshots[lam_data_key]):
+            lam_val = snapshots[lam_data_key][cd_idx]
+        elif naive_idx is not None and 'lam' in naive_snapshots and naive_idx < len(naive_snapshots['lam']):
+            lam_val = naive_snapshots['lam'][naive_idx]
+        
         x_grid = np.linspace(-5, 5, 1000)
         potential_fn = make_V(lam_val)
         rho = np.array([np.exp(-potential_fn(x)) for x in x_grid])
         rho = rho / np.trapz(rho, x_grid)  # Normalize
         ax.plot(x_grid, rho, 'k--', linewidth=2, label='True distribution')
         
-        ax.set_title(f't = {time:.2f}, λ = {lam_val:.3f}')
+        # Create title showing which methods are plotted
+        title_parts = [f't = {time:.3f}']
+        if cd_idx is not None:
+            title_parts.append(f'CD λ={lam_val:.3f}')
+        if naive_idx is not None:
+            title_parts.append('Naive')
+        ax.set_title(', '.join(title_parts))
         ax.set_xlabel('Position')
         ax.set_ylabel('Density')
         ax.legend()
@@ -420,8 +474,8 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     if 'detailed_energy_stats' in snapshots and len(snapshots['detailed_energy_stats']) > 0:
         energy_stats = snapshots['detailed_energy_stats']
         
-        # Create time array for energy statistics (every timestep, not every 10 steps)
-        energy_times = np.arange(len(energy_stats)) * delta_t
+        # Use actual time points from the simulation (adaptive time steps)
+        energy_times = snapshots.get('detailed_times', np.arange(len(energy_stats)) * delta_t)
         
         # Plot <∂H/∂λ> over time
         ax_dH_dlam = fig.add_subplot(gs[num_rows, 1])
@@ -431,7 +485,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         # Add naive HMC energy derivative if available
         if naive_snapshots and 'detailed_energy_stats' in naive_snapshots and len(naive_snapshots['detailed_energy_stats']) > 0:
             naive_energy_stats = naive_snapshots['detailed_energy_stats']
-            naive_energy_times = np.arange(len(naive_energy_stats)) * delta_t
+            naive_energy_times = naive_snapshots.get('detailed_times', np.arange(len(naive_energy_stats)) * delta_t)
             naive_dH_dlam_vals = [stats['naive']['avg_dH_dlam'] for stats in naive_energy_stats]
             ax_dH_dlam.plot(naive_energy_times, naive_dH_dlam_vals, 'b-', label='Naive HMC', linewidth=2)
         
@@ -449,7 +503,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         # Add naive HMC energy variance if available
         if naive_snapshots and 'detailed_energy_stats' in naive_snapshots and len(naive_snapshots['detailed_energy_stats']) > 0:
             naive_energy_stats = naive_snapshots['detailed_energy_stats']
-            naive_energy_times = np.arange(len(naive_energy_stats)) * delta_t
+            naive_energy_times = naive_snapshots.get('detailed_times', np.arange(len(naive_energy_stats)) * delta_t)
             naive_dH2_vals = [stats['naive']['avg_delta_H_sq'] for stats in naive_energy_stats]
             ax_dH2.plot(naive_energy_times, naive_dH2_vals, 'b-', label='Naive HMC', linewidth=2)
         
@@ -623,8 +677,15 @@ def create_comparison_plots(system_name, make_V, lam_fn, dim, ansatz_dir_name=No
         bin_width = bin_edges[1] - bin_edges[0]
         
         # Create histograms spaced by time (with subsampling)
-        for j, (snap, lam_val) in enumerate(zip(snapshots[::subsample], lam_values[::subsample])):
-            t = j * delta_t * 10 * subsample  # time spacing (accounting for subsampling)
+        # Use actual time points if available (for adaptive step sizing), otherwise use fixed spacing
+        if 'detailed_times' in dataset:
+            actual_times = dataset['detailed_times']
+            time_spacing = actual_times[::subsample]
+        else:
+            # Fallback to fixed time spacing
+            time_spacing = [j * delta_t * 10 * subsample for j in range(len(snapshots[::subsample]))]
+        
+        for j, (snap, lam_val, t) in enumerate(zip(snapshots[::subsample], lam_values[::subsample], time_spacing)):
             
             # Create histogram using consistent bin edges
             hist, _ = np.histogram(snap.flatten(), bins=bin_edges, density=True)
@@ -654,9 +715,20 @@ def create_comparison_plots(system_name, make_V, lam_fn, dim, ansatz_dir_name=No
             # Add lambda value as text
             ax.text(0.02, offset + 1.2, f'λ={lam_val:.3f}', transform=ax.get_yaxis_transform(), 
                    fontsize=10, va='bottom')
+            
+            # Add step size information for CD simulations (if detailed_times available)
+            if 'detailed_times' in dataset and j > 0:
+                step_size = t - time_spacing[j-1]
+                ax.text(0.02, offset + 0.8, f'Δt={step_size:.3f}', transform=ax.get_yaxis_transform(), 
+                       fontsize=8, va='bottom', alpha=0.7)
         
         # Update y-axis limits to account for subsampling and higher scaling
-        times = np.arange(len(snapshots[::subsample])) * delta_t * 10 * subsample
+        if 'detailed_times' in dataset:
+            actual_times = dataset['detailed_times']
+            times = actual_times[::subsample]
+        else:
+            times = np.arange(len(snapshots[::subsample])) * delta_t * 10 * subsample
+            
         if len(times) > 0:
             # Add extra space at the top to accommodate taller histograms
             ax.set_ylim(times[0] * 3.0 - 0.1, times[-1] * 3.0 + 25.0)  # Increased top margin from 3.0 to 25.0

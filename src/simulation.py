@@ -236,6 +236,7 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, momentum_refresh_interval, mak
     all_energy_stats = []
     all_times = []
 
+    # Use fixed time stepping for naive simulation
     for k in range(N_steps + 1):
         t_k = k * delta_t
         lam_k = float(lam_fn(t_k))
@@ -375,7 +376,7 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, momentum_refresh_interval, mak
     
     return snapshots
 
-def run_simulation(M, N_steps, delta_t, momentum_refresh_interval, fit_every, num_initial_iterations, num_iterations, make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, key, dim, learning_rate=1e-4, use_weights=False, ess_threshold=0.5, snapshot_interval=10):
+def run_simulation(M, N_steps, delta_t, momentum_refresh_interval, fit_every, num_initial_iterations, num_iterations, make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, key, dim, learning_rate=1e-4, use_weights=False, ess_threshold=0.5, snapshot_interval=10, adaptive_step_size=False, K=0.2):
     
     # Generate initial samples from the correct distribution
     initial_lam = float(lam_fn(0.0))
@@ -413,9 +414,13 @@ def run_simulation(M, N_steps, delta_t, momentum_refresh_interval, fit_every, nu
     # Arrays to store energy statistics at every timestep
     all_energy_stats = []
     all_times = []
+    
+    # Initialize time and step counter for adaptive stepping
+    t_k = 0.0
+    k = 0
+    current_delta_t = delta_t  # Will be updated adaptively if adaptive_step_size=True
 
-    for k in range(N_steps + 1):
-        t_k = k * delta_t
+    while k <= N_steps:
         lam_k = float(lam_fn(t_k))
         dot_lam_k = float(dot_lam_fn(t_k))
 
@@ -503,16 +508,39 @@ def run_simulation(M, N_steps, delta_t, momentum_refresh_interval, fit_every, nu
             record_snapshots(snapshots, k, q_cd, lam_k, use_weights, log_weights_cd, 
                             resampling_count_cd, param_history, A_ansatz)
 
-        # Note: Momentum randomization removed - only CD-HMC is performed here
-
-        
-        
-
-        if k == N_steps:
+        # Check stopping conditions
+        if lam_k >= 1.0:
+            print(f"Stopping at step {k}: λ = {lam_k:.6f} >= 1.0")
+            break
+            
+        if k >= N_steps:
+            print(f"Stopping at step {k}: reached maximum steps {N_steps}")
             break
 
-        lam_k1 = float(lam_fn(t_k + delta_t))
-        dot_lam_k1 = float(dot_lam_fn(t_k + delta_t))
+        # Adaptive step size logic
+        if adaptive_step_size:
+            # Calculate <A²> from the energy statistics
+            avg_A_sq = cd_stats['avg_A_sq']
+            if avg_A_sq > 0:
+                # Set delta_t = K/<A²> with some bounds for stability
+                new_delta_t = K / avg_A_sq
+                # Bound the step size between 0.01 and 0.5 for stability
+                new_delta_t = max(0.01, min(0.5, new_delta_t))
+                current_delta_t = new_delta_t
+                print(f"Step {k}: <A²> = {avg_A_sq:.6f}, delta_t = {current_delta_t:.6f}")
+            else:
+                print(f"Warning: <A²> = {avg_A_sq:.6f} <= 0, keeping delta_t = {current_delta_t:.6f}")
+        else:
+            current_delta_t = delta_t  # Use fixed step size
+
+        # Note: Momentum randomization removed - only CD-HMC is performed here
+
+        # Update time and step counter
+        t_k += current_delta_t
+        k += 1
+
+        lam_k1 = float(lam_fn(t_k))
+        dot_lam_k1 = float(dot_lam_fn(t_k))
 
         # Check next lambda values for NaNs
         if jnp.isnan(lam_k1):
@@ -530,14 +558,14 @@ def run_simulation(M, N_steps, delta_t, momentum_refresh_interval, fit_every, nu
         # Naive HMC is only used in re-equilibration
 
         # --- CD step ---
-        L = delta_t*momentum_refresh_interval
+        L = current_delta_t*momentum_refresh_interval
         key, sub = jax.random.split(key)
         subs = jax.random.split(sub, M)
         
         # Create integrator with weight calculation if using weights
         # cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, rng_key, t: with_maruyama(make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t, L=L, rng_key=rng_key, t=t), in_axes=(0, 0, None, None, None, None, None, 0, None))
         cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, rng_key, t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t, t=t), in_axes=(0, 0, None, None, None, None, None, 0, None))
-        q_cd, p_cd, step_weights_cd = jax.jit(cd_step)(q_cd, p_cd, lam_k, lam_k1, dot_lam_k, dot_lam_k1, delta_t, subs, t_k)
+        q_cd, p_cd, step_weights_cd = jax.jit(cd_step)(q_cd, p_cd, lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t, subs, t_k)
         if use_weights:
             
             # Update log weights using the step log weights
@@ -611,6 +639,8 @@ def run_simulation(M, N_steps, delta_t, momentum_refresh_interval, fit_every, nu
     # Add the detailed energy statistics to snapshots
     snapshots['detailed_energy_stats'] = all_energy_stats
     snapshots['detailed_times'] = all_times
+    snapshots['loss_histories'] = loss_histories
+    snapshots['param_history'] = param_history
 
     print(f"Simulation completed after {k} steps")
     if use_weights:

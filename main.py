@@ -143,11 +143,14 @@ def load_and_plot_precomputed_data(system_name, ansatz_type="neural_network"):
             else:
                 saved_delta_t = 0.02  # fallback
             
-            # Use empty lists for loss and param history since we don't save those yet
+            # Load loss histories and parameter history from saved data
+            loss_histories = snapshots.get('loss_histories', [])
+            param_history = snapshots.get('param_history', None)
+            
             # Create a modified potential name to avoid overwriting
             modified_potential_name = f"{system_name}_{sim_type}"
-            plot_results(snapshots, [], saved_delta_t, make_V, lam_fn, 
-                        param_history=None, ansatz=ansatz, potential_name=modified_potential_name, 
+            plot_results(snapshots, loss_histories, saved_delta_t, make_V, lam_fn, 
+                        param_history=param_history, ansatz=ansatz, potential_name=modified_potential_name, 
                         dim=dim, plot_ansatz=False, make_T=make_T, naive_snapshots=naive_snapshots, sim_type=sim_type)
     
     # Create summary statistics table
@@ -206,11 +209,11 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
     delta_t = 0.2
     momentum_refresh_interval = 2.0
     fit_every = 1
-    num_initial_iterations = 150000
-    num_iterations = 150000
+    num_initial_iterations = 15000
+    num_iterations = 15000
     learning_rate = 1e-4
     ess_threshold = 0.5
-    snapshot_interval = 1  # Take snapshots every 10 steps
+    snapshot_interval = 1  # Take snapshots every n steps
     
     # Save final particle populations
     save_final_samples = True
@@ -283,7 +286,8 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
             num_iterations=num_iterations, make_T=make_T, make_V=make_V,
             A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
             key=key, dim=dim, learning_rate=learning_rate,
-            use_weights=False, snapshot_interval=snapshot_interval
+            use_weights=False, snapshot_interval=snapshot_interval,
+            adaptive_step_size=True, K=0.2
         )
         save_simulation_data_to_file(snapshots_cd_unweighted, 'cd_unweighted', system_name, save_final_samples, simulation_params)
         print("✓ Counterdiabatic HMC (Unweighted) completed successfully")
@@ -303,7 +307,8 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
             num_iterations=num_iterations, make_T=make_T, make_V=make_V,
             A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
             key=key, dim=dim, learning_rate=learning_rate,
-            use_weights=True, ess_threshold=ess_threshold, snapshot_interval=snapshot_interval
+            use_weights=True, ess_threshold=ess_threshold, snapshot_interval=snapshot_interval,
+            adaptive_step_size=True, K=0.2
         )
         save_simulation_data_to_file(snapshots_cd_weighted, 'cd_weighted', system_name, save_final_samples, simulation_params)
         print("✓ Counterdiabatic HMC (Weighted) completed successfully")
@@ -316,7 +321,7 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
 if __name__ == "__main__":
     # Step 1: Run simulations and save data
 
-    ansatz_type = "neural_network"
+    ansatz_type = "polynomial"
     system_name = "double_well"
 
     print("="*60)
