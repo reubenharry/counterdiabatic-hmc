@@ -305,6 +305,8 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, momentum_refresh_interval, mak
 
         key, sub = jax.random.split(key)
         subs = jax.random.split(sub, M)
+
+        # jax.debug.print("t_k: {x}", x=(t_k, lam_k))
         
         naive_step = jax.vmap(lambda q, p, lam, lam_next, delta_t, L, rng_key, t: (make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t, t=t), in_axes=(0, 0, None, None, None, None, 0, None))
         # Create integrator with weight calculation if using weights
@@ -320,6 +322,8 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, momentum_refresh_interval, mak
             # naive_step = jax.vmap(lambda q, p, lam, lam_next, delta_t, L, rng_key: with_maruyama(make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam), make_V(lam_next)))(q, p, delta_t, L=L, rng_key=rng_key), in_axes=(0, 0, None, None, None, None, 0))
             # --- Naïve step without weight calculation ---
             q_naive, p_naive, _ = jax.jit(naive_step)(q_naive, p_naive, lam_k, lam_k1, delta_t, delta_t*momentum_refresh_interval, subs, t_k)
+
+        
 
         if k % int(momentum_refresh_interval) == 0 and k > 0:
                 key, sub = jax.random.split(key)

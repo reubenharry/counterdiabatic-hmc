@@ -209,8 +209,8 @@ def run_simulations_and_save_data(system_name="double_well", ansatz_type="neural
     delta_t = 0.2
     momentum_refresh_interval = 2.0
     fit_every = 1
-    num_initial_iterations = 150000
-    num_iterations = 150000
+    num_initial_iterations = 1500
+    num_iterations = 1500
     learning_rate = 1e-4
     ess_threshold = 0.5
     snapshot_interval = 1  # Take snapshots every n steps
@@ -322,7 +322,7 @@ if __name__ == "__main__":
     # Step 1: Run simulations and save data
 
     ansatz_type = "polynomial"
-    system_name = "gaussian_annealing"  # Changed to moving mean
+    system_name = "double_well"  # Changed to moving mean
     adaptive_step_size = False  # Set to False for moving mean
 
     print("="*60)
