@@ -134,7 +134,7 @@ def compute_weighted_kde(samples, weights=None, x_grid=None):
                 density = kde(x_grid)
             except:
                 # Fallback to histogram if KDE fails
-                hist, bin_edges = np.histogram(samples, bins=50, density=True, 
+                hist, bin_edges = np.histogram(samples, bins=25, density=True, 
                                               range=(np.min(x_grid), np.max(x_grid)))
                 bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
                 density = np.interp(x_grid, bin_centers, hist)
@@ -145,7 +145,7 @@ def compute_weighted_kde(samples, weights=None, x_grid=None):
                 density = kde(x_grid)
             except:
                 # Fallback to weighted histogram if KDE fails
-                hist, bin_edges = np.histogram(samples, bins=50, weights=weights, density=True, 
+                hist, bin_edges = np.histogram(samples, bins=25, weights=weights, density=True, 
                                               range=(np.min(x_grid), np.max(x_grid)))
                 bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
                 density = np.interp(x_grid, bin_centers, hist)
@@ -156,7 +156,7 @@ def compute_weighted_kde(samples, weights=None, x_grid=None):
             density = kde(x_grid)
         except:
             # Fallback to histogram if KDE fails
-            hist, bin_edges = np.histogram(samples, bins=50, density=True, 
+            hist, bin_edges = np.histogram(samples, bins=25, density=True, 
                                           range=(np.min(x_grid), np.max(x_grid)))
             bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
             density = np.interp(x_grid, bin_centers, hist)
@@ -360,10 +360,14 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_histo
 def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, has_re_equil, loss_histories=None, param_history=None, make_T=None, naive_snapshots=None):
     """Create the distributions plot showing histograms and diagnostic plots."""
     # Create figure with subplots for distributions and diagnostics
-    fig = plt.figure(figsize=(20, 18))
+    num_snapshots = len(snapshots['cd_pre_equil'])
+    cols = 4
+    rows = max(4, int(np.ceil(num_snapshots / cols)))
     
-    # Create grid layout: 2 rows, 4 columns
-    gs = fig.add_gridspec(4, 4, height_ratios=[1, 1, 1, 1], width_ratios=[1, 1, 1, 1])
+    fig = plt.figure(figsize=(20, 5*rows))
+    
+    # Create grid layout: dynamic rows, 4 columns
+    gs = fig.add_gridspec(rows, 4, height_ratios=[1]*rows, width_ratios=[1, 1, 1, 1])
     
     # Define time points to plot (every step now)
     times = np.arange(len(snapshots['cd_pre_equil'])) * delta_t
@@ -371,10 +375,8 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     # Check if this is a weighted simulation
     has_weights = 'weights_cd' in snapshots and len(snapshots['weights_cd']) > 0
     
-    # Plot distributions at different time points (top 2 rows)
+    # Plot distributions at different time points (all snapshots)
     for i, (time, lam_val) in enumerate(zip(times, snapshots['lam_pre_equil'])):
-        if i >= 8:  # Only plot first 8 distributions
-            break
             
         row = i // 4
         col = i % 4
@@ -391,11 +393,11 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
                         # Convert log weights to regular weights
                         weights = np.exp(weights - np.max(weights))
                         weights = weights / np.sum(weights)
-                        ax.hist(cd_snap.flatten(), bins=50, alpha=0.6, label='CD-HMC (Weighted)', density=True, color='red', weights=weights)
+                        ax.hist(cd_snap.flatten(), bins=25, alpha=0.6, label='CD-HMC (Weighted)', density=True, color='red', weights=weights)
                     else:
-                        ax.hist(cd_snap.flatten(), bins=50, alpha=0.6, label='CD-HMC', density=True, color='red')
+                        ax.hist(cd_snap.flatten(), bins=25, alpha=0.6, label='CD-HMC', density=True, color='red')
                 else:
-                    ax.hist(cd_snap.flatten(), bins=50, alpha=0.6, label='CD-HMC', density=True, color='red')
+                    ax.hist(cd_snap.flatten(), bins=25, alpha=0.6, label='CD-HMC', density=True, color='red')
         
         # Plot naive HMC distribution if available
         if naive_snapshots and 'naive' in naive_snapshots and i < len(naive_snapshots['naive']):
@@ -408,11 +410,11 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
                     if weights is not None and not np.allclose(weights, 0.0):
                         weights = np.exp(weights - np.max(weights))
                         weights = weights / np.sum(weights)
-                        ax.hist(naive_snap.flatten(), bins=50, alpha=0.6, label='Naive HMC (Weighted)', density=True, color='blue', weights=weights)
+                        ax.hist(naive_snap.flatten(), bins=25, alpha=0.6, label='Naive HMC (Weighted)', density=True, color='blue', weights=weights)
                     else:
-                        ax.hist(naive_snap.flatten(), bins=50, alpha=0.6, label='Naive HMC', density=True, color='blue')
+                        ax.hist(naive_snap.flatten(), bins=25, alpha=0.6, label='Naive HMC', density=True, color='blue')
                 else:
-                    ax.hist(naive_snap.flatten(), bins=50, alpha=0.6, label='Naive HMC', density=True, color='blue')
+                    ax.hist(naive_snap.flatten(), bins=25, alpha=0.6, label='Naive HMC', density=True, color='blue')
         
         # Plot true distribution
         x_grid = np.linspace(-5, 5, 1000)

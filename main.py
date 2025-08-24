@@ -152,8 +152,8 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name,
 def main():
     # Set up the system
     # system_name = "gaussian_moving_mean"
-    system_name = "gaussian_annealing"
-    # system_name = "double_well"
+    # system_name = "gaussian_annealing"
+    system_name = "double_well"
     make_T, make_V, system_description, dim = get_system(system_name)
     
     # Define lambda functions
@@ -164,7 +164,7 @@ def main():
     
     # Parameters
     M = 1000
-    N_steps = 10
+    N_steps = 40
     delta_t = 0.05
     eps = 0.05
     momentum_refresh_interval =  5.0
