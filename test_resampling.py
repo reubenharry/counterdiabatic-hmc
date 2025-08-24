@@ -88,7 +88,7 @@ def main():
                 
                 # Show resampling timeline
                 print(f"\nResampling timeline:")
-                for i, (t, resampling_count) in enumerate(zip(range(0, N_steps + 1, 10), resampling_events)):
+                for i, (t, resampling_count) in enumerate(zip(range(0, N_steps + 1, 1), resampling_events)):
                     if i > 0:
                         events_since_last = resampling_count - resampling_events[i-1]
                         if events_since_last > 0:
@@ -98,7 +98,7 @@ def main():
         
         # Show weight evolution
         print(f"\nWeight evolution:")
-        for i, (t, weights_snap) in enumerate(zip(range(0, N_steps + 1, 10), snapshots['weights'])):
+        for i, (t, weights_snap) in enumerate(zip(range(0, N_steps + 1, 1), snapshots['weights'])):
             if weights_snap is not None:
                 weights_np = np.exp(weights_snap - np.max(weights_snap))
                 weights_np = weights_np / np.sum(weights_np)

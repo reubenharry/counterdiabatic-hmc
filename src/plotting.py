@@ -186,7 +186,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     has_weights = 'weights' in snapshots and any(w is not None for w in snapshots['weights'])
     
     # Get time points
-    times = np.arange(len(snapshots['cd_pre_equil'])) * delta_t * 10  # *10 because we record every 10 steps
+    times = np.arange(len(snapshots['cd_pre_equil'])) * delta_t  # Record every step now
     
     # For post-equilibration snapshots, the timing is different
     # They represent the state after CD step + re-equilibration, so they should be plotted
@@ -194,7 +194,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     if has_re_equil:
         # Post-equilibration snapshots are stored at the end of timesteps
         # So they should be plotted at the next timestep's time
-        post_equil_times = np.arange(1, len(snapshots['cd_post_equil']) + 1) * delta_t * 10
+        post_equil_times = np.arange(1, len(snapshots['cd_post_equil']) + 1) * delta_t
     else:
         post_equil_times = np.array([])
     
@@ -365,8 +365,11 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     # Create grid layout: 2 rows, 4 columns
     gs = fig.add_gridspec(4, 4, height_ratios=[1, 1, 1, 1], width_ratios=[1, 1, 1, 1])
     
-    # Define time points to plot (every 10 steps)
-    times = np.arange(len(snapshots['cd_pre_equil'])) * delta_t * 10
+    # Define time points to plot (every step now)
+    times = np.arange(len(snapshots['cd_pre_equil'])) * delta_t
+    
+    # Check if this is a weighted simulation
+    has_weights = 'weights_cd' in snapshots and len(snapshots['weights_cd']) > 0
     
     # Plot distributions at different time points (top 2 rows)
     for i, (time, lam_val) in enumerate(zip(times, snapshots['lam_pre_equil'])):
@@ -381,13 +384,35 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         if 'cd_pre_equil' in snapshots and i < len(snapshots['cd_pre_equil']):
             cd_snap = snapshots['cd_pre_equil'][i]
             if len(cd_snap) > 0:
-                ax.hist(cd_snap.flatten(), bins=50, alpha=0.6, label='CD-HMC', density=True, color='red')
+                if has_weights and i < len(snapshots['weights_cd']):
+                    # Use weighted histogram
+                    weights = snapshots['weights_cd'][i]
+                    if weights is not None and not np.allclose(weights, 0.0):
+                        # Convert log weights to regular weights
+                        weights = np.exp(weights - np.max(weights))
+                        weights = weights / np.sum(weights)
+                        ax.hist(cd_snap.flatten(), bins=50, alpha=0.6, label='CD-HMC (Weighted)', density=True, color='red', weights=weights)
+                    else:
+                        ax.hist(cd_snap.flatten(), bins=50, alpha=0.6, label='CD-HMC', density=True, color='red')
+                else:
+                    ax.hist(cd_snap.flatten(), bins=50, alpha=0.6, label='CD-HMC', density=True, color='red')
         
         # Plot naive HMC distribution if available
         if naive_snapshots and 'naive' in naive_snapshots and i < len(naive_snapshots['naive']):
             naive_snap = naive_snapshots['naive'][i]
             if len(naive_snap) > 0:
-                ax.hist(naive_snap.flatten(), bins=50, alpha=0.6, label='Naive HMC', density=True, color='blue')
+                # Check if naive simulation also has weights
+                naive_has_weights = 'weights_naive' in naive_snapshots and len(naive_snapshots['weights_naive']) > 0
+                if naive_has_weights and i < len(naive_snapshots['weights_naive']):
+                    weights = naive_snapshots['weights_naive'][i]
+                    if weights is not None and not np.allclose(weights, 0.0):
+                        weights = np.exp(weights - np.max(weights))
+                        weights = weights / np.sum(weights)
+                        ax.hist(naive_snap.flatten(), bins=50, alpha=0.6, label='Naive HMC (Weighted)', density=True, color='blue', weights=weights)
+                    else:
+                        ax.hist(naive_snap.flatten(), bins=50, alpha=0.6, label='Naive HMC', density=True, color='blue')
+                else:
+                    ax.hist(naive_snap.flatten(), bins=50, alpha=0.6, label='Naive HMC', density=True, color='blue')
         
         # Plot true distribution
         x_grid = np.linspace(-5, 5, 1000)
@@ -474,7 +499,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         ax_params = fig.add_subplot(gs[3, 1:])
         param_history_array = np.array(param_history)
         # Create time array for parameter history (every 10 steps)
-        param_times = np.arange(len(param_history_array)) * delta_t * 10
+        param_times = np.arange(len(param_history_array)) * delta_t
         for i in range(param_history_array.shape[1]):
             ax_params.plot(param_times, param_history_array[:, i], 
                           label=f'Param {i}', alpha=0.7)

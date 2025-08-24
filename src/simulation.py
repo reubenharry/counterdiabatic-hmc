@@ -128,8 +128,8 @@ def compute_naive_weights(q, p, lam_k, lam_k1, make_T, make_V):
 
 def record_snapshots(snapshots, k, q_cd, lam_k, use_weights, log_weights_cd, 
                     resampling_count_cd, param_history, A_ansatz):
-    """Record snapshots and parameters every 10 steps."""
-    if k % 10 == 0:
+    """Record snapshots and parameters every step."""
+    if True:  # Record every step instead of every 10 steps
         # Store weighted samples for CD-HMC
         snapshots['cd_weighted'].append(np.array(q_cd))
         snapshots['weights_cd'].append(np.array(log_weights_cd))
@@ -265,8 +265,8 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval
         # Update previous energy values for next iteration
         prev_naive_H_vals = naive_stats['H_vals']
 
-        # Record snapshots every 10 steps
-        if k % 10 == 0:
+        # Record snapshots every step
+        if True:  # Record every step instead of every 10 steps
             snapshots['naive'].append(np.array(q_naive))
             snapshots['naive_weighted'].append(np.array(q_naive))
             snapshots['weights_naive'].append(np.array(log_weights))
@@ -599,7 +599,7 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
             
             # Store post-equilibration state at the current snapshot time
             # This represents the state after CD step + re-equilibration at the current lambda
-            if k % 10 == 0:  # Store at the current snapshot time
+            if True:  # Store every step instead of every 10 steps
                 snapshots['cd_post_equil'].append(np.array(q_cd_pre_equil))
                 snapshots['lam_post_equil'].append(lam_k1) # Store lambda at post-equilibration (use lam_k1 since re-equilibration happens at next lambda)
 
@@ -607,20 +607,20 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
             p_cd = p_cd_pre_equil.copy()
         else:
             # When re_equil_steps = 0, store the CD state directly as post-equilibration
-            if k % 10 == 0:  # Store at the current snapshot time
+            if True:  # Store every step instead of every 10 steps
                 snapshots['cd_post_equil'].append(np.array(q_cd))
                 snapshots['lam_post_equil'].append(lam_k)
     
     # Ensure the final state is captured in post-equilibration snapshots
     # This is especially important when re_equil_steps = 0
-    if len(snapshots['cd_post_equil']) == 0 or (k % 10 != 0):
+    if len(snapshots['cd_post_equil']) == 0:  # Always capture final state since we're recording every step
         # If no post-equilibration snapshots exist or the last step wasn't captured
         snapshots['cd_post_equil'].append(np.array(q_cd))
         snapshots['lam_post_equil'].append(lam_k)
     
     # Also ensure the final state is captured in pre-equilibration snapshots
-    # This is needed when the loop ends at k = N_steps and k % 10 == 0
-    if (k % 10 == 0) and (len(snapshots['cd_pre_equil']) == 0 or snapshots['cd_pre_equil'][-1].shape != q_cd.shape):
+    # This is needed when the loop ends at k = N_steps
+    if len(snapshots['cd_pre_equil']) == 0 or snapshots['cd_pre_equil'][-1].shape != q_cd.shape:
         # If the last step wasn't captured in pre-equilibration snapshots
         snapshots['cd_pre_equil'].append(np.array(q_cd))
         snapshots['lam_pre_equil'].append(lam_k)

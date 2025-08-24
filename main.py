@@ -34,8 +34,8 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, lam_fn, system_name,
     if not first_snapshot:
         print("No valid snapshots found for plotting")
         return
-        
-    times = np.arange(len(first_snapshot)) * delta_t * 10
+    
+    times = np.arange(len(first_snapshot)) * delta_t
     
     # Find global range for consistent x-axis
     all_qs = []
@@ -164,7 +164,7 @@ def main():
     
     # Parameters
     M = 1000
-    N_steps = 40
+    N_steps = 10
     delta_t = 0.05
     eps = 0.05
     momentum_refresh_interval =  5.0
@@ -266,21 +266,22 @@ def main():
         print(f"\nCreating comparison plots for {len(successful_simulations)} successful simulations...")
         create_comparison_plots(successful_simulations, delta_t, make_V, lam_fn, system_name, dim)
         
-        # Also create the detailed distribution plot using CD-HMC data (if available)
+        # Create detailed distribution plots for both unweighted and weighted cases
         if 'cd_unweighted' in successful_simulations:
-            print("Creating detailed distribution plot...")
+            print("Creating detailed distribution plot for unweighted case...")
             loss_histories = successful_simulations.get('loss_histories_cd_unweighted', [])
             param_history = successful_simulations.get('param_history_cd_unweighted', None)
             naive_snapshots = successful_simulations.get('naive_unweighted', None)
             plot_results(successful_simulations['cd_unweighted'], loss_histories, delta_t, make_V, lam_fn, 
-                        param_history=param_history, ansatz=ansatz, potential_name=system_name, dim=dim, plot_ansatz=False, make_T=make_T, naive_snapshots=naive_snapshots)
-        elif 'cd_weighted' in successful_simulations:
-            print("Creating detailed distribution plot...")
+                        param_history=param_history, ansatz=ansatz, potential_name=f"{system_name}_cd_unweighted", dim=dim, plot_ansatz=False, make_T=make_T, naive_snapshots=naive_snapshots)
+        
+        if 'cd_weighted' in successful_simulations:
+            print("Creating detailed distribution plot for weighted case...")
             loss_histories = successful_simulations.get('loss_histories_cd_weighted', [])
             param_history = successful_simulations.get('param_history_cd_weighted', None)
             naive_snapshots = successful_simulations.get('naive_weighted', None)
             plot_results(successful_simulations['cd_weighted'], loss_histories, delta_t, make_V, lam_fn, 
-                        param_history=param_history, ansatz=ansatz, potential_name=system_name, dim=dim, plot_ansatz=False, make_T=make_T, naive_snapshots=naive_snapshots)
+                        param_history=param_history, ansatz=ansatz, potential_name=f"{system_name}_cd_weighted", dim=dim, plot_ansatz=False, make_T=make_T, naive_snapshots=naive_snapshots)
         
 
     else:
