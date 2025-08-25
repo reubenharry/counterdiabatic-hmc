@@ -194,7 +194,7 @@ def generate_initial_samples(M, make_T, make_V, lam, key, dim, variance=None):
     
     return q, p
 
-def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, make_V, lam_fn, dot_lam_fn, key, dim, use_weights=False, ess_threshold=0.5):
+def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, make_T, make_V, lam_fn, dot_lam_fn, key, dim, use_weights=False, ess_threshold=0.5, snapshot_every=1):
     """Run naive HMC simulation without fitting the ansatz (for efficiency)."""
     
     # Generate initial samples from the correct distribution
@@ -265,8 +265,8 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval
         # Update previous energy values for next iteration
         prev_naive_H_vals = naive_stats['H_vals']
 
-        # Record snapshots every step
-        if True:  # Record every step instead of every 10 steps
+        # Record snapshots every snapshot_every steps
+        if k % snapshot_every == 0:
             snapshots['naive'].append(np.array(q_naive))
             snapshots['naive_weighted'].append(np.array(q_naive))
             snapshots['weights_naive'].append(np.array(log_weights))
@@ -342,7 +342,7 @@ def run_naive_hmc_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval
     
     return snapshots
 
-def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_every, num_initial_iterations, num_iterations, make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, key, dim, learning_rate=1e-4, re_equil_steps=0, use_weights=False, ess_threshold=0.5):
+def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_every, num_initial_iterations, num_iterations, make_T, make_V, A_ansatz, lam_fn, dot_lam_fn, key, dim, learning_rate=1e-4, re_equil_steps=0, use_weights=False, ess_threshold=0.5, snapshot_every=1):
     
     # Generate initial samples from the correct distribution
     initial_lam = float(lam_fn(0.0))
@@ -461,9 +461,10 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
         # Update previous energy values for next iteration
         prev_cd_H_vals = cd_stats['H_vals']
 
-        # Record snapshots and parameters every 10 steps
-        record_snapshots(snapshots, k, q_cd, lam_k, use_weights, log_weights_cd, 
-                        resampling_count_cd, param_history, A_ansatz)
+        # Record snapshots and parameters every snapshot_every steps
+        if k % snapshot_every == 0:
+            record_snapshots(snapshots, k, q_cd, lam_k, use_weights, log_weights_cd, 
+                            resampling_count_cd, param_history, A_ansatz)
 
         # Note: Momentum randomization removed - only CD-HMC is performed here
 

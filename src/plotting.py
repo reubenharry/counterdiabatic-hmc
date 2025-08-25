@@ -320,7 +320,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmon
     plt.savefig(f"{ansatz_dir}/ridge_plot_{potential_name}.png", dpi=300, bbox_inches='tight')
     plt.close()
 
-def plot_results(snapshots, loss_histories, delta_t, make_V, lam_fn, param_history=None, ansatz=None, potential_name="harmonic", dim=1, plot_ansatz=False, make_T=None, naive_snapshots=None):
+def plot_results(snapshots, loss_histories, delta_t, make_V, param_history=None, ansatz=None, potential_name="harmonic", dim=1, plot_ansatz=False, make_T=None, naive_snapshots=None):
     """Simplified plotting function that only creates two figures:
     1. Comparison ridge plot (handled in main.py)
     2. Distributions plot (this function)
