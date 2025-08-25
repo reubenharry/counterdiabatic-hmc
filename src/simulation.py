@@ -94,69 +94,68 @@ def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None):
         'H_vals': H_vals  # Store individual H values
     }
 
-def compute_naive_weights(q, p, lam_k, lam_k1, make_T, make_V):
-    """Compute importance weights for naive HMC based on energy difference."""
-    # Compute energy at old and new lambda values for each particle
-    T_old = make_T(lam_k)
-    V_old = make_V(lam_k)
-    T_new = make_T(lam_k1)
-    V_new = make_V(lam_k1)
+# def compute_naive_weights(q, p, lam_k, lam_k1, make_T, make_V):
+#     """Compute importance weights for naive HMC based on energy difference."""
+#     # Compute energy at old and new lambda values for each particle
+#     T_old = make_T(lam_k)
+#     V_old = make_V(lam_k)
+#     T_new = make_T(lam_k1)
+#     V_new = make_V(lam_k1)
     
-    # Compute energies for each particle
-    def compute_energy(q, p, T_fn, V_fn):
-        return T_fn(p) + V_fn(q)
+#     # Compute energies for each particle
+#     def compute_energy(q, p, T_fn, V_fn):
+#         return T_fn(p) + V_fn(q)
     
-    # Vectorize over particles
-    energy_old = jax.vmap(lambda q, p: compute_energy(q, p, T_old, V_old))(q, p)
-    energy_new = jax.vmap(lambda q, p: compute_energy(q, p, T_new, V_new))(q, p)
+#     # Vectorize over particles
+#     energy_old = jax.vmap(lambda q, p: compute_energy(q, p, T_old, V_old))(q, p)
+#     energy_new = jax.vmap(lambda q, p: compute_energy(q, p, T_new, V_new))(q, p)
 
-    # H = lambda lam: lambda q, p: make_T(lam)(p) + make_V(lam)(q)
-    # dH_dt = lambda qq, pp: (jax.grad(lambda q, p, lam: H(lam)(q, p), argnums=2)(qq, pp, lam_k))
+#     # H = lambda lam: lambda q, p: make_T(lam)(p) + make_V(lam)(q)
+#     # dH_dt = lambda qq, pp: (jax.grad(lambda q, p, lam: H(lam)(q, p), argnums=2)(qq, pp, lam_k))
     
-    # Log weight update: log(w_new) = log(w_old) - (H_new - H_old)
-    # This is the negative change in energy (Boltzmann factor)
+#     # Log weight update: log(w_new) = log(w_old) - (H_new - H_old)
+#     # This is the negative change in energy (Boltzmann factor)
 
-    direct = (energy_new - energy_old)
-    # indirect = jax.vmap(lambda q, p: dH_dt(q,p)*(lam_k1 - lam_k))(q,p)
-    # print("fpp", direct, indirect, np.abs(direct - indirect))
-    log_weight_update = -(energy_new - energy_old)
-    # log_weight_update = -indirect
+#     direct = (energy_new - energy_old)
+#     # indirect = jax.vmap(lambda q, p: dH_dt(q,p)*(lam_k1 - lam_k))(q,p)
+#     # print("fpp", direct, indirect, np.abs(direct - indirect))
+#     log_weight_update = -(energy_new - energy_old)
+#     # log_weight_update = -indirect
     
-    return log_weight_update
+#     return log_weight_update
 
 
 
 def record_snapshots(snapshots, k, q_cd, lam_k, use_weights, log_weights_cd, 
                     resampling_count_cd, param_history, A_ansatz):
     """Record snapshots and parameters every step."""
-    if True:  # Record every step instead of every 10 steps
-        # Store weighted samples for CD-HMC
-        snapshots['cd_weighted'].append(np.array(q_cd))
-        snapshots['weights_cd'].append(np.array(log_weights_cd))
-        snapshots['resampling_events_cd'].append(resampling_count_cd)
-        
-        snapshots['cd_pre_equil'].append(np.array(q_cd)) # Store pre-equilibration state
-        snapshots['lam_pre_equil'].append(lam_k) # Store lambda at pre-equilibration
-        
-        # Record parameters
-        if isinstance(A_ansatz, PolynomialAnsatz):
-            param_history.append(np.array(A_ansatz.params))
-            # Check parameters for NaNs
-            check_nans("polynomial_params", A_ansatz.params, k)
-        elif isinstance(A_ansatz, NeuralNetworkAnsatz):
-            # Store just the parameters as a tuple of arrays
-            params = []
-            for layer in A_ansatz.layers:
-                if isinstance(layer, eqx.nn.Linear):
-                    params.append(np.array(layer.weight))
-                    params.append(np.array(layer.bias))
-            param_history.append(tuple(params))
-        elif isinstance(A_ansatz, AnalyticAnsatz):
-            param_history.append(np.array(A_ansatz.params))
-            check_nans("analytic_params", A_ansatz.params, k)
+    # Store weighted samples for CD-HMC
+    snapshots['cd_weighted'].append(np.array(q_cd))
+    snapshots['weights_cd'].append(np.array(log_weights_cd))
+    snapshots['resampling_events_cd'].append(resampling_count_cd)
+    
+    snapshots['cd_pre_equil'].append(np.array(q_cd)) # Store pre-equilibration state
+    snapshots['lam_pre_equil'].append(lam_k) # Store lambda at pre-equilibration
+    
+    # Record parameters
+    if isinstance(A_ansatz, PolynomialAnsatz):
+        param_history.append(np.array(A_ansatz.params))
+        # Check parameters for NaNs
+        check_nans("polynomial_params", A_ansatz.params, k)
+    elif isinstance(A_ansatz, NeuralNetworkAnsatz):
+        # Store just the parameters as a tuple of arrays
+        params = []
+        for layer in A_ansatz.layers:
+            if isinstance(layer, eqx.nn.Linear):
+                params.append(np.array(layer.weight))
+                params.append(np.array(layer.bias))
+        param_history.append(tuple(params))
+    elif isinstance(A_ansatz, AnalyticAnsatz):
+        param_history.append(np.array(A_ansatz.params))
+        check_nans("analytic_params", A_ansatz.params, k)
 
 # =============================================================================
-# 6) SImuLATION: NAÏVE HMC VS CD WITH ONLINE FITTING
+# 6) SIMULATION: NAÏVE HMC VS CD WITH ONLINE FITTING
 # =============================================================================
 def generate_initial_samples(M, make_T, make_V, lam, key, dim, variance=None):
     """Generate M samples from a Gaussian distribution with variance matching the potential.
@@ -641,3 +640,174 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
         print(f"Total resampling events - CD-HMC: {resampling_count_cd}")
     
     return A_ansatz, snapshots, loss_histories, param_history 
+
+def save_simulation_data(snapshots, system_name, method_name, delta_t, lam_fn, ansatz_params=None, loss_histories=None, param_history=None):
+    """Save simulation data to a pickle file."""
+    import pickle
+    import os
+    
+    # Create data directory if it doesn't exist
+    os.makedirs("data", exist_ok=True)
+    
+    # Extract lambda values at each snapshot time
+    times = jnp.arange(len(snapshots.get('naive', snapshots.get('cd_pre_equil', [])))) * delta_t
+    lambda_values = [float(lam_fn(t)) for t in times]
+    
+    # Prepare data to save
+    data = {
+        'snapshots': snapshots,
+        'system_name': system_name,
+        'method_name': method_name,
+        'delta_t': delta_t,
+        'times': times,
+        'lambda_values': lambda_values,  # Save actual lambda values
+        'ansatz_params': ansatz_params,
+        'loss_histories': loss_histories,
+        'param_history': param_history
+    }
+    
+    # Save to pickle file
+    filename = f"data/{system_name}_{method_name}.pkl"
+    with open(filename, 'wb') as f:
+        pickle.dump(data, f)
+    
+    print(f"Saved simulation data to {filename}")
+
+def load_simulation_data(system_name, method_name):
+    """Load simulation data from a pickle file."""
+    import pickle
+    import os
+    
+    filename = f"data/{system_name}_{method_name}.pkl"
+    
+    if not os.path.exists(filename):
+        print(f"Data file {filename} not found.")
+        return None
+    
+    with open(filename, 'rb') as f:
+        data = pickle.load(f)
+    
+    print(f"Loaded simulation data from {filename}")
+    return data
+
+def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_simulations=True, snapshot_every=1, 
+                                 M=1000, N_steps=40, delta_t=0.05, eps=0.05, 
+                                 momentum_refresh_interval=5.0, fit_every=1, 
+                                 num_initial_iterations=10000, num_iterations=10000, 
+                                 learning_rate=1e-4, re_equil_steps=0, ess_threshold=0.5):
+    """
+    Run simulations and save data for the specified system and ansatz.
+    
+    Args:
+        system_name: Name of the system ('gaussian_annealing', 'gaussian_moving_mean', etc.)
+        ansatz: The ansatz object (PolynomialAnsatz, NeuralNetworkAnsatz, etc.)
+        run_simulations: Whether to run simulations or load from saved data
+        snapshot_every: Rate at which snapshots are taken
+    
+    Returns:
+        dict: Dictionary containing successful simulation results
+    """
+    # Set up the system based on system_name
+    from src.systems import get_system
+    
+    make_T, make_V, system_description, dim = get_system(system_name)
+    
+    # Storage for all simulation results
+    successful_simulations = {}
+    
+    if run_simulations:
+        # Run simulations and save data
+        key = jax.random.PRNGKey(0)
+        
+        # Define simulation configurations
+        naive_configs = [
+            {'name': 'naive_unweighted', 'use_weights': False, 'ess_threshold': None},
+            {'name': 'naive_weighted', 'use_weights': True, 'ess_threshold': ess_threshold}
+        ]
+        
+        cd_configs = [
+            {'name': 'cd_unweighted', 'use_weights': False, 'ess_threshold': None},
+            {'name': 'cd_weighted', 'use_weights': True, 'ess_threshold': ess_threshold}
+        ]
+        
+        # Run naive HMC simulations
+        for config in naive_configs:
+            print(f"\n{'='*50}")
+            print(f"Running Naive HMC ({config['name'].replace('_', ' ').title()})")
+            print(f"{'='*50}")
+            
+            try:
+                # Prepare parameters
+                kwargs = {
+                    'M': M, 'N_steps': N_steps, 'delta_t': delta_t, 'eps': eps,
+                    'momentum_refresh_interval': momentum_refresh_interval,
+                    'make_T': make_T, 'make_V': make_V, 'lam_fn': lam_fn, 'dot_lam_fn': dot_lam_fn,
+                    'key': key, 'dim': dim, 'use_weights': config['use_weights'], 
+                    'snapshot_every': snapshot_every
+                }
+                if config['ess_threshold'] is not None:
+                    kwargs['ess_threshold'] = config['ess_threshold']
+                
+                snapshots = run_naive_hmc_simulation(**kwargs)
+                successful_simulations[config['name']] = snapshots
+                
+                # Save data
+                save_simulation_data(snapshots, system_name, config['name'], delta_t, lam_fn)
+                print(f"✓ Naive HMC ({config['name'].replace('_', ' ').title()}) completed successfully")
+                
+            except Exception as e:
+                print(f"✗ Naive HMC ({config['name'].replace('_', ' ').title()}) failed: {e}")
+        
+        # Run counterdiabatic HMC simulations
+        for config in cd_configs:
+            print(f"\n{'='*50}")
+            print(f"Running Counterdiabatic HMC ({config['name'].replace('_', ' ').title()})")
+            print(f"{'='*50}")
+            
+            try:
+                # Prepare parameters
+                kwargs = {
+                    'M': M, 'N_steps': N_steps, 'delta_t': delta_t, 'eps': eps,
+                    'momentum_refresh_interval': momentum_refresh_interval,
+                    'fit_every': fit_every, 'num_initial_iterations': num_initial_iterations,
+                    'num_iterations': num_iterations, 'make_T': make_T, 'make_V': make_V,
+                    'A_ansatz': ansatz, 'lam_fn': lam_fn, 'dot_lam_fn': dot_lam_fn,
+                    'key': key, 'dim': dim, 'learning_rate': learning_rate,
+                    're_equil_steps': re_equil_steps, 'use_weights': config['use_weights'], 
+                    'snapshot_every': snapshot_every
+                }
+                if config['ess_threshold'] is not None:
+                    kwargs['ess_threshold'] = config['ess_threshold']
+                
+                _, snapshots, loss_histories, param_history = run_simulation(**kwargs)
+                successful_simulations[config['name']] = snapshots
+                successful_simulations[f'loss_histories_{config["name"]}'] = loss_histories
+                successful_simulations[f'param_history_{config["name"]}'] = param_history
+                
+                # Save data
+                save_simulation_data(snapshots, system_name, config['name'], delta_t, lam_fn, 
+                                   ansatz_params=ansatz, loss_histories=loss_histories, 
+                                   param_history=param_history)
+                print(f"✓ Counterdiabatic HMC ({config['name'].replace('_', ' ').title()}) completed successfully")
+                
+            except Exception as e:
+                print(f"✗ Counterdiabatic HMC ({config['name'].replace('_', ' ').title()}) failed: {e}")
+    else:
+        # Load data from saved files
+        print("Loading simulation data from saved files...")
+        
+        # Try to load each method's data
+        methods = ['naive_unweighted', 'naive_weighted', 'cd_unweighted', 'cd_weighted']
+        for method in methods:
+            data = load_simulation_data(system_name, method)
+            if data is not None:
+                successful_simulations[method] = data['snapshots']
+                if 'loss_histories' in data and data['loss_histories'] is not None:
+                    successful_simulations[f'loss_histories_{method}'] = data['loss_histories']
+                if 'param_history' in data and data['param_history'] is not None:
+                    successful_simulations[f'param_history_{method}'] = data['param_history']
+                print(f"✓ Loaded {method} data")
+            else:
+                print(f"✗ Could not load {method} data")
+    
+    return successful_simulations 

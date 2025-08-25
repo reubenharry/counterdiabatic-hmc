@@ -376,12 +376,14 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     # Create figure with subplots for distributions and diagnostics
     num_snapshots = len(snapshots['cd_pre_equil'])
     cols = 4
-    rows = max(4, int(np.ceil(num_snapshots / cols)))
+    rows_histograms = int(np.ceil(num_snapshots / cols))
+    rows_diagnostics = 2  # For loss, energy stats, and parameter history
+    total_rows = rows_histograms + rows_diagnostics
     
-    fig = plt.figure(figsize=(20, 5*rows))
+    fig = plt.figure(figsize=(20, 5*total_rows))
     
-    # Create grid layout: dynamic rows, 4 columns
-    gs = fig.add_gridspec(rows, 4, height_ratios=[1]*rows, width_ratios=[1, 1, 1, 1])
+    # Create grid layout: histograms first, then diagnostics
+    gs = fig.add_gridspec(total_rows, 4, height_ratios=[1]*rows_histograms + [1]*rows_diagnostics, width_ratios=[1, 1, 1, 1])
     
     # Define time points to plot (every step now)
     times = np.arange(len(snapshots['cd_pre_equil'])) * delta_t
@@ -389,9 +391,8 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     # Check if this is a weighted simulation
     has_weights = 'weights_cd' in snapshots and len(snapshots['weights_cd']) > 0
     
-    # Plot distributions at different time points (all snapshots)
+    # FIRST: Plot all histograms at different time points
     for i, (time, lam_val) in enumerate(zip(times, snapshots['lam_pre_equil'])):
-            
         row = i // 4
         col = i % 4
         ax = fig.add_subplot(gs[row, col])
@@ -443,9 +444,12 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         ax.legend()
         ax.grid(True, alpha=0.3)
     
-    # Plot loss curves (bottom left)
+    # SECOND: Plot diagnostic plots after all histograms
+    diagnostic_row_start = rows_histograms
+    
+    # Plot loss curves (first diagnostic row, left)
     if loss_histories and len(loss_histories) > 0:
-        ax_loss = fig.add_subplot(gs[2, 0])
+        ax_loss = fig.add_subplot(gs[diagnostic_row_start, 0])
         for i, loss_history in enumerate(loss_histories):
             if len(loss_history) > 0:
                 ax_loss.plot(loss_history, label=f'Step {i}', alpha=0.7)
@@ -455,7 +459,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         ax_loss.legend()
         ax_loss.grid(True, alpha=0.3)
     
-    # Plot energy statistics (bottom right 3 plots)
+    # Plot energy statistics (first diagnostic row, middle and right)
     if 'detailed_energy_stats' in snapshots and len(snapshots['detailed_energy_stats']) > 0:
         energy_stats = snapshots['detailed_energy_stats']
         
@@ -463,7 +467,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         energy_times = np.arange(len(energy_stats)) * delta_t
         
         # Plot <∂H/∂λ> over time
-        ax_dH_dlam = fig.add_subplot(gs[2, 1])
+        ax_dH_dlam = fig.add_subplot(gs[diagnostic_row_start, 1])
         dH_dlam_vals = [stats['cd']['avg_dH_dlam'] for stats in energy_stats]
         ax_dH_dlam.plot(energy_times, dH_dlam_vals, 'r-', label='CD-HMC', linewidth=2)
         
@@ -481,7 +485,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         ax_dH_dlam.grid(True, alpha=0.3)
         
         # Plot <ΔH²> over time
-        ax_dH2 = fig.add_subplot(gs[2, 2])
+        ax_dH2 = fig.add_subplot(gs[diagnostic_row_start, 2])
         dH2_vals = [stats['cd']['avg_delta_H_sq'] for stats in energy_stats]
         ax_dH2.plot(energy_times, dH2_vals, 'r-', label='CD-HMC', linewidth=2)
         
@@ -501,7 +505,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
 
         
         # Plot <{A,H}²> over time (Poisson bracket squared)
-        ax_A_H_sq = fig.add_subplot(gs[3, 0])
+        ax_A_H_sq = fig.add_subplot(gs[diagnostic_row_start, 3])
         A_H_sq_vals = [stats['cd']['avg_A_H_sq'] for stats in energy_stats]
         ax_A_H_sq.plot(energy_times, A_H_sq_vals, 'm-', label='CD-HMC', linewidth=2)
         ax_A_H_sq.set_xlabel('Time')
@@ -510,9 +514,9 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         ax_A_H_sq.legend()
         ax_A_H_sq.grid(True, alpha=0.3)
     
-    # Plot parameter history if available (bottom row, spanning 3 columns)
+    # Plot parameter history if available (second diagnostic row, spanning all columns)
     if param_history and len(param_history) > 0:
-        ax_params = fig.add_subplot(gs[3, 1:])
+        ax_params = fig.add_subplot(gs[diagnostic_row_start + 1, :])
         
         # Handle different parameter types
         if isinstance(param_history[0], jnp.ndarray):
@@ -552,3 +556,176 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
 # Removed unnecessary plotting functions - only keeping the essential ones 
 
 # Removed unnecessary plotting functions - only keeping the essential ones 
+
+def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim):
+    """Create comparison plots for all four simulation methods."""
+    # Create figures directory
+    os.makedirs("figures", exist_ok=True)
+    ansatz_dir = f"figures/polynomial"
+    os.makedirs(ansatz_dir, exist_ok=True)
+    
+    # Create a comprehensive comparison ridge plot
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    axes = axes.flatten()
+    
+    # Get time points - find the first available snapshot key
+    first_snapshot = None
+    for snapshots in all_snapshots.values():
+        if isinstance(snapshots, dict) and any(key in snapshots for key in ['naive', 'naive_weighted', 'cd_pre_equil', 'cd_weighted']):
+            for key in ['naive', 'naive_weighted', 'cd_pre_equil', 'cd_weighted']:
+                if key in snapshots:
+                    first_snapshot = snapshots[key]
+                    break
+            if first_snapshot:
+                break
+    
+    if not first_snapshot:
+        print("No valid snapshots found for plotting")
+        return
+    
+    times = np.arange(len(first_snapshot)) * delta_t
+    
+    # Find global range for consistent x-axis
+    all_qs = []
+    for method, snapshots in all_snapshots.items():
+        if method == 'naive_unweighted':
+            all_qs.extend(snapshots['naive'])
+        elif method == 'naive_weighted':
+            all_qs.extend(snapshots['naive_weighted'])
+        elif method == 'cd_unweighted':
+            all_qs.extend(snapshots['cd_pre_equil'])  # Fixed: use cd_pre_equil instead of cd_post_equil
+        elif method == 'cd_weighted':
+            all_qs.extend(snapshots['cd_weighted'])
+    x_min = np.min(np.concatenate(all_qs)) - 0.5
+    x_max = np.max(np.concatenate(all_qs)) + 0.5
+    x_grid = np.linspace(x_min, x_max, 200)
+    
+    # Plot each method
+    colors = {'naive_unweighted': 'blue', 'naive_weighted': 'green', 'cd_unweighted': 'red', 'cd_weighted': 'orange'}
+    titles = {
+        'naive_unweighted': 'Naive HMC (Unweighted)',
+        'naive_weighted': 'Naive HMC (Weighted SMC)',
+        'cd_unweighted': 'Counterdiabatic HMC (Unweighted)',
+        'cd_weighted': 'Counterdiabatic HMC (Weighted)'
+    }
+    
+    # Filter out non-snapshot keys (like loss_histories and param_history)
+    snapshot_methods = {k: v for k, v in all_snapshots.items() if k in titles}
+    
+    for i, (method, snapshots) in enumerate(snapshot_methods.items()):
+        ax = axes[i]
+        ax.set_title(titles[method], fontsize=14, fontweight='bold')
+        ax.set_xlabel("Position q", fontsize=12)
+        ax.set_ylabel("Time t", fontsize=12)
+        
+        # Choose the correct snapshot key for each method
+        if method == 'naive_unweighted':
+            snapshot_key = 'naive'
+            weights_key = None
+        elif method == 'naive_weighted':
+            snapshot_key = 'naive_weighted'
+            weights_key = 'weights_naive'
+        elif method == 'cd_unweighted':
+            snapshot_key = 'cd_pre_equil'
+            weights_key = None
+        elif method == 'cd_weighted':
+            snapshot_key = 'cd_weighted'
+            weights_key = 'weights_cd'
+        else:
+            snapshot_key = 'naive'  # fallback
+            weights_key = None
+        
+        # Choose the correct lambda values for each method
+        if method in ['cd_unweighted', 'cd_weighted']:
+            lam_key = 'lam_pre_equil'
+        else:
+            lam_key = 'lam_pre_equil'
+        
+        # Plot distributions
+        for j, (t, snap, lam_val) in enumerate(zip(times, snapshots[snapshot_key], snapshots[lam_key])):
+            # Get weights if available
+            weights = None
+            if weights_key and snapshots[weights_key][j] is not None:
+                log_weights = snapshots[weights_key][j]
+                # Check if all log weights are zero (unit weights)
+                if np.allclose(log_weights, 0.0):
+                    weights = None  # Use unweighted histogram
+                else:
+                    weights = np.exp(log_weights - np.max(log_weights))
+                    weights = weights / np.sum(weights)
+            
+            # Compute KDE
+            try:
+                from scipy.stats import gaussian_kde
+                if weights is not None:
+                    # Use weighted KDE
+                    kde = gaussian_kde(snap.flatten(), weights=weights)
+                else:
+                    kde = gaussian_kde(snap.flatten())
+                density = kde(x_grid)
+            except:
+                # Fallback to histogram
+                if weights is not None:
+                    hist, bin_edges = np.histogram(snap, bins=50, density=True, range=(x_min, x_max), weights=weights)
+                else:
+                    hist, bin_edges = np.histogram(snap, bins=50, density=True, range=(x_min, x_max))
+                bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+                density = np.interp(x_grid, bin_centers, hist)
+            
+            # Normalize and offset for ridge plot
+            density = density / np.max(density) * 1.8
+            offset = t * 2.0  # Increased spacing between plots to reduce overlap
+            
+            # Plot the ridge
+            ax.fill_between(x_grid, offset, offset + density, 
+                           color=colors[method], alpha=0.4, edgecolor=colors[method], linewidth=0.5)
+            
+            # Add true distribution
+            potential_fn = make_V(lam_val)
+            rho = np.array([np.exp(-potential_fn(x)) for x in x_grid])
+            rho = rho / np.max(rho) * 1.8
+            ax.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
+        
+        # Set limits
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(times[0] * 2.0 - 0.1, times[-1] * 2.0 + 2.0)  # Adjusted for increased spacing
+        ax.set_yticks(times * 2.0)
+    
+    plt.tight_layout()
+    plt.savefig(f"{ansatz_dir}/comparison_ridge_plot_{system_name}.png", dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Saved comparison ridge plot to {ansatz_dir}/comparison_ridge_plot_{system_name}.png")
+
+def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_V, make_T=None):
+    """
+    Create all plots for the simulation results.
+    
+    Args:
+        successful_simulations: Dictionary containing simulation results
+        system_name: Name of the system
+        ansatz: The ansatz object used
+        delta_t: Time step
+        make_V: Function to create potential energy
+        make_T: Function to create kinetic energy (optional)
+    """
+    if len(successful_simulations) > 0:
+        print(f"\nCreating comparison plots for {len(successful_simulations)} successful simulations...")
+        create_comparison_plots(successful_simulations, delta_t, make_V, system_name, dim=1)
+        
+        # Create detailed distribution plots for counterdiabatic methods
+        cd_methods = ['cd_unweighted', 'cd_weighted']
+        for method in cd_methods:
+            if method in successful_simulations:
+                print(f"Creating detailed distribution plot for {method.replace('_', ' ')} case...")
+                loss_histories = successful_simulations.get(f'loss_histories_{method}', [])
+                param_history = successful_simulations.get(f'param_history_{method}', None)
+                naive_method = method.replace('cd_', 'naive_')
+                naive_snapshots = successful_simulations.get(naive_method, None)
+                
+                plot_results(successful_simulations[method], loss_histories, delta_t, make_V, 
+                            param_history=param_history, ansatz=ansatz, 
+                            potential_name=f"{system_name}_{method}", dim=1, plot_ansatz=False, 
+                            make_T=make_T, naive_snapshots=naive_snapshots)
+    else:
+        print("No successful simulations to plot.") 
