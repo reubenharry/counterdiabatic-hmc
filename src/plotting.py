@@ -193,14 +193,14 @@ def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ans
     ansatz_dir = f"figures/{ansatz_type}"
     os.makedirs(ansatz_dir, exist_ok=True)
     
-    # Check if re-equilibration was used
-    has_re_equil = 'cd_post_equil' in snapshots and len(snapshots['cd_post_equil']) > 0
+    # Check if re-equilibration was used (simplified - no post-equilibration for now)
+    has_re_equil = False
     
     # Check if weights are available
     has_weights = 'weights' in snapshots and any(w is not None for w in snapshots['weights'])
     
     # Get time points
-    times = np.arange(len(snapshots['cd_pre_equil'])) * delta_t  # Record every step now
+    times = np.arange(len(snapshots['particles'])) * delta_t  # Record every step now
     
     # For post-equilibration snapshots, the timing is different
     # They represent the state after CD step + re-equilibration, so they should be plotted
@@ -250,14 +250,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ans
         ax1_lambda.tick_params(axis='y', labelcolor='red')
     
     # Find global range for consistent x-axis
-    all_qs = np.concatenate(snapshots['cd_pre_equil'])
-    if has_re_equil:
-        # Flatten all arrays to 1D before concatenation
-        all_qs_flat = all_qs.flatten()
-        cd_post_equil_flat = np.concatenate(snapshots['cd_post_equil']).flatten()
-        all_qs = np.concatenate([all_qs_flat, cd_post_equil_flat])
-    else:
-        all_qs = all_qs.flatten()
+    all_qs = np.concatenate(snapshots['particles']).flatten()
     x_min = np.min(all_qs) - 0.5
     x_max = np.max(all_qs) + 0.5
     
@@ -268,9 +261,9 @@ def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ans
     
     # Note: Naive HMC weighted plotting removed since naive HMC is not performed in run_simulation
     
-    # Plot CD HMC distributions (pre-equilibration)
+    # Plot CD HMC distributions
     cd_ax = ax2 if has_weights else ax1  # Use appropriate axis based on layout
-    for i, (t, cd_snap, lam_val) in enumerate(zip(times, snapshots['cd_pre_equil'], snapshots['lam_pre_equil'])):
+    for i, (t, cd_snap, lam_val) in enumerate(zip(times, snapshots['particles'], snapshots['lam'])):
         # Compute KDE for smooth curve
         density = compute_weighted_kde(cd_snap.flatten(), weights=None, x_grid=x_grid)
         
@@ -306,7 +299,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ans
     
     # Configure lambda axes (secondary y-axes)
     # Get lambda values for the time points
-    lambda_values = snapshots['lam_pre_equil']
+    lambda_values = snapshots['lam']
     
     # Configure lambda axes based on layout
     ax1_lambda.set_ylim(ax1.get_ylim())  # Same limits as time axis
@@ -357,9 +350,8 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, param_history=None,
     
     # Debug information
     print(f"Plotting for ansatz type: {ansatz_type}")
-    print(f"Number of snapshots: naive={len(snapshots.get('naive', []))}, cd_pre_equil={len(snapshots.get('cd_pre_equil', []))}")
-    if 'cd_post_equil' in snapshots:
-        print(f"Number of post-equilibration snapshots: {len(snapshots['cd_post_equil'])}")
+    print(f"Number of snapshots: particles={len(snapshots.get('particles', []))}")
+    print(f"Number of post-equilibration snapshots: 0")
     
     # Check if re-equilibration was used
     has_re_equil = 'cd_post_equil' in snapshots and len(snapshots['cd_post_equil']) > 0
@@ -374,7 +366,7 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, param_history=None,
 def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, has_re_equil, loss_histories=None, param_history=None, make_T=None, naive_snapshots=None):
     """Create the distributions plot showing histograms and diagnostic plots."""
     # Create figure with subplots for distributions and diagnostics
-    num_snapshots = len(snapshots['cd_pre_equil'])
+    num_snapshots = len(snapshots['particles'])
     cols = 4
     rows_histograms = int(np.ceil(num_snapshots / cols))
     rows_diagnostics = 2  # For loss, energy stats, and parameter history
@@ -386,42 +378,42 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     gs = fig.add_gridspec(total_rows, 4, height_ratios=[1]*rows_histograms + [1]*rows_diagnostics, width_ratios=[1, 1, 1, 1])
     
     # Define time points to plot (every step now)
-    times = np.arange(len(snapshots['cd_pre_equil'])) * delta_t
+    times = np.arange(len(snapshots['particles'])) * delta_t
     
     # Check if this is a weighted simulation
-    has_weights = 'weights_cd' in snapshots and len(snapshots['weights_cd']) > 0
+    has_weights = 'weights' in snapshots and len(snapshots['weights']) > 0
     
     # FIRST: Plot all histograms at different time points
-    for i, (time, lam_val) in enumerate(zip(times, snapshots['lam_pre_equil'])):
+    for i, (time, lam_val) in enumerate(zip(times, snapshots['lam'])):
         row = i // 4
         col = i % 4
         ax = fig.add_subplot(gs[row, col])
         
-        # Plot CD-HMC distribution (pre-equilibration)
-        if 'cd_pre_equil' in snapshots and i < len(snapshots['cd_pre_equil']):
-            cd_snap = snapshots['cd_pre_equil'][i]
-            if len(cd_snap) > 0:
-                if has_weights and i < len(snapshots['weights_cd']):
+        # Plot particles distribution
+        if 'particles' in snapshots and i < len(snapshots['particles']):
+            particles_snap = snapshots['particles'][i]
+            if len(particles_snap) > 0:
+                if has_weights and i < len(snapshots['weights']):
                     # Use weighted histogram
-                    weights = snapshots['weights_cd'][i]
+                    weights = snapshots['weights'][i]
                     if weights is not None and not np.allclose(weights, 0.0):
                         # Convert log weights to regular weights
                         weights = np.exp(weights - np.max(weights))
                         weights = weights / np.sum(weights)
-                        ax.hist(cd_snap.flatten(), bins=25, alpha=0.6, label='CD-HMC (Weighted)', density=True, color='red', weights=weights)
+                        ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, label='Particles (Weighted)', density=True, color='red', weights=weights)
                     else:
-                        ax.hist(cd_snap.flatten(), bins=25, alpha=0.6, label='CD-HMC', density=True, color='red')
+                        ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, label='Particles', density=True, color='red')
                 else:
-                    ax.hist(cd_snap.flatten(), bins=25, alpha=0.6, label='CD-HMC', density=True, color='red')
+                    ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, label='Particles', density=True, color='red')
         
         # Plot naive HMC distribution if available
-        if naive_snapshots and 'naive' in naive_snapshots and i < len(naive_snapshots['naive']):
-            naive_snap = naive_snapshots['naive'][i]
+        if naive_snapshots and 'particles' in naive_snapshots and i < len(naive_snapshots['particles']):
+            naive_snap = naive_snapshots['particles'][i]
             if len(naive_snap) > 0:
                 # Check if naive simulation also has weights
-                naive_has_weights = 'weights_naive' in naive_snapshots and len(naive_snapshots['weights_naive']) > 0
-                if naive_has_weights and i < len(naive_snapshots['weights_naive']):
-                    weights = naive_snapshots['weights_naive'][i]
+                naive_has_weights = 'weights' in naive_snapshots and len(naive_snapshots['weights']) > 0
+                if naive_has_weights and i < len(naive_snapshots['weights']):
+                    weights = naive_snapshots['weights'][i]
                     if weights is not None and not np.allclose(weights, 0.0):
                         weights = np.exp(weights - np.max(weights))
                         weights = weights / np.sum(weights)
@@ -571,13 +563,9 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim):
     # Get time points - find the first available snapshot key
     first_snapshot = None
     for snapshots in all_snapshots.values():
-        if isinstance(snapshots, dict) and any(key in snapshots for key in ['naive', 'naive_weighted', 'cd_pre_equil', 'cd_weighted']):
-            for key in ['naive', 'naive_weighted', 'cd_pre_equil', 'cd_weighted']:
-                if key in snapshots:
-                    first_snapshot = snapshots[key]
-                    break
-            if first_snapshot:
-                break
+        if isinstance(snapshots, dict) and 'particles' in snapshots:
+            first_snapshot = snapshots['particles']
+            break
     
     if not first_snapshot:
         print("No valid snapshots found for plotting")
@@ -588,14 +576,8 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim):
     # Find global range for consistent x-axis
     all_qs = []
     for method, snapshots in all_snapshots.items():
-        if method == 'naive_unweighted':
-            all_qs.extend(snapshots['naive'])
-        elif method == 'naive_weighted':
-            all_qs.extend(snapshots['naive_weighted'])
-        elif method == 'cd_unweighted':
-            all_qs.extend(snapshots['cd_pre_equil'])  # Fixed: use cd_pre_equil instead of cd_post_equil
-        elif method == 'cd_weighted':
-            all_qs.extend(snapshots['cd_weighted'])
+        if isinstance(snapshots, dict) and 'particles' in snapshots:
+            all_qs.extend(snapshots['particles'])
     x_min = np.min(np.concatenate(all_qs)) - 0.5
     x_max = np.max(np.concatenate(all_qs)) + 0.5
     x_grid = np.linspace(x_min, x_max, 200)
@@ -618,28 +600,10 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim):
         ax.set_xlabel("Position q", fontsize=12)
         ax.set_ylabel("Time t", fontsize=12)
         
-        # Choose the correct snapshot key for each method
-        if method == 'naive_unweighted':
-            snapshot_key = 'naive'
-            weights_key = None
-        elif method == 'naive_weighted':
-            snapshot_key = 'naive_weighted'
-            weights_key = 'weights_naive'
-        elif method == 'cd_unweighted':
-            snapshot_key = 'cd_pre_equil'
-            weights_key = None
-        elif method == 'cd_weighted':
-            snapshot_key = 'cd_weighted'
-            weights_key = 'weights_cd'
-        else:
-            snapshot_key = 'naive'  # fallback
-            weights_key = None
-        
-        # Choose the correct lambda values for each method
-        if method in ['cd_unweighted', 'cd_weighted']:
-            lam_key = 'lam_pre_equil'
-        else:
-            lam_key = 'lam_pre_equil'
+        # Use unified keys for all methods
+        snapshot_key = 'particles'
+        weights_key = 'weights'
+        lam_key = 'lam'
         
         # Plot distributions
         for j, (t, snap, lam_val) in enumerate(zip(times, snapshots[snapshot_key], snapshots[lam_key])):

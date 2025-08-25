@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import pickle
 import os
 
-from src.simulation import run_simulation, run_naive_hmc_simulation, run_simulation_and_save_data
+from src.simulation import run_simulation_and_save_data
 from src.plotting import plot_results, create_ridge_plot, create_all_plots
 from src.ansatze import PolynomialAnsatz, NeuralNetworkAnsatz, AnalyticAnsatz
 from src.systems import get_system
