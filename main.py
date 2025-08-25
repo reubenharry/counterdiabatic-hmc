@@ -28,10 +28,10 @@ def main():
     
     # Simulation parameters
     M = 2000  # Number of particles
-    N_steps = 10  # Number of simulation steps
+    N_steps = 5  # Number of simulation steps
     delta_t = 0.2  # Time step
     eps = 0.2  # HMC step size
-    momentum_refresh_interval = 2  # Momentum refresh interval
+    momentum_refresh_interval = 1  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
     num_initial_iterations = 100000  # Initial optimization iterations
     num_iterations = 100000  # Optimization iterations per step

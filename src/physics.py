@@ -94,7 +94,7 @@ def with_maruyama(integrator):
         return q, p, weight
     return maruyama
 
-clip_value = 100.0
+clip_value = 10.0
 
 def make_cd_euler_step(T, V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next):
     """Create a counterdiabatic Euler step function."""
@@ -244,27 +244,30 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
         # Clip the gradients to prevent large forces
         dA_dq = jnp.clip(dA_dq, -clip_value, clip_value)
         dA_dp = jnp.clip(dA_dp, -clip_value, clip_value)
-
-        # q_new = q + eps * dot_lam * dA_dp
-        # p_new = p - eps * dot_lam * dA_dq
         
         log_weight = compute_counterdiabatic_work(q, p, lam, lam_next, A_ansatz, make_T, make_V)*eps*dot_lam
 
+        # q_new = q + eps * dot_lam * dA_dp
+        # p_new = p - eps * dot_lam * dA_dq
+
         # q half-step: q_half = q + (eps/2) * (dT/dp + dot_lam * dA/dp)
-        q_half = q + 0.5 * eps * (jax.grad(T)(p) + dot_lam * dA_dp)
-        # q_half = q + 0.5 * eps * (jax.grad(T)(p))
+        # q_half = q + 0.5 * eps * (jax.grad(T_next)(p) + dot_lam * dA_dp)
+        q_half = q + 0.5 * eps * (dot_lam * dA_dp)
+        # q_half = q + 0.5 * eps * (jax.grad(T_next)(p))
         
         # p full-step: p_new = p - eps * (dV/dq + dot_lam * dA/dq) at q_half
         dA_dq_half = dA_dq_scalar(q_half, p)
         dA_dq_half = jnp.clip(dA_dq_half, -clip_value, clip_value)
-        p_new = p - eps * (jax.grad(V)(q_half) + dot_lam * dA_dq_half)
-        # p_new = p - eps * (jax.grad(V)(q_half))
+        # p_new = p - eps * (jax.grad(V_next)(q_half) + dot_lam * dA_dq_half)
+        p_new = p - eps * (dot_lam * dA_dq_half)
+        # p_new = p - eps * (jax.grad(V_next)(q_half) )
         
-        # q half-step: q_new = q_half + (eps/2) * (dT/dp + dot_lam * dA/dp) at p_new
+        # # q half-step: q_new = q_half + (eps/2) * (dT/dp + dot_lam * dA/dp) at p_new
         dA_dp_new = dA_dp_scalar(q_half, p_new)
         dA_dp_new = jnp.clip(dA_dp_new, -clip_value, clip_value)
-        q_new = q_half + 0.5 * eps * (jax.grad(T)(p_new) + dot_lam * dA_dp_new)
-        # q_new = q_half + 0.5 * eps * (jax.grad(T)(p_new) )
+        # q_new = q_half + 0.5 * eps * (jax.grad(T_next)(p_new) + dot_lam * dA_dp_new)
+        q_new = q_half + 0.5 * eps * (dot_lam * dA_dp_new)
+        # q_new = q_half + 0.5 * eps * (jax.grad(T_next)(p_new) )
         
         
         
