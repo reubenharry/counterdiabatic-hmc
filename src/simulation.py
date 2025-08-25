@@ -244,10 +244,11 @@ def simulate(simulation_type, M, N_steps, delta_t, eps, momentum_refresh_interva
             # Compute effective sample size
             weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
             weights = weights / jnp.sum(weights)  # Normalize
-            ess = 1.0 / jnp.sum(weights ** 2)
+            ess = jnp.sum(weights)**2 / jnp.sum(weights ** 2)
             
             # Resample if ESS is too low
-            if ess < ess_threshold * M:
+            # if ess < ess_threshold * M:
+            if True:
                 print(f"  Resampling at step {k} (ESS = {ess:.2f})")
                 q, p, log_weights = multinomial_resample(q, p, log_weights, key, M)
                 resampling_count += 1
