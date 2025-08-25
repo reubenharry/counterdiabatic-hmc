@@ -498,8 +498,9 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
             subs = jax.random.split(sub, M)
             
             # Create integrator with weight calculation if using weights
-            cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, eps, rng_key, t: with_maruyama(make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=eps, L=L, rng_key=rng_key, t=t), in_axes=(0, 0, None, None, None, None, None, 0, None))
-            q_cd, p_cd, step_weights_cd = jax.jit(cd_step)(q_cd, p_cd, lam_k, lam_k1, dot_lam_k, dot_lam_k1, eps, subs, t_k)
+            cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, eps, t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=eps, t=t), in_axes=(0, 0, None, None, None, None, None, None))
+            q_cd, p_cd, step_weights_cd = jax.jit(cd_step)(q_cd, p_cd, lam_k, lam_k1, dot_lam_k, dot_lam_k1, eps, t_k)
+            
             if use_weights:
                 
                 # Update log weights using the step log weights
@@ -529,9 +530,9 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
                 # Keep weights at 1 (log_weights = 0) when not using weights
                 log_weights_cd = jnp.zeros(M)
 
-            # if k % 10 == 0 and k > 0:
-            #         key, sub = jax.random.split(key)
-            #         p_cd = jax.random.normal(sub, (M, dim))
+            if k % momentum_refresh_interval == 0 and k > 0:
+                    key, sub = jax.random.split(key)
+                    p_cd = jax.random.normal(sub, (M, dim))
             
             # Check for NaNs in CD HMC
             if check_nans("q_cd", q_cd, k):
@@ -569,26 +570,26 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
             # V_current = make_V(lam_k1)
             # equil_step = with_maruyama(make_leapfrog_step(T_current, V_current))
             
-            for equil_idx in range(re_equil_steps):
-                key, sub = jax.random.split(key)
-                subs = jax.random.split(sub, M)
-                equil_eps = 0.05
-                equil_L = 4.0 # eps*momentum_refresh_interval
-                # q_cd_pre_equil, p_cd_pre_equil = generate_initial_samples(M, make_T, make_V, lam_k1, sub, dim, num_steps=1000, eps=0.1, L=4.0)
-                q_cd_pre_equil, p_cd_pre_equil = jax.jit(naive_step)(q_cd_pre_equil, p_cd_pre_equil, lam_k1, None, equil_eps, equil_L, subs)
-                # q_cd_pre_equil, p_cd_pre_equil = jax.vmap(lambda q, p: equil_step(q, p, eps/10, L=eps*momentum_refresh_interval, rng_key=sub))(q_cd_pre_equil, p_cd_pre_equil)
+            # for equil_idx in range(re_equil_steps):
+            #     key, sub = jax.random.split(key)
+            #     subs = jax.random.split(sub, M)
+            #     equil_eps = 0.05
+            #     equil_L = 4.0 # eps*momentum_refresh_interval
+            #     # q_cd_pre_equil, p_cd_pre_equil = generate_initial_samples(M, make_T, make_V, lam_k1, sub, dim, num_steps=1000, eps=0.1, L=4.0)
+            #     q_cd_pre_equil, p_cd_pre_equil = jax.jit(naive_step)(q_cd_pre_equil, p_cd_pre_equil, lam_k1, None, equil_eps, equil_L, subs)
+            #     # q_cd_pre_equil, p_cd_pre_equil = jax.vmap(lambda q, p: equil_step(q, p, eps/10, L=eps*momentum_refresh_interval, rng_key=sub))(q_cd_pre_equil, p_cd_pre_equil)
 
-                # q_cd_pre_equil = q_cd_pre_equil
-                # p_cd_pre_equil = p_cd_pre_equil
+            #     # q_cd_pre_equil = q_cd_pre_equil
+            #     # p_cd_pre_equil = p_cd_pre_equil
 
                 
-                # Check for NaNs during re-equilibration
-                if check_nans("re_equil_q", q_cd_pre_equil, f"{k}_{equil_idx}"):
-                    print(f"  Stopping re-equilibration due to NaNs at step {k}, equil {equil_idx}")
-                    break
-                if check_nans("re_equil_p", p_cd_pre_equil, f"{k}_{equil_idx}"):
-                    print(f"  Stopping re-equilibration due to NaNs at step {k}, equil {equil_idx}")
-                    break
+            #     # Check for NaNs during re-equilibration
+            #     if check_nans("re_equil_q", q_cd_pre_equil, f"{k}_{equil_idx}"):
+            #         print(f"  Stopping re-equilibration due to NaNs at step {k}, equil {equil_idx}")
+            #         break
+            #     if check_nans("re_equil_p", p_cd_pre_equil, f"{k}_{equil_idx}"):
+            #         print(f"  Stopping re-equilibration due to NaNs at step {k}, equil {equil_idx}")
+            #         break
                 
                 # Randomize momenta periodically during re-equilibration
                 # if equil_idx % 10 == 0 and equil_idx > 0:

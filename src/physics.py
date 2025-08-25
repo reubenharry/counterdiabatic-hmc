@@ -58,8 +58,8 @@ def make_x_update(T):
 # =============================================================================
 def make_leapfrog_step(T, V, T_next, V_next, lam_fn=None, dot_lam_fn=None):
     """Create a leapfrog step function for separable Hamiltonian with optional weight calculation."""
-    p_update = make_p_update(V)
-    x_update = make_x_update(T)
+    p_update = make_p_update(V_next)
+    x_update = make_x_update(T_next)
     # T_next = T
 
     def leapfrog(q, p, eps, t=None):
