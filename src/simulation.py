@@ -77,6 +77,10 @@ def simulate(simulation_type, M, N_steps, delta_t, eps, momentum_refresh_interva
     all_energy_stats = []
     all_times = []
     
+    # Store detailed energy statistics for plotting
+    detailed_energy_stats = []
+    detailed_times = []
+    
     for k in range(N_steps + 1):
         t_k = k * delta_t
         lam_k = float(lam_fn(t_k))
@@ -157,6 +161,10 @@ def simulate(simulation_type, M, N_steps, delta_t, eps, momentum_refresh_interva
         # Store energy statistics for this timestep
         all_energy_stats.append({simulation_type: stats})
         all_times.append(t_k)
+        
+        # Store detailed energy statistics for plotting
+        detailed_energy_stats.append(stats)
+        detailed_times.append(t_k)
         
         # Update previous energy values for next iteration
         prev_H_vals = stats['H_vals']
@@ -249,6 +257,10 @@ def simulate(simulation_type, M, N_steps, delta_t, eps, momentum_refresh_interva
             key, sub = jax.random.split(key)
             p = jax.random.normal(sub, (M, dim))
     
+    # Add detailed energy statistics to snapshots
+    snapshots['detailed_energy_stats'] = detailed_energy_stats
+    snapshots['detailed_times'] = detailed_times
+    
     print(f"Simulation completed after {k} steps")
     if simulation_type == 'naive':
         return snapshots
@@ -325,15 +337,22 @@ def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None):
     avg_dH_dlam = jnp.mean(dH_dlam_vals)
     avg_dH_dlam_sq = jnp.mean(dH_dlam_vals ** 2)
     
-    # Compute {A,H} if A_ansatz is provided
+    # Compute {A,H} and Var[A] if A_ansatz is provided
     avg_A_H = 0.0
     avg_A_H_sq = 0.0
+    var_A = 0.0
     if A_ansatz is not None:
         from .physics import poisson_bracket_fn
         H_fixed = lambda q, p: T(p) + V(q)
         A_H_vals = jax.vmap(lambda qr, pr: poisson_bracket_fn(A_ansatz, H_fixed)(qr, pr))(q, p)
         avg_A_H = float(jnp.mean(A_H_vals))
         avg_A_H_sq = float(jnp.mean(A_H_vals ** 2))
+        
+        # Compute Var[A] = <A²> - <A>²
+        A_vals = jax.vmap(lambda qr, pr: A_ansatz(qr, pr))(q, p)
+        avg_A = float(jnp.mean(A_vals))
+        avg_A_sq = float(jnp.mean(A_vals ** 2))
+        var_A = avg_A_sq - avg_A ** 2
     
     return {
         'avg_H': float(avg_H),
@@ -342,6 +361,7 @@ def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None):
         'avg_dH_dlam_sq': float(avg_dH_dlam_sq),
         'avg_A_H': avg_A_H,
         'avg_A_H_sq': avg_A_H_sq,
+        'var_A': float(var_A),
         'H_vals': H_vals  # Store individual H values
     }
 
@@ -904,7 +924,7 @@ def save_simulation_data(snapshots, system_name, method_name, delta_t, lam_fn, a
     os.makedirs("data", exist_ok=True)
     
     # Extract lambda values at each snapshot time
-    times = jnp.arange(len(snapshots.get('naive', snapshots.get('cd_pre_equil', [])))) * delta_t
+    times = jnp.arange(len(snapshots.get('particles', []))) * delta_t
     lambda_values = [float(lam_fn(t)) for t in times]
     
     # Prepare data to save
@@ -1029,6 +1049,11 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
                     A_ansatz, snapshots, loss_histories, param_history = result
                 
                 successful_simulations[config['name']] = snapshots
+                # Add times and lambda_values for consistency
+                times = jnp.arange(len(snapshots['particles'])) * delta_t
+                lambda_values = [float(lam_fn(t)) for t in times]
+                successful_simulations[f'times_{config["name"]}'] = times
+                successful_simulations[f'lambda_values_{config["name"]}'] = lambda_values
                 successful_simulations[f'loss_histories_{config["name"]}'] = loss_histories
                 successful_simulations[f'param_history_{config["name"]}'] = param_history
                 
@@ -1051,6 +1076,11 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
             data = load_simulation_data(system_name, method)
             if data is not None:
                 successful_simulations[method] = data['snapshots']
+                # Also include the saved times and lambda_values
+                if 'times' in data:
+                    successful_simulations[f'times_{method}'] = data['times']
+                if 'lambda_values' in data:
+                    successful_simulations[f'lambda_values_{method}'] = data['lambda_values']
                 if 'loss_histories' in data and data['loss_histories'] is not None:
                     successful_simulations[f'loss_histories_{method}'] = data['loss_histories']
                 if 'param_history' in data and data['param_history'] is not None:

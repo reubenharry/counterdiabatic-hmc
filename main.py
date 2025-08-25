@@ -27,7 +27,7 @@ def main():
     ansatz_type = "polynomial"  # Options: "polynomial", "neural_network", "analytic"
     
     # Simulation parameters
-    M = 1000  # Number of particles
+    M = 2000  # Number of particles
     N_steps = 10  # Number of simulation steps
     delta_t = 0.2  # Time step
     eps = 0.2  # HMC step size

@@ -377,14 +377,23 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     # Create grid layout: histograms first, then diagnostics
     gs = fig.add_gridspec(total_rows, 4, height_ratios=[1]*rows_histograms + [1]*rows_diagnostics, width_ratios=[1, 1, 1, 1])
     
-    # Define time points to plot (every step now)
-    times = np.arange(len(snapshots['particles'])) * delta_t
+    # Use saved times if available, otherwise calculate on the fly
+    if 'times' in snapshots:
+        times = snapshots['times']
+    else:
+        times = np.arange(len(snapshots['particles'])) * delta_t
     
     # Check if this is a weighted simulation
     has_weights = 'weights' in snapshots and len(snapshots['weights']) > 0
     
     # FIRST: Plot all histograms at different time points
-    for i, (time, lam_val) in enumerate(zip(times, snapshots['lam'])):
+    # Use saved lambda values if available, otherwise use snapshots['lam']
+    if 'lambda_values' in snapshots:
+        lambda_values = snapshots['lambda_values']
+    else:
+        lambda_values = snapshots['lam']
+    
+    for i, (time, lam_val) in enumerate(zip(times, lambda_values)):
         row = i // 4
         col = i % 4
         ax = fig.add_subplot(gs[row, col])
@@ -460,14 +469,14 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         
         # Plot <∂H/∂λ> over time
         ax_dH_dlam = fig.add_subplot(gs[diagnostic_row_start, 1])
-        dH_dlam_vals = [stats['cd']['avg_dH_dlam'] for stats in energy_stats]
-        ax_dH_dlam.plot(energy_times, dH_dlam_vals, 'r-', label='CD-HMC', linewidth=2)
+        dH_dlam_vals = [stats['avg_dH_dlam'] for stats in energy_stats]
+        ax_dH_dlam.plot(energy_times, dH_dlam_vals, 'r-', label='Current Method', linewidth=2)
         
         # Add naive HMC energy derivative if available
         if naive_snapshots and 'detailed_energy_stats' in naive_snapshots and len(naive_snapshots['detailed_energy_stats']) > 0:
             naive_energy_stats = naive_snapshots['detailed_energy_stats']
             naive_energy_times = np.arange(len(naive_energy_stats)) * delta_t
-            naive_dH_dlam_vals = [stats['naive']['avg_dH_dlam'] for stats in naive_energy_stats]
+            naive_dH_dlam_vals = [stats['avg_dH_dlam'] for stats in naive_energy_stats]
             ax_dH_dlam.plot(naive_energy_times, naive_dH_dlam_vals, 'b-', label='Naive HMC', linewidth=2)
         
         ax_dH_dlam.set_xlabel('Time')
@@ -478,14 +487,14 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         
         # Plot <ΔH²> over time
         ax_dH2 = fig.add_subplot(gs[diagnostic_row_start, 2])
-        dH2_vals = [stats['cd']['avg_delta_H_sq'] for stats in energy_stats]
-        ax_dH2.plot(energy_times, dH2_vals, 'r-', label='CD-HMC', linewidth=2)
+        dH2_vals = [stats['avg_delta_H_sq'] for stats in energy_stats]
+        ax_dH2.plot(energy_times, dH2_vals, 'r-', label='Current Method', linewidth=2)
         
         # Add naive HMC energy variance if available
         if naive_snapshots and 'detailed_energy_stats' in naive_snapshots and len(naive_snapshots['detailed_energy_stats']) > 0:
             naive_energy_stats = naive_snapshots['detailed_energy_stats']
             naive_energy_times = np.arange(len(naive_energy_stats)) * delta_t
-            naive_dH2_vals = [stats['naive']['avg_delta_H_sq'] for stats in naive_energy_stats]
+            naive_dH2_vals = [stats['avg_delta_H_sq'] for stats in naive_energy_stats]
             ax_dH2.plot(naive_energy_times, naive_dH2_vals, 'b-', label='Naive HMC', linewidth=2)
         
         ax_dH2.set_xlabel('Time')
@@ -496,15 +505,15 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         
 
         
-        # Plot <{A,H}²> over time (Poisson bracket squared)
-        ax_A_H_sq = fig.add_subplot(gs[diagnostic_row_start, 3])
-        A_H_sq_vals = [stats['cd']['avg_A_H_sq'] for stats in energy_stats]
-        ax_A_H_sq.plot(energy_times, A_H_sq_vals, 'm-', label='CD-HMC', linewidth=2)
-        ax_A_H_sq.set_xlabel('Time')
-        ax_A_H_sq.set_ylabel('<{A,H}²>')
-        ax_A_H_sq.set_title('Poisson Bracket Squared')
-        ax_A_H_sq.legend()
-        ax_A_H_sq.grid(True, alpha=0.3)
+        # Plot Var[A] over time (only for counterdiabatic)
+        ax_var_A = fig.add_subplot(gs[diagnostic_row_start, 3])
+        var_A_vals = [stats['var_A'] for stats in energy_stats]
+        ax_var_A.plot(energy_times, var_A_vals, 'g-', label='Var[A]', linewidth=2)
+        ax_var_A.set_xlabel('Time')
+        ax_var_A.set_ylabel('Var[A]')
+        ax_var_A.set_title('Gauge Potential Variance')
+        ax_var_A.legend()
+        ax_var_A.grid(True, alpha=0.3)
     
     # Plot parameter history if available (second diagnostic row, spanning all columns)
     if param_history and len(param_history) > 0:
@@ -560,18 +569,34 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim):
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
     axes = axes.flatten()
     
-    # Get time points - find the first available snapshot key
-    first_snapshot = None
-    for snapshots in all_snapshots.values():
+    # Get time points - use saved times if available, otherwise calculate from first snapshot
+    times = None
+    lambda_values = None
+    
+    # Try to find saved times and lambda_values
+    for method, snapshots in all_snapshots.items():
         if isinstance(snapshots, dict) and 'particles' in snapshots:
-            first_snapshot = snapshots['particles']
-            break
+            # Check if this method has saved times
+            times_key = f'times_{method}'
+            lambda_key = f'lambda_values_{method}'
+            if times_key in all_snapshots:
+                times = all_snapshots[times_key]
+                lambda_values = all_snapshots[lambda_key]
+                break
     
-    if not first_snapshot:
-        print("No valid snapshots found for plotting")
-        return
-    
-    times = np.arange(len(first_snapshot)) * delta_t
+    # Fallback to calculating from first snapshot
+    if times is None:
+        first_snapshot = None
+        for snapshots in all_snapshots.values():
+            if isinstance(snapshots, dict) and 'particles' in snapshots:
+                first_snapshot = snapshots['particles']
+                break
+        
+        if not first_snapshot:
+            print("No valid snapshots found for plotting")
+            return
+        
+        times = np.arange(len(first_snapshot)) * delta_t
     
     # Find global range for consistent x-axis
     all_qs = []
@@ -605,8 +630,14 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim):
         weights_key = 'weights'
         lam_key = 'lam'
         
+        # Use saved lambda values if available, otherwise use snapshots[lam_key]
+        if lambda_values is not None:
+            method_lambda_values = lambda_values
+        else:
+            method_lambda_values = snapshots[lam_key]
+        
         # Plot distributions
-        for j, (t, snap, lam_val) in enumerate(zip(times, snapshots[snapshot_key], snapshots[lam_key])):
+        for j, (t, snap, lam_val) in enumerate(zip(times, snapshots[snapshot_key], method_lambda_values)):
             # Get weights if available
             weights = None
             if weights_key and snapshots[weights_key][j] is not None:
@@ -687,7 +718,18 @@ def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_
                 naive_method = method.replace('cd_', 'naive_')
                 naive_snapshots = successful_simulations.get(naive_method, None)
                 
-                plot_results(successful_simulations[method], loss_histories, delta_t, make_V, 
+                # Get saved times and lambda_values if available
+                saved_times = successful_simulations.get(f'times_{method}', None)
+                saved_lambda_values = successful_simulations.get(f'lambda_values_{method}', None)
+                
+                # Add times and lambda_values to snapshots if they exist
+                snapshots_with_timing = successful_simulations[method].copy()
+                if saved_times is not None:
+                    snapshots_with_timing['times'] = saved_times
+                if saved_lambda_values is not None:
+                    snapshots_with_timing['lambda_values'] = saved_lambda_values
+                
+                plot_results(snapshots_with_timing, loss_histories, delta_t, make_V, 
                             param_history=param_history, ansatz=ansatz, 
                             potential_name=f"{system_name}_{method}", dim=1, plot_ansatz=False, 
                             make_T=make_T, naive_snapshots=naive_snapshots)

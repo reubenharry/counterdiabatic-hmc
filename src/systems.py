@@ -13,8 +13,10 @@ def make_V_gaussian_moving_mean(lam):
     return lambda q: 0.5 * jnp.sum((q - lam) ** 2)
 
 def make_V_gaussian_annealing(lam):
-    """Gaussian potential with annealing temperature: V(q) = 0.5 * (λ + 0.1) * q^2"""
-    return lambda q: 0.5 * jnp.sum((lam + 0.1) * (q ** 2))
+    """Gaussian potential with annealing temperature: V(q) = 0.5 * k(λ) * q^2 where k interpolates from 1 (std=1) to 100 (std=0.1)"""
+    # k = 1 at λ=0 (std=1), k = 100 at λ=1 (std=0.1)
+    k = 1.0 + 99.0 * lam
+    return lambda q: 0.5 * jnp.sum(k * (q ** 2))
 
 def make_V_double_well(lam):
     """Double well potential: V(q) = (1-λ)*0.5*q^2 + λ*(q^2 - 3)^2"""
@@ -49,7 +51,7 @@ SYSTEMS = {
     'gaussian_annealing': {
         'make_T': make_T_standard,
         'make_V': make_V_gaussian_annealing,
-        'description': 'Gaussian potential with annealing temperature V(q) = 0.5 * (λ + 0.1) * q²',
+        'description': 'Gaussian potential with annealing temperature V(q) = 0.5 * k(λ) * q² where k interpolates from 1 (std=1) to 100 (std=0.1)',
         'dim': 1
     },
     'double_well': {
