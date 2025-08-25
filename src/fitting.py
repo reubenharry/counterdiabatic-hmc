@@ -134,10 +134,8 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
         else:
             # Neural network case - use eqx.filter
             grad_arrays = eqx.filter(grads, eqx.is_array)
-            clipped_grads = {}
-            for name, grad in grad_arrays.items():
-                # Clip individual gradients to prevent extreme values
-                clipped_grads[name] = jnp.clip(grad, -10.0, 10.0)
+            # Clip gradients to prevent extreme values
+            clipped_grads = jax.tree_map(lambda g: jnp.clip(g, -10.0, 10.0), grad_arrays)
             
             updates, opt_state = optimizer.update(clipped_grads, opt_state)
             A_ansatz = eqx.apply_updates(A_ansatz, updates)

@@ -513,12 +513,30 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     # Plot parameter history if available (bottom row, spanning 3 columns)
     if param_history and len(param_history) > 0:
         ax_params = fig.add_subplot(gs[3, 1:])
-        param_history_array = np.array(param_history)
-        # Create time array for parameter history (every 10 steps)
-        param_times = np.arange(len(param_history_array)) * delta_t
-        for i in range(param_history_array.shape[1]):
-            ax_params.plot(param_times, param_history_array[:, i], 
-                          label=f'Param {i}', alpha=0.7)
+        
+        # Handle different parameter types
+        if isinstance(param_history[0], jnp.ndarray):
+            # Polynomial ansatz - simple array of parameters
+            param_history_array = np.array(param_history)
+            param_times = np.arange(len(param_history_array)) * delta_t
+            for i in range(param_history_array.shape[1]):
+                ax_params.plot(param_times, param_history_array[:, i], 
+                              label=f'Param {i}', alpha=0.7)
+        else:
+            # Neural network ansatz - complex structure, plot norm of parameters
+            param_norms = []
+            param_times = np.arange(len(param_history)) * delta_t
+            for params in param_history:
+                # Calculate L2 norm of all parameters
+                param_arrays = eqx.filter(params, eqx.is_array)
+                total_norm = 0.0
+                for param in jax.tree_leaves(param_arrays):
+                    total_norm += jnp.sum(param ** 2)
+                param_norms.append(float(jnp.sqrt(total_norm)))
+            
+            ax_params.plot(param_times, param_norms, 
+                          label='Parameter Norm', alpha=0.7, color='red')
+        
         ax_params.set_xlabel('Time')
         ax_params.set_ylabel('Parameter Value')
         ax_params.set_title('Parameter History')

@@ -216,15 +216,23 @@ def main(run_simulations=True):
     eps = 0.05
     momentum_refresh_interval =  5.0
     fit_every = 1
-    num_initial_iterations = 100000
-    num_iterations = 100000
+    num_initial_iterations = 10000
+    num_iterations = 10000
     learning_rate = 1e-4
     re_equil_steps = 0
     ess_threshold = 0.5
     snapshot_every = 1  # Record snapshots every N steps (1 = every step, 10 = every 10 steps, etc.)
     
     # Create ansatz
-    ansatz = PolynomialAnsatz(max_degree=2, dim=dim)
+    key = jax.random.PRNGKey(42)  # Fixed seed for reproducibility
+    if dim == 1:
+        # For 1D: input [q, p] -> hidden layers -> output
+        dims = [2*dim, 32, 16, 1]  # [2, 32, 16, 1]
+    else:
+        # For higher dimensions: adjust network size
+        dims = [2*dim, 64, 32, 16, 1]  # [2*dim, 64, 32, 16, 1]
+    
+    ansatz = NeuralNetworkAnsatz(dims=dims, key=key, dim=dim)
     
     # Storage for all simulation results
     successful_simulations = {}

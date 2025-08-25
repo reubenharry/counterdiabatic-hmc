@@ -196,20 +196,16 @@ class NeuralNetworkAnsatz(A_ansatz):
             layer = eqx.nn.Linear(
                 dims[i], 
                 dims[i+1], 
-                key=keys[i],
-                w_init=lambda key, shape: jax.random.normal(key, shape) * scale,
-                b_init=lambda key, shape: jax.random.normal(key, shape) * 0.01
+                key=keys[i]
             )
+            # Manually scale the weights and biases
+            layer = eqx.tree_at(lambda m: m.weight, layer, layer.weight * scale)
+            layer = eqx.tree_at(lambda m: m.bias, layer, layer.bias * 0.01)
             self.layers.append(layer)
 
     def __call__(self, q, p):
-        # Check inputs for NaNs
-        check_nans("nn_input_q", q)
-        check_nans("nn_input_p", p)
-        
         # Concatenate q and p for input to MLP
         x = jnp.concatenate([q, p])
-        check_nans("nn_concat_input", x)
         
         for i, layer in enumerate(self.layers[:-1]):
             x = (layer)(x)
@@ -220,6 +216,5 @@ class NeuralNetworkAnsatz(A_ansatz):
         x = (final_layer)(x)
         
         result = x.squeeze()
-        check_nans("nn_final_result", result)
         
         return result 
