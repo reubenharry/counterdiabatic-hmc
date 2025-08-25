@@ -1,16 +1,30 @@
 import jax
+import jax.numpy as jnp
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 import equinox as eqx
-import jax
-import jax.numpy as jnp
 import os
 from scipy.stats import gaussian_kde
 
 from .ansatze import PolynomialAnsatz, NeuralNetworkAnsatz, AnalyticAnsatz
 
-def plot_learned_ansatz(ax, theta, ansatz, q_range=(-3, 3), p_range=(-3, 3), n_points=25, dim=1):
+# Plotting constants
+PLOTTING_CONSTANTS = {
+    'HISTOGRAM_BINS': 25,
+    'GRID_POINTS': 200,
+    'DENSE_GRID_POINTS': 1000,
+    'ALPHA': 0.6,
+    'RIDGE_HEIGHT': 1.8,
+    'FIGURE_SIZE_SINGLE': (8, 6),
+    'FIGURE_SIZE_DOUBLE': (12, 6),
+    'FIGURE_SIZE_DISTRIBUTIONS': (20, 5),
+    'DISTRIBUTIONS_COLS': 4
+}
+
+def plot_learned_ansatz(ax, theta, ansatz, q_range=(-3, 3), p_range=(-3, 3), n_points=None, dim=1):
+    if n_points is None:
+        n_points = PLOTTING_CONSTANTS['HISTOGRAM_BINS']
     """Plot the learned ansatz function A(q,p) as a 2D surface.
     
     Args:
@@ -163,7 +177,7 @@ def compute_weighted_kde(samples, weights=None, x_grid=None):
     
     return density
 
-def create_ridge_plot(snapshots, delta_t, make_V, lam_fn, potential_name="harmonic", ansatz_type="polynomial"):
+def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ansatz_type="polynomial"):
     """Create a ridge plot showing the evolution of 1D distributions over time.
     
     Args:

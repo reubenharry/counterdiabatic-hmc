@@ -600,7 +600,7 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
             
             # Store post-equilibration state at the current snapshot time
             # This represents the state after CD step + re-equilibration at the current lambda
-            if True:  # Store every step instead of every 10 steps
+            if k % snapshot_every == 0:
                 snapshots['cd_post_equil'].append(np.array(q_cd_pre_equil))
                 snapshots['lam_post_equil'].append(lam_k1) # Store lambda at post-equilibration (use lam_k1 since re-equilibration happens at next lambda)
 
@@ -608,7 +608,7 @@ def run_simulation(M, N_steps, delta_t, eps, momentum_refresh_interval, fit_ever
             p_cd = p_cd_pre_equil.copy()
         else:
             # When re_equil_steps = 0, store the CD state directly as post-equilibration
-            if True:  # Store every step instead of every 10 steps
+            if k % snapshot_every == 0:
                 snapshots['cd_post_equil'].append(np.array(q_cd))
                 snapshots['lam_post_equil'].append(lam_k)
     

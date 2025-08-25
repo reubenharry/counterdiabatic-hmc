@@ -231,96 +231,81 @@ def main(run_simulations=True):
 
     if run_simulations:
         # Run simulations and save data
-        naive = True
-        if naive:
-            # 1. Naive HMC (Unweighted)
-            print("\n" + "="*50)
-            print("Running Naive HMC (Unweighted)")
-            print("="*50)
-            try:
-                key = jax.random.PRNGKey(0)
-                snapshots_naive_unweighted = run_naive_hmc_simulation(
-                    M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
-                    momentum_refresh_interval=momentum_refresh_interval,
-                    make_T=make_T, make_V=make_V, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
-                    key=key, dim=dim, use_weights=False, snapshot_every=snapshot_every
-                )
-                successful_simulations['naive_unweighted'] = snapshots_naive_unweighted
-                # Save data
-                save_simulation_data(snapshots_naive_unweighted, system_name, 'naive_unweighted', delta_t, lam_fn)
-                print("✓ Naive HMC (Unweighted) completed successfully")
-            except Exception as e:
-                print(f"✗ Naive HMC (Unweighted) failed: {e}")
-            
-            # 2. Naive HMC (Weighted SMC)
-            print("\n" + "="*50)
-            print("Running Naive HMC (Weighted SMC)")
-            print("="*50)
-            key = jax.random.PRNGKey(0)
-            snapshots_naive_weighted = run_naive_hmc_simulation(
-                M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
-                momentum_refresh_interval=momentum_refresh_interval,
-                make_T=make_T, make_V=make_V, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
-                key=key, dim=dim, use_weights=True, ess_threshold=ess_threshold, snapshot_every=snapshot_every
-            )
-            successful_simulations['naive_weighted'] = snapshots_naive_weighted
-            # Save data
-            save_simulation_data(snapshots_naive_weighted, system_name, 'naive_weighted', delta_t, lam_fn)
-            print("✓ Naive HMC (Weighted SMC) completed successfully")
+        key = jax.random.PRNGKey(0)
         
-        counterdiabatic = True
-        if counterdiabatic:
-            # 3. Counterdiabatic HMC (Unweighted)
-            print("\n" + "="*50)
-            print("Running Counterdiabatic HMC (Unweighted)")
-            print("="*50)
-            try:
-                key = jax.random.PRNGKey(0)
-                _, snapshots_cd_unweighted, loss_histories_cd_unweighted, param_history_cd_unweighted = run_simulation(
-                    M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
-                    momentum_refresh_interval=momentum_refresh_interval,
-                    fit_every=fit_every, num_initial_iterations=num_initial_iterations,
-                    num_iterations=num_iterations, make_T=make_T, make_V=make_V,
-                    A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
-                    key=key, dim=dim, learning_rate=learning_rate,
-                    re_equil_steps=re_equil_steps, use_weights=False, snapshot_every=snapshot_every
-                )
-                successful_simulations['cd_unweighted'] = snapshots_cd_unweighted
-                successful_simulations['loss_histories_cd_unweighted'] = loss_histories_cd_unweighted
-                successful_simulations['param_history_cd_unweighted'] = param_history_cd_unweighted
-                # Save data
-                save_simulation_data(snapshots_cd_unweighted, system_name, 'cd_unweighted', delta_t, lam_fn, 
-                                   ansatz_params=ansatz, loss_histories=loss_histories_cd_unweighted, 
-                                   param_history=param_history_cd_unweighted)
-                print("✓ Counterdiabatic HMC (Unweighted) completed successfully")
-            except Exception as e:
-                print(f"✗ Counterdiabatic HMC (Unweighted) failed: {e}")
+        # Define simulation configurations
+        naive_configs = [
+            {'name': 'naive_unweighted', 'use_weights': False, 'ess_threshold': None},
+            {'name': 'naive_weighted', 'use_weights': True, 'ess_threshold': ess_threshold}
+        ]
+        
+        cd_configs = [
+            {'name': 'cd_unweighted', 'use_weights': False, 'ess_threshold': None},
+            {'name': 'cd_weighted', 'use_weights': True, 'ess_threshold': ess_threshold}
+        ]
+        
+        # Run naive HMC simulations
+        for config in naive_configs:
+            print(f"\n{'='*50}")
+            print(f"Running Naive HMC ({config['name'].replace('_', ' ').title()})")
+            print(f"{'='*50}")
             
-            # 4. Counterdiabatic HMC (Weighted) - Using same seed as unweighted
-            print("\n" + "="*50)
-            print("Running Counterdiabatic HMC (Weighted) - Same seed as unweighted")
-            print("="*50)
             try:
-                key = jax.random.PRNGKey(0)  # Same seed as unweighted
-                _, snapshots_cd_weighted, loss_histories_cd_weighted, param_history_cd_weighted = run_simulation(
-                    M=M, N_steps=N_steps, delta_t=delta_t, eps=eps,
-                    momentum_refresh_interval=momentum_refresh_interval,
-                    fit_every=fit_every, num_initial_iterations=num_initial_iterations,
-                    num_iterations=num_iterations, make_T=make_T, make_V=make_V,
-                    A_ansatz=ansatz, lam_fn=lam_fn, dot_lam_fn=dot_lam_fn,
-                    key=key, dim=dim, learning_rate=learning_rate,
-                    re_equil_steps=re_equil_steps, use_weights=True, ess_threshold=ess_threshold, snapshot_every=snapshot_every
-                )
-                successful_simulations['cd_weighted'] = snapshots_cd_weighted
-                successful_simulations['loss_histories_cd_weighted'] = loss_histories_cd_weighted
-                successful_simulations['param_history_cd_weighted'] = param_history_cd_weighted
+                # Prepare parameters
+                kwargs = {
+                    'M': M, 'N_steps': N_steps, 'delta_t': delta_t, 'eps': eps,
+                    'momentum_refresh_interval': momentum_refresh_interval,
+                    'make_T': make_T, 'make_V': make_V, 'lam_fn': lam_fn, 'dot_lam_fn': dot_lam_fn,
+                    'key': key, 'dim': dim, 'use_weights': config['use_weights'], 
+                    'snapshot_every': snapshot_every
+                }
+                if config['ess_threshold'] is not None:
+                    kwargs['ess_threshold'] = config['ess_threshold']
+                
+                snapshots = run_naive_hmc_simulation(**kwargs)
+                successful_simulations[config['name']] = snapshots
+                
                 # Save data
-                save_simulation_data(snapshots_cd_weighted, system_name, 'cd_weighted', delta_t, lam_fn, 
-                                   ansatz_params=ansatz, loss_histories=loss_histories_cd_weighted, 
-                                   param_history=param_history_cd_weighted)
-                print("✓ Counterdiabatic HMC (Weighted) completed successfully")
+                save_simulation_data(snapshots, system_name, config['name'], delta_t, lam_fn)
+                print(f"✓ Naive HMC ({config['name'].replace('_', ' ').title()}) completed successfully")
+                
             except Exception as e:
-                print(f"✗ Counterdiabatic HMC (Weighted) failed: {e}")
+                print(f"✗ Naive HMC ({config['name'].replace('_', ' ').title()}) failed: {e}")
+        
+        # Run counterdiabatic HMC simulations
+        for config in cd_configs:
+            print(f"\n{'='*50}")
+            print(f"Running Counterdiabatic HMC ({config['name'].replace('_', ' ').title()})")
+            print(f"{'='*50}")
+            
+            try:
+                # Prepare parameters
+                kwargs = {
+                    'M': M, 'N_steps': N_steps, 'delta_t': delta_t, 'eps': eps,
+                    'momentum_refresh_interval': momentum_refresh_interval,
+                    'fit_every': fit_every, 'num_initial_iterations': num_initial_iterations,
+                    'num_iterations': num_iterations, 'make_T': make_T, 'make_V': make_V,
+                    'A_ansatz': ansatz, 'lam_fn': lam_fn, 'dot_lam_fn': dot_lam_fn,
+                    'key': key, 'dim': dim, 'learning_rate': learning_rate,
+                    're_equil_steps': re_equil_steps, 'use_weights': config['use_weights'], 
+                    'snapshot_every': snapshot_every
+                }
+                if config['ess_threshold'] is not None:
+                    kwargs['ess_threshold'] = config['ess_threshold']
+                
+                _, snapshots, loss_histories, param_history = run_simulation(**kwargs)
+                successful_simulations[config['name']] = snapshots
+                successful_simulations[f'loss_histories_{config["name"]}'] = loss_histories
+                successful_simulations[f'param_history_{config["name"]}'] = param_history
+                
+                # Save data
+                save_simulation_data(snapshots, system_name, config['name'], delta_t, lam_fn, 
+                                   ansatz_params=ansatz, loss_histories=loss_histories, 
+                                   param_history=param_history)
+                print(f"✓ Counterdiabatic HMC ({config['name'].replace('_', ' ').title()}) completed successfully")
+                
+            except Exception as e:
+                print(f"✗ Counterdiabatic HMC ({config['name'].replace('_', ' ').title()}) failed: {e}")
     else:
         # Load data from saved files
         print("Loading simulation data from saved files...")
@@ -344,22 +329,20 @@ def main(run_simulations=True):
         print(f"\nCreating comparison plots for {len(successful_simulations)} successful simulations...")
         create_comparison_plots(successful_simulations, delta_t, make_V, system_name, dim)
         
-        # Create detailed distribution plots for both unweighted and weighted cases
-        if 'cd_unweighted' in successful_simulations:
-            print("Creating detailed distribution plot for unweighted case...")
-            loss_histories = successful_simulations.get('loss_histories_cd_unweighted', [])
-            param_history = successful_simulations.get('param_history_cd_unweighted', None)
-            naive_snapshots = successful_simulations.get('naive_unweighted', None)
-            plot_results(successful_simulations['cd_unweighted'], loss_histories, delta_t, make_V, 
-                        param_history=param_history, ansatz=ansatz, potential_name=f"{system_name}_cd_unweighted", dim=dim, plot_ansatz=False, make_T=make_T, naive_snapshots=naive_snapshots)
-        
-        if 'cd_weighted' in successful_simulations:
-            print("Creating detailed distribution plot for weighted case...")
-            loss_histories = successful_simulations.get('loss_histories_cd_weighted', [])
-            param_history = successful_simulations.get('param_history_cd_weighted', None)
-            naive_snapshots = successful_simulations.get('naive_weighted', None)
-            plot_results(successful_simulations['cd_weighted'], loss_histories, delta_t, make_V, 
-                        param_history=param_history, ansatz=ansatz, potential_name=f"{system_name}_cd_weighted", dim=dim, plot_ansatz=False, make_T=make_T, naive_snapshots=naive_snapshots)
+        # Create detailed distribution plots for counterdiabatic methods
+        cd_methods = ['cd_unweighted', 'cd_weighted']
+        for method in cd_methods:
+            if method in successful_simulations:
+                print(f"Creating detailed distribution plot for {method.replace('_', ' ')} case...")
+                loss_histories = successful_simulations.get(f'loss_histories_{method}', [])
+                param_history = successful_simulations.get(f'param_history_{method}', None)
+                naive_method = method.replace('cd_', 'naive_')
+                naive_snapshots = successful_simulations.get(naive_method, None)
+                
+                plot_results(successful_simulations[method], loss_histories, delta_t, make_V, 
+                            param_history=param_history, ansatz=ansatz, 
+                            potential_name=f"{system_name}_{method}", dim=dim, plot_ansatz=False, 
+                            make_T=make_T, naive_snapshots=naive_snapshots)
     else:
         print("No successful simulations to plot.")
 
