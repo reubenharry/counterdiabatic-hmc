@@ -245,7 +245,6 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
         dA_dq = jnp.clip(dA_dq, -clip_value, clip_value)
         dA_dp = jnp.clip(dA_dp, -clip_value, clip_value)
         
-        log_weight = compute_counterdiabatic_work(q, p, lam, lam_next, A_ansatz, make_T, make_V)*eps*dot_lam
 
         # q_new = q + eps * dot_lam * dA_dp
         # p_new = p - eps * dot_lam * dA_dq
@@ -270,6 +269,7 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
         # q_new = q_half + 0.5 * eps * (jax.grad(T_next)(p_new) )
         
         
+        log_weight = compute_counterdiabatic_work(q_new, p_new, lam, lam_next, A_ansatz, make_T, make_V)*eps*dot_lam
         
         return q_new, p_new, log_weight
     return cd_leapfrog 

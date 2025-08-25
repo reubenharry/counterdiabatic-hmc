@@ -433,7 +433,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
                     ax.hist(naive_snap.flatten(), bins=25, alpha=0.6, label='Naive HMC', density=True, color='blue')
         
         # Plot true distribution
-        x_grid = np.linspace(-5, 5, 1000)
+        x_grid = np.linspace(-10, 10, 1000)
         potential_fn = make_V(lam_val)
         rho = np.array([np.exp(-potential_fn(x)) for x in x_grid])
         rho = rho / np.trapz(rho, x_grid)  # Normalize
