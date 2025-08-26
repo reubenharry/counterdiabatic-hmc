@@ -53,7 +53,16 @@ def main():
     # Define lambda functions
     v = 0.5
     max_lam = 1.0
-    lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
+    # lam_fn is 0 until 1=t, then linearly goes to 1, then stays at 1
+    def lam_fn(t):
+        if t<=1:
+            return 0.0
+        elif t>1 and t<2:
+            return (t-1)*v
+        else:
+            return 1.0
+
+    # lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
     dot_lam_fn = jax.grad(lam_fn)
     
     # ===== ANSATZ SETUP =====

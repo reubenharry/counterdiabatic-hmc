@@ -269,7 +269,7 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
         # q_new = q_half + 0.5 * eps * (jax.grad(T_next)(p_new) )
         
         
-        log_weight = compute_counterdiabatic_work(q_new, p_new, lam, lam_next, A_ansatz, make_T, make_V)*eps*dot_lam
+        log_weight = compute_counterdiabatic_work(q, p, lam, lam_next, A_ansatz, make_T, make_V)*eps*dot_lam
         
         return q_new, p_new, log_weight
     return cd_leapfrog 
