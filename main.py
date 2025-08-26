@@ -29,8 +29,7 @@ def main():
     # Simulation parameters
     M = 2000  # Number of particles
     N_steps = 10  # Number of simulation steps
-    delta_t = 0.2  # Time step
-    eps = 0.2  # HMC step size
+    delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
     momentum_refresh_interval = 1  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
     num_initial_iterations = 100000  # Initial optimization iterations
@@ -38,6 +37,10 @@ def main():
     learning_rate = 1e-4  # Learning rate for optimization
     re_equil_steps = 0  # Re-equilibration steps
     ess_threshold = 0.5  # Effective sample size threshold for resampling
+    
+    # Adaptive step size settings (for CD simulations only)
+    adaptive_step_size = False  # Set to True to enable adaptive delta_t = K/sqrt(Var[A])
+    K = 0.2  # Constant for adaptive step size calculation
     
     # Simulation settings
     run_simulations = True  # Set to False to load from saved data
@@ -91,14 +94,15 @@ def main():
         M=M,
         N_steps=N_steps,
         delta_t=delta_t,
-        eps=eps,
         momentum_refresh_interval=momentum_refresh_interval,
         fit_every=fit_every,
         num_initial_iterations=num_initial_iterations,
         num_iterations=num_iterations,
         learning_rate=learning_rate,
         re_equil_steps=re_equil_steps,
-        ess_threshold=ess_threshold
+        ess_threshold=ess_threshold,
+        adaptive_step_size=adaptive_step_size,
+        K=K
     )
     
     # ===== CREATE PLOTS =====

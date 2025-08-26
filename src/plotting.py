@@ -199,8 +199,11 @@ def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ans
     # Check if weights are available
     has_weights = 'weights' in snapshots and any(w is not None for w in snapshots['weights'])
     
-    # Get time points
-    times = np.arange(len(snapshots['particles'])) * delta_t  # Record every step now
+    # Get time points from snapshots
+    if 'times' in snapshots and len(snapshots['times']) > 0:
+        times = snapshots['times']
+    else:
+        times = np.arange(len(snapshots['particles'])) * delta_t  # Fallback
     
     # For post-equilibration snapshots, the timing is different
     # They represent the state after CD step + re-equilibration, so they should be plotted
@@ -365,8 +368,27 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, param_history=None,
 
 def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, has_re_equil, loss_histories=None, param_history=None, make_T=None, naive_snapshots=None):
     """Create the distributions plot showing histograms and diagnostic plots."""
+    # Collect all times from both CD and naive snapshots
+    cd_times = snapshots['times']
+    naive_times = []
+    if naive_snapshots and 'times' in naive_snapshots:
+        naive_times = naive_snapshots['times']
+    elif naive_snapshots and 'particles' in naive_snapshots:
+        naive_times = np.arange(len(naive_snapshots['particles'])) * delta_t
+    
+    # Create union of all times
+    all_times = set()
+    for t in cd_times:
+        all_times.add(float(t))
+    for t in naive_times:
+        all_times.add(float(t))
+    all_times = sorted(list(all_times))
+    
+    # Use the union of times for plotting
+    times = all_times
+    
     # Create figure with subplots for distributions and diagnostics
-    num_snapshots = len(snapshots['particles'])
+    num_snapshots = len(times)  # Use the union of times instead of just CD snapshots
     cols = 4
     rows_histograms = int(np.ceil(num_snapshots / cols))
     rows_diagnostics = 2  # For loss, energy stats, and parameter history
@@ -377,34 +399,31 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     # Create grid layout: histograms first, then diagnostics
     gs = fig.add_gridspec(total_rows, 4, height_ratios=[1]*rows_histograms + [1]*rows_diagnostics, width_ratios=[1, 1, 1, 1])
     
-    # Use saved times if available, otherwise calculate on the fly
-    if 'times' in snapshots:
-        times = snapshots['times']
-    else:
-        times = np.arange(len(snapshots['particles'])) * delta_t
-    
     # Check if this is a weighted simulation
     has_weights = 'weights' in snapshots and len(snapshots['weights']) > 0
     
     # FIRST: Plot all histograms at different time points
-    # Use saved lambda values if available, otherwise use snapshots['lam']
-    if 'lambda_values' in snapshots:
-        lambda_values = snapshots['lambda_values']
-    else:
-        lambda_values = snapshots['lam']
-    
-    for i, (time, lam_val) in enumerate(zip(times, lambda_values)):
+    for i, time in enumerate(times):
         row = i // 4
         col = i % 4
         ax = fig.add_subplot(gs[row, col])
         
-        # Plot particles distribution
-        if 'particles' in snapshots and i < len(snapshots['particles']):
-            particles_snap = snapshots['particles'][i]
+        # Find CD data for this time
+        cd_idx = None
+        cd_lam_val = 0.0
+        for j, cd_t in enumerate(cd_times):
+            if abs(float(cd_t) - time) < 0.01:  # Exact match for CD
+                cd_idx = j
+                cd_lam_val = float(snapshots['lam'][j])
+                break
+        
+        # Plot CD particles distribution if available
+        if cd_idx is not None and 'particles' in snapshots and cd_idx < len(snapshots['particles']):
+            particles_snap = snapshots['particles'][cd_idx]
             if len(particles_snap) > 0:
-                if has_weights and i < len(snapshots['weights']):
+                if has_weights and cd_idx is not None and cd_idx < len(snapshots['weights']):
                     # Use weighted histogram
-                    weights = snapshots['weights'][i]
+                    weights = snapshots['weights'][cd_idx]
                     if weights is not None and not np.allclose(weights, 0.0):
                         # Convert log weights to regular weights
                         weights = np.exp(weights - np.max(weights))
@@ -416,30 +435,40 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
                     ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, label='Particles', density=True, color='red')
         
         # Plot naive HMC distribution if available
-        if naive_snapshots and 'particles' in naive_snapshots and i < len(naive_snapshots['particles']):
-            naive_snap = naive_snapshots['particles'][i]
-            if len(naive_snap) > 0:
-                # Check if naive simulation also has weights
-                naive_has_weights = 'weights' in naive_snapshots and len(naive_snapshots['weights']) > 0
-                if naive_has_weights and i < len(naive_snapshots['weights']):
-                    weights = naive_snapshots['weights'][i]
-                    if weights is not None and not np.allclose(weights, 0.0):
-                        weights = np.exp(weights - np.max(weights))
-                        weights = weights / np.sum(weights)
-                        ax.hist(naive_snap.flatten(), bins=25, alpha=0.6, label='Naive HMC (Weighted)', density=True, color='blue', weights=weights)
+        if naive_snapshots and 'particles' in naive_snapshots:
+            # Find the naive snapshot that corresponds to the current time
+            naive_idx = None
+            min_diff = float('inf')
+            for j, naive_t in enumerate(naive_times):
+                if abs(float(naive_t) - time) < min_diff:
+                    min_diff = abs(float(naive_t) - time)
+                    naive_idx = j
+            
+            # Only plot if we found a close match (within 0.1 time units)
+            if naive_idx is not None and min_diff < 0.1:
+                naive_snap = naive_snapshots['particles'][naive_idx]
+                if len(naive_snap) > 0:
+                    # Check if naive simulation also has weights
+                    naive_has_weights = 'weights' in naive_snapshots and len(naive_snapshots['weights']) > 0
+                    if naive_has_weights and naive_idx is not None and naive_idx < len(naive_snapshots['weights']):
+                        weights = naive_snapshots['weights'][naive_idx]
+                        if weights is not None and not np.allclose(weights, 0.0):
+                            weights = np.exp(weights - np.max(weights))
+                            weights = weights / np.sum(weights)
+                            ax.hist(naive_snap.flatten(), bins=25, alpha=0.6, label='Naive HMC (Weighted)', density=True, color='blue', weights=weights)
+                        else:
+                            ax.hist(naive_snap.flatten(), bins=25, alpha=0.6, label='Naive HMC', density=True, color='blue')
                     else:
                         ax.hist(naive_snap.flatten(), bins=25, alpha=0.6, label='Naive HMC', density=True, color='blue')
-                else:
-                    ax.hist(naive_snap.flatten(), bins=25, alpha=0.6, label='Naive HMC', density=True, color='blue')
         
-        # Plot true distribution
+        # Plot true distribution using CD lambda value
         x_grid = np.linspace(-10, 10, 1000)
-        potential_fn = make_V(lam_val)
+        potential_fn = make_V(cd_lam_val)
         rho = np.array([np.exp(-potential_fn(x)) for x in x_grid])
         rho = rho / np.trapz(rho, x_grid)  # Normalize
         ax.plot(x_grid, rho, 'k--', linewidth=2, label='True distribution')
         
-        ax.set_title(f't = {time:.2f}, λ = {lam_val:.3f}')
+        ax.set_title(f't = {time:.2f}, λ = {cd_lam_val:.3f}')
         ax.set_xlabel('Position')
         ax.set_ylabel('Density')
         ax.legend()
@@ -708,6 +737,11 @@ def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_
         print(f"\nCreating comparison plots for {len(successful_simulations)} successful simulations...")
         create_comparison_plots(successful_simulations, delta_t, make_V, system_name, dim=1)
         
+        # Create unified distributions plot showing all time points
+        print("Creating unified distributions plot...")
+        ansatz_dir = "figures/polynomial"  # Default directory
+        create_unified_distributions_plot(successful_simulations, delta_t, make_V, ansatz_dir, system_name, dim=1)
+        
         # Create detailed distribution plots for counterdiabatic methods
         cd_methods = ['cd_unweighted', 'cd_weighted']
         for method in cd_methods:
@@ -718,16 +752,8 @@ def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_
                 naive_method = method.replace('cd_', 'naive_')
                 naive_snapshots = successful_simulations.get(naive_method, None)
                 
-                # Get saved times and lambda_values if available
-                saved_times = successful_simulations.get(f'times_{method}', None)
-                saved_lambda_values = successful_simulations.get(f'lambda_values_{method}', None)
-                
-                # Add times and lambda_values to snapshots if they exist
+                # Use snapshots directly - times are already stored in snapshots['times']
                 snapshots_with_timing = successful_simulations[method].copy()
-                if saved_times is not None:
-                    snapshots_with_timing['times'] = saved_times
-                if saved_lambda_values is not None:
-                    snapshots_with_timing['lambda_values'] = saved_lambda_values
                 
                 plot_results(snapshots_with_timing, loss_histories, delta_t, make_V, 
                             param_history=param_history, ansatz=ansatz, 
@@ -735,3 +761,176 @@ def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_
                             make_T=make_T, naive_snapshots=naive_snapshots)
     else:
         print("No successful simulations to plot.") 
+
+def create_unified_distributions_plot(successful_simulations, delta_t, make_V, ansatz_dir, potential_name, dim):
+    """
+    Create a unified distributions plot showing all time points from both CD and naive simulations.
+    Shows subplots for every time in the union of both sets.
+    
+    Args:
+        successful_simulations: Dictionary containing all simulation results
+        delta_t: Base time step
+        make_V: Function to create potential energy
+        ansatz_dir: Directory to save plots
+        potential_name: Name of the potential for filename
+        dim: Dimension of the system
+    """
+    # Collect all time points from all simulations
+    all_times = set()
+    all_lambda_values = {}
+    
+    # Extract times from each method
+    methods = ['naive_unweighted', 'naive_weighted', 'cd_unweighted', 'cd_weighted']
+    for method in methods:
+        if method in successful_simulations:
+            # Get saved times if available
+            # Get times and lambda values from snapshots
+            snapshots = successful_simulations[method]
+            if 'times' in snapshots and len(snapshots['times']) > 0:
+                # Use saved times from snapshots
+                times = snapshots['times']
+                lambda_values = snapshots['lam']
+            else:
+                # Fallback to calculating from snapshots
+                if 'particles' in snapshots:
+                    times = np.arange(len(snapshots['particles'])) * delta_t
+                    lambda_values = snapshots.get('lam', [0.0] * len(times))
+            
+            # Add all times to the set (convert JAX arrays to Python types)
+            for t, lam in zip(times, lambda_values):
+                # Convert JAX arrays to Python types for hashing
+                t_python = float(t) if hasattr(t, 'item') else t
+                lam_python = float(lam) if hasattr(lam, 'item') else lam
+                all_times.add(t_python)
+                all_lambda_values[t_python] = lam_python
+    
+    # Sort times for consistent plotting
+    all_times = sorted(list(all_times))
+    
+    if not all_times:
+        print("No time points found for plotting")
+        return
+    
+    # Calculate grid layout
+    num_times = len(all_times)
+    cols = 4
+    rows = int(np.ceil(num_times / cols))
+    
+    # Create figure
+    fig = plt.figure(figsize=(20, 5*rows))
+    gs = fig.add_gridspec(rows, cols, height_ratios=[1]*rows, width_ratios=[1]*cols)
+    
+    # Find global range for consistent x-axis
+    all_qs = []
+    for method in methods:
+        if method in successful_simulations:
+            snapshots = successful_simulations[method]
+            if 'particles' in snapshots:
+                all_qs.extend(snapshots['particles'])
+    
+    if all_qs:
+        x_min = np.min(np.concatenate(all_qs)) - 0.5
+        x_max = np.max(np.concatenate(all_qs)) + 0.5
+    else:
+        x_min, x_max = -3, 3
+    
+    x_grid = np.linspace(x_min, x_max, 200)
+    
+    # Colors for different methods
+    colors = {
+        'naive_unweighted': 'blue',
+        'naive_weighted': 'green', 
+        'cd_unweighted': 'red',
+        'cd_weighted': 'orange'
+    }
+    
+    # Plot each time point
+    for i, t in enumerate(all_times):
+        row = i // cols
+        col = i % cols
+        ax = fig.add_subplot(gs[row, col])
+        
+        lam_val = all_lambda_values.get(t, 0.0)
+        
+        # Plot data from each method that has data at this time
+        for method in methods:
+            if method in successful_simulations:
+                snapshots = successful_simulations[method]
+                
+                # Find the closest time point in this method's data
+                if 'times' in snapshots and len(snapshots['times']) > 0:
+                    # Use saved times from snapshots
+                    method_times = snapshots['times']
+                else:
+                    method_times = np.arange(len(snapshots['particles'])) * delta_t
+                
+                # Find the closest time point
+                time_idx = None
+                min_diff = float('inf')
+                for j, method_t in enumerate(method_times):
+                    if abs(method_t - t) < min_diff:
+                        min_diff = abs(method_t - t)
+                        time_idx = j
+                
+                # Only plot if we have data at this time (within tolerance)
+                if time_idx is not None and min_diff < 0.1:  # Allow approximate matches for adaptive stepping
+                    particles = snapshots['particles'][time_idx]
+                    
+                    # Get weights if available
+                    weights = None
+                    if 'weights' in snapshots and len(snapshots['weights']) > time_idx:
+                        log_weights = snapshots['weights'][time_idx]
+                        if not np.allclose(log_weights, 0.0):
+                            weights = np.exp(log_weights - np.max(log_weights))
+                            weights = weights / np.sum(weights)
+                    
+                    # Create histogram
+                    if weights is not None:
+                        ax.hist(particles.flatten(), bins=50, density=True, alpha=0.6,
+                               color=colors[method], label=method.replace('_', ' ').title(),
+                               weights=weights, range=(x_min, x_max))
+                    else:
+                        ax.hist(particles.flatten(), bins=50, density=True, alpha=0.6,
+                               color=colors[method], label=method.replace('_', ' ').title(),
+                               range=(x_min, x_max))
+        
+        # Add true distribution
+        potential_fn = make_V(lam_val)
+        rho = np.array([np.exp(-potential_fn(x)) for x in x_grid])
+        rho = rho / np.trapz(rho, x_grid)  # Normalize
+        ax.plot(x_grid, rho, 'k--', linewidth=2, alpha=0.8, label='True')
+        
+        # Show which methods have data at this time
+        methods_with_data = []
+        for method in methods:
+            if method in successful_simulations:
+                snapshots = successful_simulations[method]
+                times_key = f'times_{method}'
+                if times_key in successful_simulations:
+                    method_times = successful_simulations[times_key]
+                else:
+                    method_times = np.arange(len(snapshots['particles'])) * delta_t
+                
+                # Check if this method has data near this time
+                if 'times' in snapshots and len(snapshots['times']) > 0:
+                    method_times = snapshots['times']
+                else:
+                    method_times = np.arange(len(snapshots['particles'])) * delta_t
+                
+                for method_t in method_times:
+                    if abs(method_t - t) < 0.1:
+                        methods_with_data.append(method.replace('_', ' ').title())
+                        break
+        
+        methods_str = ', '.join(methods_with_data) if methods_with_data else 'None'
+        ax.set_title(f't = {t:.3f}, λ = {lam_val:.3f}\nMethods: {methods_str}')
+        ax.set_xlabel('Position')
+        ax.set_ylabel('Density')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(f"{ansatz_dir}/unified_distributions_{potential_name}.png", dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Saved unified distributions plot to {ansatz_dir}/unified_distributions_{potential_name}.png") 

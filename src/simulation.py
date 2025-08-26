@@ -10,10 +10,11 @@ from .ansatze import AnalyticAnsatz, PolynomialAnsatz, NeuralNetworkAnsatz
 # =============================================================================
 # UNIFIED SIMULATION FUNCTION
 # =============================================================================
-def simulate(simulation_type, M, N_steps, delta_t, eps, momentum_refresh_interval, 
+def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval, 
              make_T, make_V, lam_fn, dot_lam_fn, key, dim, 
              A_ansatz=None, fit_every=1, num_initial_iterations=10000, num_iterations=10000,
-             learning_rate=1e-4, use_weights=False, ess_threshold=0.5, snapshot_every=1):
+             learning_rate=1e-4, use_weights=False, ess_threshold=0.5, snapshot_every=1,
+             adaptive_step_size=False, K=0.2):
     """
     Unified simulation function that handles both naive HMC and counterdiabatic HMC.
     
@@ -66,7 +67,7 @@ def simulate(simulation_type, M, N_steps, delta_t, eps, momentum_refresh_interva
         print("Using Sequential Monte Carlo with unit weights (no resampling)")
     
     # Initialize snapshots and tracking variables
-    snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': []}
+    snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': []}
     resampling_count = 0
     loss_histories = []
     param_history = []
@@ -81,8 +82,15 @@ def simulate(simulation_type, M, N_steps, delta_t, eps, momentum_refresh_interva
     detailed_energy_stats = []
     detailed_times = []
     
+    # Initialize time tracking for adaptive stepping
+    t_k = 0.0
+    
+    # Initialize current_delta_t for adaptive stepping
+    current_delta_t = delta_t
+    
     for k in range(N_steps + 1):
-        t_k = k * delta_t
+        # print("\n\n\n\n\nt_k", t_k)
+        # Always use cumulative time for consistency
         lam_k = float(lam_fn(t_k))
         dot_lam_k = float(dot_lam_fn(t_k))
         
@@ -159,8 +167,8 @@ def simulate(simulation_type, M, N_steps, delta_t, eps, momentum_refresh_interva
             stats['avg_delta_H_sq'] = 0.0
         
         # Store energy statistics for this timestep
-        all_energy_stats.append({simulation_type: stats})
-        all_times.append(t_k)
+        # all_energy_stats.append({simulation_type: stats})
+        # all_times.append(t_k)
         
         # Store detailed energy statistics for plotting
         detailed_energy_stats.append(stats)
@@ -175,6 +183,8 @@ def simulate(simulation_type, M, N_steps, delta_t, eps, momentum_refresh_interva
             snapshots['weights'].append(np.array(log_weights))
             snapshots['resampling_events'].append(resampling_count)
             snapshots['lam'].append(lam_k)
+            snapshots['times'].append(t_k)
+            print("\n\n\n\n\n times", snapshots['times'])
             
             # Record parameters for counterdiabatic simulations
             if simulation_type == 'cd':
@@ -196,8 +206,10 @@ def simulate(simulation_type, M, N_steps, delta_t, eps, momentum_refresh_interva
         if k == N_steps:
             break
         
-        lam_k1 = float(lam_fn(t_k + delta_t))
-        dot_lam_k1 = float(dot_lam_fn(t_k + delta_t))
+        # Use adaptive step size for time progression if enabled
+        # step_delta_t = current_delta_t if simulation_type == 'cd' and adaptive_step_size else delta_t
+        lam_k1 = float(lam_fn(t_k + current_delta_t))
+        dot_lam_k1 = float(dot_lam_fn(t_k + current_delta_t))
         
         # Check next lambda values for NaNs
         if jnp.isnan(lam_k1):
@@ -209,55 +221,82 @@ def simulate(simulation_type, M, N_steps, delta_t, eps, momentum_refresh_interva
         
         key, sub = jax.random.split(key)
         subs = jax.random.split(sub, M)
-        
+         
         # Execute the appropriate step based on simulation type
         if simulation_type == 'naive':
-            naive_step = jax.vmap(lambda q, p, lam, lam_next, eps, L, rng_key, t: with_maruyama(make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, eps, L=L, rng_key=rng_key, t=t), in_axes=(0, 0, None, None, None, None, 0, None))
-            
-            q, p, step_weights = jax.jit(naive_step)(q, p, lam_k, lam_k1, eps, eps*momentum_refresh_interval, subs, t_k)
-            if use_weights:
-                # Naive step with weight calculation
-                log_weights = log_weights + step_weights
+             naive_step = jax.vmap(lambda q, p, lam, lam_next, delta_t, L, rng_key, t: with_maruyama(make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t, L=L, rng_key=rng_key, t=t), in_axes=(0, 0, None, None, None, None, 0, None))
+             
+             q, p, step_weights = jax.jit(naive_step)(q, p, lam_k, lam_k1, delta_t, delta_t*momentum_refresh_interval, subs, t_k)
+             if use_weights:
+                 # Naive step with weight calculation
+                 log_weights = log_weights + step_weights
 
         else:  # cd
-            cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, eps, t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=eps, t=t), in_axes=(0, 0, None, None, None, None, None, None))
-            q, p, step_weights_cd = jax.jit(cd_step)(q, p, lam_k, lam_k1, dot_lam_k, dot_lam_k1, eps, t_k)
-            
+             # Compute adaptive step size for CD if enabled (at beginning of step)
+            #  current_delta_t = delta_t
+            if adaptive_step_size:
+                var_A = stats['var_A']
+                if var_A > 0:
+                    current_delta_t = K / jnp.sqrt(var_A).item()
+                    # Bound the step size between 0.05 and 1.0 for stability
+                    current_delta_t = max(0.05, min(1.0, current_delta_t))
+                    if k % 10 == 0:  # Print every 10 steps to avoid spam
+                        print(f"  Step {k}: Var[A] = {var_A:.6f}, adaptive delta_t = {current_delta_t:.6f}")
+                else:
+                    if k % 10 == 0:
+                        print(f"  Step {k}: Var[A] = {var_A:.6f}, using fixed delta_t = {current_delta_t:.6f}")
+             
+            cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t, t=t), in_axes=(0, 0, None, None, None, None, None, None))
+            q, p, step_weights_cd = jax.jit(cd_step)(q, p, lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t, t_k)
+
+            # if simulation_type == 'cd' and 
+            if k % momentum_refresh_interval == 0 and k > 0:
+                key, sub = jax.random.split(key)
+                # raise Exception
+                p = jax.random.normal(sub, (M, dim))
+
+             
+             
             if use_weights:
                 log_weights = log_weights + step_weights_cd
         
-        # Check for NaNs after step
+         # Check for NaNs after step
         if check_nans(f"q_{simulation_type}", q, k):
-            print(f"  Stopping simulation due to NaNs in {simulation_type} HMC at step {k}")
-            break
+             print(f"  Stopping simulation due to NaNs in {simulation_type} HMC at step {k}")
+             break
         if check_nans(f"p_{simulation_type}", p, k):
-            print(f"  Stopping simulation due to NaNs in {simulation_type} HMC at step {k}")
-            break
-        
-        # Handle weights and resampling
+             print(f"  Stopping simulation due to NaNs in {simulation_type} HMC at step {k}")
+             break
+         
+         # Handle weights and resampling
         if use_weights:
-            # Check for NaNs in weights
-            if check_nans(f"log_weights_{simulation_type}", log_weights, k):
-                print(f"  Stopping simulation due to NaNs in weights at step {k}")
-                break
-            
-            # Compute effective sample size
-            weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
-            weights = weights / jnp.sum(weights)  # Normalize
-            ess = jnp.sum(weights)**2 / jnp.sum(weights ** 2)
-            
-            # Resample if ESS is too low
-            # if ess < ess_threshold * M:
-            if True:
-                print(f"  Resampling at step {k} (ESS = {ess:.2f})")
-                q, p, log_weights = multinomial_resample(q, p, log_weights, key, M)
-                resampling_count += 1
-        
-        # Momentum refresh for counterdiabatic
-        if simulation_type == 'cd' and k % momentum_refresh_interval == 0 and k > 0:
-            key, sub = jax.random.split(key)
-            # raise Exception
-            p = jax.random.normal(sub, (M, dim))
+             # Check for NaNs in weights
+             if check_nans(f"log_weights_{simulation_type}", log_weights, k):
+                 print(f"  Stopping simulation due to NaNs in weights at step {k}")
+                 break
+             
+             # Compute effective sample size
+             weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
+             weights = weights / jnp.sum(weights)  # Normalize
+             ess = jnp.sum(weights)**2 / jnp.sum(weights ** 2)
+             
+             # Resample if ESS is too low
+             # if ess < ess_threshold * M:
+             if True:
+                 print(f"  Resampling at step {k} (ESS = {ess:.2f})")
+                 q, p, log_weights = multinomial_resample(q, p, log_weights, key, M)
+                 resampling_count += 1
+         
+         # Update cumulative time for adaptive stepping
+        # if simulation_type == 'cd' and adaptive_step_size:
+        #      cumulative_time += current_delta_t
+        # else:
+        #      cumulative_time += delta_t
+        # print("\n\n\ncurrent delta_t\n\n\n", current_delta_t)
+        t_k += current_delta_t
+         
+         # Momentum refresh for counterdiabatic
+       
     
     # Add detailed energy statistics to snapshots
     snapshots['detailed_energy_stats'] = detailed_energy_stats
@@ -476,8 +515,9 @@ def save_simulation_data(snapshots, system_name, method_name, delta_t, lam_fn, a
     os.makedirs("data", exist_ok=True)
     
     # Extract lambda values at each snapshot time
-    times = jnp.arange(len(snapshots.get('particles', []))) * delta_t
-    lambda_values = [float(lam_fn(t)) for t in times]
+    # times = jnp.arange(len(snapshots.get('particles', []))) * delta_t
+    # lambda_values = [float(lam_fn(t)) for t in times]
+
     
     # Prepare data to save
     data = {
@@ -485,8 +525,6 @@ def save_simulation_data(snapshots, system_name, method_name, delta_t, lam_fn, a
         'system_name': system_name,
         'method_name': method_name,
         'delta_t': delta_t,
-        'times': times,
-        'lambda_values': lambda_values,  # Save actual lambda values
         'ansatz_params': ansatz_params,
         'loss_histories': loss_histories,
         'param_history': param_history
@@ -517,10 +555,11 @@ def load_simulation_data(system_name, method_name):
     return data
 
 def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_simulations=True, snapshot_every=1, 
-                                 M=1000, N_steps=40, delta_t=0.05, eps=0.05, 
+                                 M=1000, N_steps=40, delta_t=0.05, 
                                  momentum_refresh_interval=5.0, fit_every=1, 
                                  num_initial_iterations=10000, num_iterations=10000, 
-                                 learning_rate=1e-4, re_equil_steps=0, ess_threshold=0.5):
+                                 learning_rate=1e-4, re_equil_steps=0, ess_threshold=0.5,
+                                 adaptive_step_size=False, K=0.2):
     """
     Run simulations and save data for the specified system and ansatz.
     
@@ -562,62 +601,62 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
             print(f"Running {config['name'].replace('_', ' ').title()}")
             print(f"{'='*50}")
             
-            try:
-                # Determine simulation type
-                simulation_type = 'naive' if 'naive' in config['name'] else 'cd'
-                
-                # Prepare parameters
-                kwargs = {
+            # try:
+            # Determine simulation type
+            simulation_type = 'naive' if 'naive' in config['name'] else 'cd'
+            
+                                # Prepare parameters
+            kwargs = {
                     'simulation_type': simulation_type,
-                    'M': M, 'N_steps': N_steps, 'delta_t': delta_t, 'eps': eps,
+                    'M': M, 'N_steps': N_steps, 'delta_t': delta_t,
                     'momentum_refresh_interval': momentum_refresh_interval,
                     'make_T': make_T, 'make_V': make_V, 'lam_fn': lam_fn, 'dot_lam_fn': dot_lam_fn,
                     'key': key, 'dim': dim, 'use_weights': config['use_weights'], 
-                    'snapshot_every': snapshot_every
+                    'snapshot_every': snapshot_every, 'adaptive_step_size': adaptive_step_size, 'K': K
                 }
+            
+            # Add counterdiabatic-specific parameters
+            if simulation_type == 'cd':
+                kwargs.update({
+                    'A_ansatz': ansatz,
+                    'fit_every': fit_every,
+                    'num_initial_iterations': num_initial_iterations,
+                    'num_iterations': num_iterations,
+                    'learning_rate': learning_rate
+                })
+            
+            if config['ess_threshold'] is not None:
+                kwargs['ess_threshold'] = config['ess_threshold']
+            
+            # Run simulation
+            result = simulate(**kwargs)
+            
+            # Handle different return types
+            if simulation_type == 'naive':
+                snapshots = result
+                loss_histories = []
+                param_history = []
+            else:  # cd
+                A_ansatz, snapshots, loss_histories, param_history = result
+            
+            successful_simulations[config['name']] = snapshots
+            # Add times and lambda_values for consistency
+            times = jnp.arange(len(snapshots['particles'])) * delta_t
+            lambda_values = [float(lam_fn(t)) for t in times]
+            successful_simulations[f'times_{config["name"]}'] = times
+            successful_simulations[f'lambda_values_{config["name"]}'] = lambda_values
+            successful_simulations[f'loss_histories_{config["name"]}'] = loss_histories
+            successful_simulations[f'param_history_{config["name"]}'] = param_history
+            
+            # Save data
+            save_simulation_data(snapshots, system_name, config['name'], delta_t, lam_fn, 
+                                ansatz_params=ansatz if simulation_type == 'cd' else None, 
+                                loss_histories=loss_histories, 
+                                param_history=param_history)
+            print(f"✓ {config['name'].replace('_', ' ').title()} completed successfully")
                 
-                # Add counterdiabatic-specific parameters
-                if simulation_type == 'cd':
-                    kwargs.update({
-                        'A_ansatz': ansatz,
-                        'fit_every': fit_every,
-                        'num_initial_iterations': num_initial_iterations,
-                        'num_iterations': num_iterations,
-                        'learning_rate': learning_rate
-                    })
-                
-                if config['ess_threshold'] is not None:
-                    kwargs['ess_threshold'] = config['ess_threshold']
-                
-                # Run simulation
-                result = simulate(**kwargs)
-                
-                # Handle different return types
-                if simulation_type == 'naive':
-                    snapshots = result
-                    loss_histories = []
-                    param_history = []
-                else:  # cd
-                    A_ansatz, snapshots, loss_histories, param_history = result
-                
-                successful_simulations[config['name']] = snapshots
-                # Add times and lambda_values for consistency
-                times = jnp.arange(len(snapshots['particles'])) * delta_t
-                lambda_values = [float(lam_fn(t)) for t in times]
-                successful_simulations[f'times_{config["name"]}'] = times
-                successful_simulations[f'lambda_values_{config["name"]}'] = lambda_values
-                successful_simulations[f'loss_histories_{config["name"]}'] = loss_histories
-                successful_simulations[f'param_history_{config["name"]}'] = param_history
-                
-                # Save data
-                save_simulation_data(snapshots, system_name, config['name'], delta_t, lam_fn, 
-                                   ansatz_params=ansatz if simulation_type == 'cd' else None, 
-                                   loss_histories=loss_histories, 
-                                   param_history=param_history)
-                print(f"✓ {config['name'].replace('_', ' ').title()} completed successfully")
-                
-            except Exception as e:
-                print(f"✗ {config['name'].replace('_', ' ').title()} failed: {e}")
+            # except Exception as e:
+            #     print(f"✗ {config['name'].replace('_', ' ').title()} failed: {e}")
     else:
         # Load data from saved files
         print("Loading simulation data from saved files...")
