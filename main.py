@@ -21,14 +21,14 @@ def main():
     """
     # ===== CONFIGURATION =====
     # Choose your system
-    system_name = "double_well"  # Options: see SYSTEMS in src/systems.py
+    system_name = "gaussian_annealing"  # Options: see SYSTEMS in src/systems.py
     
     # Choose your ansatz type
     ansatz_type = "polynomial"  # Options: "polynomial", "neural_network", "analytic"
     
     # Simulation parameters
     M = 2000  # Number of particles
-    N_steps = 15  # Number of simulation steps
+    N_steps = 10  # Number of simulation steps
     delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
     momentum_refresh_interval = 1  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
@@ -39,12 +39,12 @@ def main():
     ess_threshold = 0.5  # Effective sample size threshold for resampling
     
     # Adaptive step size settings (for CD simulations only)
-    adaptive_step_size = True  # Set to True to enable adaptive delta_t = K/sqrt(Var[A])
+    adaptive_step_size = False  # Set to True to enable adaptive delta_t = K/sqrt(Var[A])
     K = delta_t  # Constant for adaptive step size calculation
     
     # Simulation settings
     run_simulations = True  # Set to False to load from saved data instead of running simulations
-    snapshot_every = 1  # Record snapshots every N steps
+    snapshot_every = 10  # Record snapshots every N steps
     
     # ===== SYSTEM SETUP =====
     # Get system from systems.py
@@ -74,7 +74,7 @@ def main():
     elif ansatz_type == "neural_network":
         key = jax.random.PRNGKey(42)  # Fixed seed for reproducibility
         if dim == 1:
-            dims = [2*dim, 32, 16, 1]  # [2, 32, 16, 1]
+            dims = [2*dim, 32, 32, 1]  # [2, 32, 16, 1]
         else:
             dims = [2*dim, 64, 32, 16, 1]  # [2*dim, 64, 32, 16, 1]
         ansatz = NeuralNetworkAnsatz(dims=dims, key=key, dim=dim)
