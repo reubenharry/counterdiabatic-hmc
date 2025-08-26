@@ -32,7 +32,7 @@ def compute_kde(samples, x_grid):
         density = np.interp(x_grid, bin_centers, hist)
         return density
 
-def create_ridge_subplot(ax, snapshots, delta_t, make_V, title, show_true_dist=True):
+def create_ridge_subplot(ax, snapshots, delta_t, make_V, title, color='blue', show_true_dist=True):
     """Create a single ridge subplot for one method and system."""
     
     # Get time points and select only 3 steps (initial, middle, final)
@@ -56,34 +56,33 @@ def create_ridge_subplot(ax, snapshots, delta_t, make_V, title, show_true_dist=T
         # Compute KDE for smooth curve
         density = compute_kde(snap, x_grid)
         
-        # Normalize and offset for ridge plot with more overlap
-        density = density / np.max(density) * 1.2
-        offset = i * 0.8  # Reduced spacing for more overlap
+        # Normalize and offset for ridge plot with more overlap and flatter histograms
+        density = density / np.max(density) * 0.4  # Further reduced height to flatten
+        offset = i * 0.2  # Further reduced spacing for more overlap
         
         # Plot the ridge with transparency
         ax.fill_between(x_grid, offset, offset + density, 
-                       color='blue', alpha=0.5, edgecolor='blue', linewidth=0.5)
+                       color=color, alpha=0.4, edgecolor=color, linewidth=0.5)
         
         # Add true distribution if requested
         if show_true_dist:
             potential_fn = make_V(lam_val)
             rho = np.array(jax.vmap(lambda x: jnp.exp(-potential_fn(x)))(x_grid))
-            rho = rho / np.max(rho) * 1.2  # Scale to match
+            rho = rho / np.max(rho) * 0.4  # Scale to match
             ax.plot(x_grid, offset + rho, 'k--', linewidth=1.0, alpha=0.7)
     
     # Set axis properties
     ax.set_xlim(x_min, x_max)
-    ax.set_ylim(-0.1, 2.5)  # Fixed range for 3 steps with overlap
-    ax.set_yticks([0, 0.8, 1.6])  # Tick positions for the 3 steps
+    ax.set_ylim(-0.1, 0.8)  # Reduced range for flatter histograms
+    ax.set_yticks([0, 0.2, 0.4])  # Adjusted tick positions for new spacing
     ax.set_title(title, fontsize=12, fontweight='bold')
     
-    # Add lambda values on secondary y-axis
+    # Add lambda values on secondary y-axis with clear labels
     ax_lambda = ax.twinx()
     ax_lambda.set_ylim(ax.get_ylim())
-    ax_lambda.set_yticks([0, 0.8, 1.6])
-    lambda_tick_labels = [f"{lam:.2f}" for lam in selected_lams]
+    ax_lambda.set_yticks([0, 0.2, 0.4])
+    lambda_tick_labels = [f"λ={lam:.1f}" for lam in selected_lams]
     ax_lambda.set_yticklabels(lambda_tick_labels)
-    ax_lambda.set_ylabel("λ", fontsize=10, color='red')
     ax_lambda.tick_params(axis='y', labelcolor='red')
 
 def load_simulation_data(system_name):
@@ -104,22 +103,22 @@ def load_simulation_data(system_name):
 def create_comparison_figure():
     """Create the main comparison figure."""
     
-    # Systems to compare
+    # Systems to compare with their colors
     systems = [
-        ('gaussian_moving_mean', 'Gaussian Moving Mean'),
-        ('gaussian_annealing', 'Gaussian Annealing'),
-        ('double_well', 'Double Well')
+        ('gaussian_moving_mean', 'Gaussian Moving Mean', 'blue'),
+        ('gaussian_annealing', 'Gaussian Annealing', 'green'),
+        ('double_well', 'Double Well', 'red')
     ]
     
     # Create figure with subplots: 2 rows (naive, CD) x 3 columns (systems)
-    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+    fig, axes = plt.subplots(2, 3, figsize=(18, 9))  # Slightly increased height to 9
     
     # Set up lambda function for timing
     v = 0.5
     max_lam = 1.0
     lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
     
-    for col, (system_name, system_display_name) in enumerate(systems):
+    for col, (system_name, system_display_name, color) in enumerate(systems):
         print(f"Processing {system_display_name}...")
         
         # Load data
@@ -135,11 +134,11 @@ def create_comparison_figure():
         naive_ax = axes[0, col]
         cd_ax = axes[1, col]
         
-        # Create ridge plots
+        # Create ridge plots with system-specific colors
         create_ridge_subplot(naive_ax, naive_data['snapshots'], delta_t, make_V, 
-                           f"Naive HMC - {system_display_name}")
+                           f"Naive HMC - {system_display_name}", color=color)
         create_ridge_subplot(cd_ax, cd_data['snapshots'], delta_t, make_V, 
-                           f"CD-HMC - {system_display_name}")
+                           f"CD-HMC - {system_display_name}", color=color)
         
         # Set x-axis labels only for bottom row
         if col == 0:  # First column
@@ -170,7 +169,7 @@ def create_comparison_figure():
     print("  - figures/unweighted_comparison_ridgeplots.png")
     print("  - figures/unweighted_comparison_ridgeplots.pdf")
     
-    plt.show()
+    # plt.show()
 
 if __name__ == "__main__":
     create_comparison_figure()
