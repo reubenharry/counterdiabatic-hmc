@@ -1,0 +1,13 @@
+\begin{table}[h]
+\centering
+\caption{Monte Carlo estimates of the second moment $E[x^2]$ for different systems and methods.}
+\label{tab:second_moment_results}
+\begin{tabular}{lccccc}
+\toprule
+System & True $E[x^2]$ & Naive HMC & CD-HMC & Error Ratio & Improvement \\
+\midrule
+Gaussian Moving Mean & 2.000000 & 1.121943 & 2.095995 & 83.7 & 83.7x \\
+Gaussian Annealing & 0.100000 & 86.513748 & 0.646409 & 25011.0 & 25011.0x \\
+\bottomrule
+\end{tabular}
+\end{table}

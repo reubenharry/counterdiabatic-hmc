@@ -21,19 +21,19 @@ def main():
     """
     # ===== CONFIGURATION =====
     # Choose your system
-    system_name = "gaussian_annealing"  # Options: see SYSTEMS in src/systems.py
+    system_name = "double_well"  # Options: see SYSTEMS in src/systems.py
     
     # Choose your ansatz type
     ansatz_type = "polynomial"  # Options: "polynomial", "neural_network", "analytic"
     
     # Simulation parameters
     M = 2000  # Number of particles
-    N_steps = 10  # Number of simulation steps
-    delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
-    momentum_refresh_interval = 1  # Momentum refresh interval
-    fit_every = 1  # Fit ansatz every N steps
-    num_initial_iterations = 100000  # Initial optimization iterations
-    num_iterations = 100000  # Optimization iterations per step
+    N_steps = 40  # Number of simulation steps
+    delta_t = 0.05  # Time step (eps = delta_t for this algorithm)
+    momentum_refresh_interval = 4  # Momentum refresh interval
+    fit_every = 4  # Fit ansatz every N steps
+    num_initial_iterations = 10000  # Initial optimization iterations
+    num_iterations = 10000  # Optimization iterations per step
     learning_rate = 1e-4  # Learning rate for optimization
     re_equil_steps = 0  # Re-equilibration steps
     ess_threshold = 0.5  # Effective sample size threshold for resampling
@@ -44,7 +44,7 @@ def main():
     
     # Simulation settings
     run_simulations = True  # Set to False to load from saved data instead of running simulations
-    snapshot_every = 10  # Record snapshots every N steps
+    snapshot_every = 1  # Record snapshots every N steps
     
     # ===== SYSTEM SETUP =====
     # Get system from systems.py
