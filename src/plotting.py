@@ -374,18 +374,38 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     if naive_snapshots and 'times' in naive_snapshots:
         naive_times = naive_snapshots['times']
     elif naive_snapshots and 'particles' in naive_snapshots:
-        naive_times = np.arange(len(naive_snapshots['particles'])) * delta_t
+        # Use saved times from naive snapshots, or fail if not available
+        if 'times' in naive_snapshots:
+            naive_times = naive_snapshots['times']
+        else:
+            raise ValueError("Naive snapshots missing 'times' key - cannot plot without saved times")
     
-    # Create union of all times
-    all_times = set()
-    for t in cd_times:
-        all_times.add(float(t))
-    for t in naive_times:
-        all_times.add(float(t))
-    all_times = sorted(list(all_times))
+    # Create union of all times and corresponding lambda values
+    all_times = []
+    all_lambda_values = []
     
-    # Use the union of times for plotting
-    times = all_times
+    # Add CD times and lambda values
+    for t, lam in zip(cd_times, snapshots['lam']):
+        all_times.append(float(t))
+        all_lambda_values.append(float(lam))
+    
+    # Add naive times and lambda values
+    if naive_snapshots and 'lam' in naive_snapshots:
+        for t, lam in zip(naive_times, naive_snapshots['lam']):
+            all_times.append(float(t))
+            all_lambda_values.append(float(lam))
+    
+    # Sort by time, keeping all unique time points
+    sorted_pairs = sorted(zip(all_times, all_lambda_values))
+    times = []
+    lambda_values = []
+    seen_times = set()
+    
+    for t, lam in sorted_pairs:
+        if t not in seen_times:
+            seen_times.add(t)
+            times.append(t)
+            lambda_values.append(lam)
     
     # Create figure with subplots for distributions and diagnostics
     num_snapshots = len(times)  # Use the union of times instead of just CD snapshots
@@ -403,18 +423,16 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     has_weights = 'weights' in snapshots and len(snapshots['weights']) > 0
     
     # FIRST: Plot all histograms at different time points
-    for i, time in enumerate(times):
+    for i, (time, lam_val) in enumerate(zip(times, lambda_values)):
         row = i // 4
         col = i % 4
         ax = fig.add_subplot(gs[row, col])
         
         # Find CD data for this time
         cd_idx = None
-        cd_lam_val = 0.0
         for j, cd_t in enumerate(cd_times):
             if abs(float(cd_t) - time) < 0.01:  # Exact match for CD
                 cd_idx = j
-                cd_lam_val = float(snapshots['lam'][j])
                 break
         
         # Plot CD particles distribution if available
@@ -444,8 +462,8 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
                     min_diff = abs(float(naive_t) - time)
                     naive_idx = j
             
-            # Only plot if we found a close match (within 0.1 time units)
-            if naive_idx is not None and min_diff < 0.1:
+            # Only plot if we found a close match (within 0.001 time units to handle floating point errors)
+            if naive_idx is not None and min_diff < 0.001:
                 naive_snap = naive_snapshots['particles'][naive_idx]
                 if len(naive_snap) > 0:
                     # Check if naive simulation also has weights
@@ -461,14 +479,14 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
                     else:
                         ax.hist(naive_snap.flatten(), bins=25, alpha=0.6, label='Naive HMC', density=True, color='blue')
         
-        # Plot true distribution using CD lambda value
+        # Plot true distribution using the appropriate lambda value
         x_grid = np.linspace(-10, 10, 1000)
-        potential_fn = make_V(cd_lam_val)
+        potential_fn = make_V(lam_val)
         rho = np.array([np.exp(-potential_fn(x)) for x in x_grid])
         rho = rho / np.trapz(rho, x_grid)  # Normalize
         ax.plot(x_grid, rho, 'k--', linewidth=2, label='True distribution')
         
-        ax.set_title(f't = {time:.2f}, λ = {cd_lam_val:.3f}')
+        ax.set_title(f't = {time:.2f}, λ = {lam_val:.3f}')
         ax.set_xlabel('Position')
         ax.set_ylabel('Density')
         ax.legend()
@@ -493,8 +511,11 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     if 'detailed_energy_stats' in snapshots and len(snapshots['detailed_energy_stats']) > 0:
         energy_stats = snapshots['detailed_energy_stats']
         
-        # Create time array for energy statistics (every timestep, not every 10 steps)
-        energy_times = np.arange(len(energy_stats)) * delta_t
+        # Use saved times for energy statistics
+        if 'times' in snapshots:
+            energy_times = snapshots['times']
+        else:
+            raise ValueError("Snapshots missing 'times' key - cannot plot energy statistics without saved times")
         
         # Plot <∂H/∂λ> over time
         ax_dH_dlam = fig.add_subplot(gs[diagnostic_row_start, 1])
@@ -504,7 +525,10 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         # Add naive HMC energy derivative if available
         if naive_snapshots and 'detailed_energy_stats' in naive_snapshots and len(naive_snapshots['detailed_energy_stats']) > 0:
             naive_energy_stats = naive_snapshots['detailed_energy_stats']
-            naive_energy_times = np.arange(len(naive_energy_stats)) * delta_t
+            if 'times' in naive_snapshots:
+                naive_energy_times = naive_snapshots['times']
+            else:
+                raise ValueError("Naive snapshots missing 'times' key - cannot plot energy statistics")
             naive_dH_dlam_vals = [stats['avg_dH_dlam'] for stats in naive_energy_stats]
             ax_dH_dlam.plot(naive_energy_times, naive_dH_dlam_vals, 'b-', label='Naive HMC', linewidth=2)
         
@@ -522,7 +546,10 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         # Add naive HMC energy variance if available
         if naive_snapshots and 'detailed_energy_stats' in naive_snapshots and len(naive_snapshots['detailed_energy_stats']) > 0:
             naive_energy_stats = naive_snapshots['detailed_energy_stats']
-            naive_energy_times = np.arange(len(naive_energy_stats)) * delta_t
+            if 'times' in naive_snapshots:
+                naive_energy_times = naive_snapshots['times']
+            else:
+                raise ValueError("Naive snapshots missing 'times' key - cannot plot energy statistics")
             naive_dH2_vals = [stats['avg_delta_H_sq'] for stats in naive_energy_stats]
             ax_dH2.plot(naive_energy_times, naive_dH2_vals, 'b-', label='Naive HMC', linewidth=2)
         
@@ -552,14 +579,20 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         if isinstance(param_history[0], jnp.ndarray):
             # Polynomial ansatz - simple array of parameters
             param_history_array = np.array(param_history)
-            param_times = np.arange(len(param_history_array)) * delta_t
+            if 'times' in snapshots:
+                param_times = snapshots['times']
+            else:
+                raise ValueError("Snapshots missing 'times' key - cannot plot parameter history")
             for i in range(param_history_array.shape[1]):
                 ax_params.plot(param_times, param_history_array[:, i], 
                               label=f'Param {i}', alpha=0.7)
         else:
             # Neural network ansatz - complex structure, plot norm of parameters
             param_norms = []
-            param_times = np.arange(len(param_history)) * delta_t
+            if 'times' in snapshots:
+                param_times = snapshots['times']
+            else:
+                raise ValueError("Snapshots missing 'times' key - cannot plot parameter history")
             for params in param_history:
                 # Calculate L2 norm of all parameters
                 param_arrays = eqx.filter(params, eqx.is_array)
@@ -605,7 +638,12 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim):
     # Try to find saved times and lambda_values
     for method, snapshots in all_snapshots.items():
         if isinstance(snapshots, dict) and 'particles' in snapshots:
-            # Check if this method has saved times
+            # Check if this method has saved times directly in snapshots
+            if 'times' in snapshots:
+                times = snapshots['times']
+                lambda_values = snapshots['lam']
+                break
+            # Check if this method has separate times keys (old format)
             times_key = f'times_{method}'
             lambda_key = f'lambda_values_{method}'
             if times_key in all_snapshots:
@@ -625,7 +663,8 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim):
             print("No valid snapshots found for plotting")
             return
         
-        times = np.arange(len(first_snapshot)) * delta_t
+        # Cannot plot without saved times
+        raise ValueError("No saved times found in snapshots - cannot create comparison plots")
     
     # Find global range for consistent x-axis
     all_qs = []
@@ -712,8 +751,9 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim):
         
         # Set limits
         ax.set_xlim(x_min, x_max)
-        ax.set_ylim(times[0] * 2.0 - 0.1, times[-1] * 2.0 + 2.0)  # Adjusted for increased spacing
-        ax.set_yticks(times * 2.0)
+        times_array = np.array(times)  # Convert to numpy array for arithmetic
+        ax.set_ylim(times_array[0] * 2.0 - 0.1, times_array[-1] * 2.0 + 2.0)  # Adjusted for increased spacing
+        ax.set_yticks(times_array * 2.0)
     
     plt.tight_layout()
     plt.savefig(f"{ansatz_dir}/comparison_ridge_plot_{system_name}.png", dpi=300, bbox_inches='tight')
@@ -791,10 +831,8 @@ def create_unified_distributions_plot(successful_simulations, delta_t, make_V, a
                 times = snapshots['times']
                 lambda_values = snapshots['lam']
             else:
-                # Fallback to calculating from snapshots
-                if 'particles' in snapshots:
-                    times = np.arange(len(snapshots['particles'])) * delta_t
-                    lambda_values = snapshots.get('lam', [0.0] * len(times))
+                # Cannot plot without saved times
+                raise ValueError(f"Method {method} missing 'times' key - cannot create unified distributions plot")
             
             # Add all times to the set (convert JAX arrays to Python types)
             for t, lam in zip(times, lambda_values):
@@ -862,7 +900,7 @@ def create_unified_distributions_plot(successful_simulations, delta_t, make_V, a
                     # Use saved times from snapshots
                     method_times = snapshots['times']
                 else:
-                    method_times = np.arange(len(snapshots['particles'])) * delta_t
+                    raise ValueError(f"Method {method} missing 'times' key - cannot create unified distributions plot")
                 
                 # Find the closest time point
                 time_idx = None
@@ -915,7 +953,7 @@ def create_unified_distributions_plot(successful_simulations, delta_t, make_V, a
                 if 'times' in snapshots and len(snapshots['times']) > 0:
                     method_times = snapshots['times']
                 else:
-                    method_times = np.arange(len(snapshots['particles'])) * delta_t
+                    raise ValueError(f"Method {method} missing 'times' key - cannot create unified distributions plot")
                 
                 for method_t in method_times:
                     if abs(method_t - t) < 0.1:

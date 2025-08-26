@@ -28,7 +28,7 @@ def main():
     
     # Simulation parameters
     M = 2000  # Number of particles
-    N_steps = 10  # Number of simulation steps
+    N_steps = 15  # Number of simulation steps
     delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
     momentum_refresh_interval = 1  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
@@ -39,11 +39,11 @@ def main():
     ess_threshold = 0.5  # Effective sample size threshold for resampling
     
     # Adaptive step size settings (for CD simulations only)
-    adaptive_step_size = False  # Set to True to enable adaptive delta_t = K/sqrt(Var[A])
-    K = 0.2  # Constant for adaptive step size calculation
+    adaptive_step_size = True  # Set to True to enable adaptive delta_t = K/sqrt(Var[A])
+    K = delta_t  # Constant for adaptive step size calculation
     
     # Simulation settings
-    run_simulations = True  # Set to False to load from saved data
+    run_simulations = True  # Set to False to load from saved data instead of running simulations
     snapshot_every = 1  # Record snapshots every N steps
     
     # ===== SYSTEM SETUP =====
@@ -57,15 +57,15 @@ def main():
     v = 0.5
     max_lam = 1.0
     # lam_fn is 0 until 1=t, then linearly goes to 1, then stays at 1
-    def lam_fn(t):
-        if t<=1:
-            return 0.0
-        elif t>1 and t<2:
-            return (t-1)*v
-        else:
-            return 1.0
+    # def lam_fn(t):
+    #     if t<=1:
+    #         return 0.0
+    #     elif t>1:
+    #         return min((t-1)*v, 1.0)
+    #     # else:
+    #     #     return 1.0
 
-    # lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
+    lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
     dot_lam_fn = jax.grad(lam_fn)
     
     # ===== ANSATZ SETUP =====
@@ -83,7 +83,8 @@ def main():
     else:
         raise ValueError(f"Unknown ansatz type: {ansatz_type}")
     
-    # ===== RUN SIMULATIONS =====
+    # ===== RUN SIMULATIONS OR LOAD DATA =====
+    # Set run_simulations=False above to load existing data instead of running new simulations
     successful_simulations = run_simulation_and_save_data(
         system_name=system_name,
         ansatz=ansatz,

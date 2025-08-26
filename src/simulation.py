@@ -184,7 +184,7 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
             snapshots['resampling_events'].append(resampling_count)
             snapshots['lam'].append(lam_k)
             snapshots['times'].append(t_k)
-            print("\n\n\n\n\n times", snapshots['times'])
+            print("\n\n\n\n\n times", t_k, lam_k)
             
             # Record parameters for counterdiabatic simulations
             if simulation_type == 'cd':
@@ -237,9 +237,10 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
             if adaptive_step_size:
                 var_A = stats['var_A']
                 if var_A > 0:
+                    print("\n\nvar_A", var_A)
                     current_delta_t = K / jnp.sqrt(var_A).item()
                     # Bound the step size between 0.05 and 1.0 for stability
-                    current_delta_t = max(0.05, min(1.0, current_delta_t))
+                    # current_delta_t = max(0.05, min(1.0, current_delta_t))
                     if k % 10 == 0:  # Print every 10 steps to avoid spam
                         print(f"  Step {k}: Var[A] = {var_A:.6f}, adaptive delta_t = {current_delta_t:.6f}")
                 else:
@@ -640,11 +641,7 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
                 A_ansatz, snapshots, loss_histories, param_history = result
             
             successful_simulations[config['name']] = snapshots
-            # Add times and lambda_values for consistency
-            times = jnp.arange(len(snapshots['particles'])) * delta_t
-            lambda_values = [float(lam_fn(t)) for t in times]
-            successful_simulations[f'times_{config["name"]}'] = times
-            successful_simulations[f'lambda_values_{config["name"]}'] = lambda_values
+            # Add loss histories and parameter history
             successful_simulations[f'loss_histories_{config["name"]}'] = loss_histories
             successful_simulations[f'param_history_{config["name"]}'] = param_history
             
