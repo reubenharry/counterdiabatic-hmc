@@ -5,7 +5,7 @@ import time
 import matplotlib.pyplot as plt
 import os
 from scipy.stats import gaussian_kde
-from src.simulation import run_simulation, run_naive_hmc_simulation
+from src.simulation import run_simulation_and_save_data
 from src.ansatze import PolynomialAnsatz
 from src.systems import get_system
 
@@ -49,6 +49,24 @@ def calculate_gaussian_expectations(lam_final, dim=1):
     
     return expectations
 
+def calculate_double_well_expectations(lam_final, dim=1):
+    """Calculate true expectations for double well potential at λ=1."""
+    # For the double well at λ=1, we have the exact values you provided
+    if lam_final == 1.0:
+        expectations = {
+            'second_moment': 7.3413954,  # E[x²] = 7.3413954
+            'fourth_moment': 8.847134,   # Var[x²] = 8.847134 (this is actually Var[x²], not E[x⁴])
+        }
+    else:
+        # For intermediate λ values, we could interpolate or use approximation
+        # For now, let's use a simple interpolation
+        expectations = {
+            'second_moment': lam_final * 7.3413954,  # Linear interpolation
+            'fourth_moment': lam_final * 8.847134,   # Linear interpolation
+        }
+    
+    return expectations
+
 def run_benchmark_comparison(system_name="gaussian_moving_mean", M=1000, N_steps=40, 
                            delta_t=0.05, eps=0.05, num_trials=10, ess_threshold=0.5):
     """Run comprehensive benchmark comparing CD-HMC and SMC methods."""
@@ -83,8 +101,8 @@ def run_benchmark_comparison(system_name="gaussian_moving_mean", M=1000, N_steps
         'naive_unweighted': {'errors': [], 'times': [], 'final_samples': []}
     }
     
-    # Expectations to test
-    expectation_names = ['mean', 'variance', 'second_moment']
+    # Expectations to test (will be set dynamically based on system)
+    expectation_names = []
     
     for trial in range(num_trials):
         print(f"\nTrial {trial + 1}/{num_trials}")
@@ -170,7 +188,16 @@ def run_benchmark_comparison(system_name="gaussian_moving_mean", M=1000, N_steps
         
         # Calculate true expectations for final lambda value
         lam_final = lam_fn(N_steps * delta_t)
-        true_expectations = calculate_gaussian_expectations(lam_final, dim)
+        
+        # Choose appropriate expectation calculation based on system
+        if system_name == "double_well":
+            true_expectations = calculate_double_well_expectations(lam_final, dim)
+            # For double well, we focus on second_moment and fourth_moment
+            expectation_names = ['second_moment', 'fourth_moment']
+        else:
+            true_expectations = calculate_gaussian_expectations(lam_final, dim)
+            # For gaussian systems, we use the standard expectations
+            expectation_names = ['mean', 'variance', 'second_moment']
         
         # Calculate errors for each method
         methods = [
@@ -192,7 +219,18 @@ def run_benchmark_comparison(system_name="gaussian_moving_mean", M=1000, N_steps
                 elif exp_name == 'third_moment':
                     estimated_exp = samples.flatten()**3
                 elif exp_name == 'fourth_moment':
-                    estimated_exp = samples.flatten()**4
+                    # For double well, this is actually Var[x²], not E[x⁴]
+                    # We calculate Var[x²] = E[x⁴] - (E[x²])²
+                    x_squared = samples.flatten()**2
+                    if weights is not None:
+                        weights_norm = np.exp(weights - np.max(weights))
+                        weights_norm = weights_norm / np.sum(weights_norm)
+                        E_x2 = np.average(x_squared, weights=weights_norm)
+                        E_x4 = np.average(samples.flatten()**4, weights=weights_norm)
+                    else:
+                        E_x2 = np.mean(x_squared)
+                        E_x4 = np.mean(samples.flatten()**4)
+                    estimated_exp = E_x4 - E_x2**2  # Var[x²]
                 elif exp_name == 'potential_energy':
                     V_fn = make_V(lam_final)
                     estimated_exp = np.array([V_fn(q) for q in samples.flatten()])

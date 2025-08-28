@@ -1,18 +1,16 @@
+#!/usr/bin/env python3
+"""
+Main script for running counterdiabatic simulations.
+"""
+
 import jax
 import jax.numpy as jnp
-import pickle
-import os
-
+import numpy as np
+import matplotlib.pyplot as plt
 from src.simulation import run_simulation_and_save_data
-from src.plotting import plot_results, create_ridge_plot, create_all_plots
 from src.ansatze import PolynomialAnsatz, NeuralNetworkAnsatz, AnalyticAnsatz
 from src.systems import get_system
-import matplotlib.pyplot as plt
-import numpy as np
-
-
-
-
+from src.plotting import create_all_plots, create_2d_plots
 
 def main():
     """
@@ -21,16 +19,16 @@ def main():
     """
     # ===== CONFIGURATION =====
     # Choose your system
-    system_name = "double_well"  # Options: see SYSTEMS in src/systems.py
+    system_name = "2d_normal_to_rosenbrock"  # Options: see SYSTEMS in src/systems.py
     
     # Choose your ansatz type
-    ansatz_type = "polynomial"  # Options: "polynomial", "neural_network", "analytic"
+    ansatz_type = "neural_network"  # Options: "polynomial", "neural_network", "analytic"
     
     # Simulation parameters
     M = 1000  # Number of particles
     N_steps = 10  # Number of simulation steps
     delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
-    momentum_refresh_interval = 2  # Momentum refresh interval
+    momentum_refresh_interval = 1  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
     num_initial_iterations = 100000  # Initial optimization iterations
     num_iterations = 100000  # Optimization iterations per step
@@ -56,15 +54,6 @@ def main():
     # Define lambda functions
     v = 0.5
     max_lam = 1.0
-    # lam_fn is 0 until 1=t, then linearly goes to 1, then stays at 1
-    # def lam_fn(t):
-    #     if t<=1:
-    #         return 0.0
-    #     elif t>1:
-    #         return min((t-1)*v, 1.0)
-    #     # else:
-    #     #     return 1.0
-
     lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
     dot_lam_fn = jax.grad(lam_fn)
     
@@ -76,7 +65,7 @@ def main():
         if dim == 1:
             dims = [2*dim, 32, 32, 1]  # [2, 32, 16, 1]
         else:
-            dims = [2*dim, 64, 32, 16, 1]  # [2*dim, 64, 32, 16, 1]
+            dims = [2*dim, 32, 32, 1]  # [2*dim, 64, 32, 16, 1]
         ansatz = NeuralNetworkAnsatz(dims=dims, key=key, dim=dim)
     elif ansatz_type == "analytic":
         ansatz = AnalyticAnsatz()
@@ -108,16 +97,23 @@ def main():
     
     # ===== CREATE PLOTS =====
     if len(successful_simulations) > 0:
-        create_all_plots(
-            successful_simulations=successful_simulations,
-            system_name=system_name,
-            ansatz=ansatz,
-            delta_t=delta_t,
-            make_V=make_V,
-            make_T=make_T
-        )
+        if dim == 1:
+            # Use the existing 1D plotting functions
+            create_all_plots(
+                successful_simulations=successful_simulations,
+                system_name=system_name,
+                ansatz=ansatz,
+                delta_t=delta_t,
+                make_V=make_V,
+                make_T=make_T,
+                dim=dim
+            )
+        else:
+            # For 2D systems, use the 2D plotting function from plotting.py
+            print(f"\nCreating 2D plots for {dim}D system...")
+            create_2d_plots(successful_simulations, system_name, ansatz, delta_t, make_V, make_T)
     else:
         print("No successful simulations to plot.")
 
 if __name__ == "__main__":
-    main() 
+    main()

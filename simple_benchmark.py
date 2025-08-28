@@ -28,8 +28,8 @@ def calculate_normalized_error(samples, true_expectation, true_variance, f_func=
     if f_func is None:
         f_func = lambda x: x**2  # Default: f(x) = x^2
     
-    # Apply function to samples
-    f_vals = f_func(samples.flatten())
+    # Apply function to samples (don't flatten - let the function handle the shape)
+    f_vals = f_func(samples)
     
     # Calculate Monte Carlo estimate (unweighted)
     fhat = np.mean(f_vals)
@@ -103,13 +103,83 @@ def calculate_gaussian_annealing_expectations(lam_final):
     
     return expectations
 
+def calculate_double_well_expectations(lam_final):
+    """
+    Calculate true expectations for 1D double well system.
+    For the double well at λ=1, we have exact values.
+    
+    Args:
+        lam_final: Final lambda value
+    
+    Returns:
+        Dictionary with true expectations for different functions
+    """
+    # For the double well at λ=1, we have the exact values you provided
+    if lam_final == 1.0:
+        expectations = {
+            'x_squared': {
+                'expectation': 7.3413954,  # E[x²] = 7.3413954
+                'variance': 8.847134      # Var[x²] = 8.847134
+            }
+        }
+    else:
+        # For intermediate λ values, use linear interpolation
+        expectations = {
+            'x_squared': {
+                'expectation': lam_final * 7.3413954,  # Linear interpolation
+                'variance': lam_final * 8.847134       # Linear interpolation
+            }
+        }
+    
+    return expectations
+
+def calculate_2d_normal_to_rosenbrock_expectations(lam_final):
+    """
+    Calculate true expectations for 2D normal to Rosenbrock system.
+    For the Rosenbrock at λ=1, we have exact values for each component.
+    
+    Args:
+        lam_final: Final lambda value
+    
+    Returns:
+        Dictionary with true expectations for different functions
+    """
+    # For the Rosenbrock at λ=1, we have the exact values you provided
+    if lam_final == 1.0:
+        expectations = {
+            'x0_squared': {
+                'expectation': 2.0,      # E[x₀²] = 2.0
+                'variance': 6.0          # Var[x₀²] = 6.0
+            },
+            'x1_squared': {
+                'expectation': 1.0,      # E[x₁²] = 1.0
+                'variance': 668.6        # Var[x₁²] = 668.6
+            }
+        }
+    else:
+        # For intermediate λ values, use linear interpolation
+        expectations = {
+            'x0_squared': {
+                'expectation': lam_final * 2.0,      # Linear interpolation
+                'variance': lam_final * 6.0          # Linear interpolation
+            },
+            'x1_squared': {
+                'expectation': lam_final * 1.0,      # Linear interpolation
+                'variance': lam_final * 668.6        # Linear interpolation
+            }
+        }
+    
+    return expectations
+
 def run_simple_benchmark():
     """Run simple benchmark comparing naive HMC and CD-HMC for both systems using saved data."""
     
-    # Test both systems
+    # Test all systems
     systems = [
         ('gaussian_moving_mean', 'Gaussian Moving Mean'),
-        ('gaussian_annealing', 'Gaussian Annealing')
+        ('gaussian_annealing', 'Gaussian Annealing'),
+        ('double_well', 'Double Well'),
+        ('2d_normal_to_rosenbrock', '2D Normal to Rosenbrock')
     ]
     
     results_summary = {}
@@ -177,6 +247,10 @@ def run_simple_benchmark():
             true_expectations = calculate_gaussian_moving_mean_expectations(lam_final)
         elif system_name == 'gaussian_annealing':
             true_expectations = calculate_gaussian_annealing_expectations(lam_final)
+        elif system_name == 'double_well':
+            true_expectations = calculate_double_well_expectations(lam_final)
+        elif system_name == '2d_normal_to_rosenbrock':
+            true_expectations = calculate_2d_normal_to_rosenbrock_expectations(lam_final)
         else:
             raise ValueError(f"Unknown system: {system_name}")
         
@@ -185,12 +259,25 @@ def run_simple_benchmark():
         for f_name, exp_info in true_expectations.items():
             print(f"  {f_name}: E[f] = {exp_info['expectation']:.6f}, var[f] = {exp_info['variance']:.6f}")
         
-        # Test functions
-        functions = [
-            (lambda x: x**2, 'x_squared'),
-            (lambda x: x, 'x'),
-            (lambda x: x**3, 'x_cubed')
-        ]
+        # Test functions (adjust based on system)
+        if system_name == 'double_well':
+            # For double well, we only have exact values for x_squared
+            functions = [
+                (lambda x: x**2, 'x_squared')
+            ]
+        elif system_name == '2d_normal_to_rosenbrock':
+            # For 2D Rosenbrock, we have exact values for x0_squared and x1_squared
+            functions = [
+                (lambda x: x[:, 0]**2, 'x0_squared'),  # First component squared
+                (lambda x: x[:, 1]**2, 'x1_squared')   # Second component squared
+            ]
+        else:
+            # For gaussian systems, test all functions
+            functions = [
+                (lambda x: x**2, 'x_squared'),
+                (lambda x: x, 'x'),
+                (lambda x: x**3, 'x_cubed')
+            ]
         
         results = {}
         
@@ -308,7 +395,9 @@ System & True $E[x^2]$ & Naive HMC & CD-HMC & Error Ratio & Improvement \\
 \midrule"""
     
     for system_name, system_results in results_summary.items():
+        # Handle both 1D and 2D systems
         if 'x_squared' in system_results:
+            # 1D system
             x_squared_data = system_results['x_squared']
             true_exp = x_squared_data['true_expectation']
             naive_est = x_squared_data['naive']['estimate']
@@ -327,6 +416,29 @@ System & True $E[x^2]$ & Naive HMC & CD-HMC & Error Ratio & Improvement \\
             # Format the row
             system_display = system_name.replace('_', ' ').title()
             latex_table += f"\n{system_display} & {true_exp:.6f} & {naive_est:.6f} & {cd_est:.6f} & {error_ratio:.1f} & {improvement} \\\\"
+        
+        elif 'x0_squared' in system_results and 'x1_squared' in system_results:
+            # 2D system - add both components
+            for comp in ['x0_squared', 'x1_squared']:
+                x_squared_data = system_results[comp]
+                true_exp = x_squared_data['true_expectation']
+                naive_est = x_squared_data['naive']['estimate']
+                cd_est = x_squared_data['cd']['estimate']
+                naive_error = x_squared_data['naive']['error']
+                cd_error = x_squared_data['cd']['error']
+                
+                # Calculate error ratio and improvement
+                if cd_error > 0:
+                    error_ratio = naive_error / cd_error
+                    improvement = f"{error_ratio:.1f}x"
+                else:
+                    error_ratio = float('inf')
+                    improvement = "$\infty$"
+                
+                # Format the row with component indicator
+                system_display = system_name.replace('_', ' ').title()
+                comp_name = comp.replace('_', ' ').title()
+                latex_table += f"\n{system_display} ({comp_name}) & {true_exp:.6f} & {naive_est:.6f} & {cd_est:.6f} & {error_ratio:.1f} & {improvement} \\\\"
     
     latex_table += r"""
 \bottomrule
@@ -346,7 +458,9 @@ System & True $E[x^2]$ & Naive HMC & CD-HMC & Error Ratio & Improvement \\
     text_table += "-" * 60 + "\n"
     
     for system_name, system_results in results_summary.items():
+        # Handle both 1D and 2D systems
         if 'x_squared' in system_results:
+            # 1D system
             x_squared_data = system_results['x_squared']
             true_exp = x_squared_data['true_expectation']
             naive_est = x_squared_data['naive']['estimate']
@@ -361,6 +475,25 @@ System & True $E[x^2]$ & Naive HMC & CD-HMC & Error Ratio & Improvement \\
             
             system_display = system_name.replace('_', ' ').title()
             text_table += f"{system_display} | {true_exp:.6f} | {naive_est:.6f} | {cd_est:.6f} | {error_ratio:.1f}x\n"
+        
+        elif 'x0_squared' in system_results and 'x1_squared' in system_results:
+            # 2D system - add both components
+            for comp in ['x0_squared', 'x1_squared']:
+                x_squared_data = system_results[comp]
+                true_exp = x_squared_data['true_expectation']
+                naive_est = x_squared_data['naive']['estimate']
+                cd_est = x_squared_data['cd']['estimate']
+                naive_error = x_squared_data['naive']['error']
+                cd_error = x_squared_data['cd']['error']
+                
+                if cd_error > 0:
+                    error_ratio = naive_error / cd_error
+                else:
+                    error_ratio = float('inf')
+                
+                system_display = system_name.replace('_', ' ').title()
+                comp_name = comp.replace('_', ' ').title()
+                text_table += f"{system_display} ({comp_name}) | {true_exp:.6f} | {naive_est:.6f} | {cd_est:.6f} | {error_ratio:.1f}x\n"
     
     with open("benchmark_results/second_moment_results.txt", "w") as f:
         f.write(text_table)

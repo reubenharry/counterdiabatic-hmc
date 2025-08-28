@@ -118,11 +118,11 @@ def load_simulation_data(system_name):
 def create_comparison_figure():
     """Create the main comparison figure."""
     
-    # Systems to compare with their colors
+    # Systems to compare (colors will be assigned by row)
     systems = [
-        ('gaussian_moving_mean', 'Gaussian Moving Mean', 'blue'),
-        ('gaussian_annealing', 'Gaussian Annealing', 'green'),
-        ('double_well', 'Double Well', 'red')
+        ('gaussian_moving_mean', 'Gaussian Moving Mean'),
+        ('gaussian_annealing', 'Gaussian Annealing'),
+        ('double_well', 'Double Well')
     ]
     
     # Create figure with subplots: 2 rows (naive, CD) x 3 columns (systems)
@@ -133,7 +133,7 @@ def create_comparison_figure():
     max_lam = 1.0
     lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
     
-    for col, (system_name, system_display_name, color) in enumerate(systems):
+    for col, (system_name, system_display_name) in enumerate(systems):
         print(f"Processing {system_display_name}...")
         
         # Load data
@@ -171,11 +171,11 @@ def create_comparison_figure():
         naive_ax = axes[0, col]
         cd_ax = axes[1, col]
         
-        # Create ridge plots with system-specific colors and aligned x-axis
+        # Create ridge plots with row-specific colors and aligned x-axis
         create_ridge_subplot(naive_ax, naive_data['snapshots'], delta_t, make_V, 
-                           f"Naive HMC - {system_display_name}", color=color, x_range=x_range, time_range=time_range)
+                           f"Naive HMC - {system_display_name}", color='red', x_range=x_range, time_range=time_range)
         create_ridge_subplot(cd_ax, cd_data['snapshots'], delta_t, make_V, 
-                           f"CD-HMC - {system_display_name}", color=color, x_range=x_range, time_range=time_range)
+                           f"CD-HMC - {system_display_name}", color='green', x_range=x_range, time_range=time_range)
         
         # Set x-axis labels only for bottom row
         if col == 0:  # First column
@@ -184,13 +184,7 @@ def create_comparison_figure():
         
         cd_ax.set_xlabel("Position q", fontsize=12)
     
-    # Add overall title
-    fig.suptitle("Comparison of Naive HMC vs CD-HMC: Unweighted Simulations", 
-                fontsize=16, fontweight='bold', y=0.98)
-    
-    # Add legend for true distribution
-    fig.legend([plt.Line2D([], [], color='k', linestyle='--', linewidth=1.0)], 
-              ['True distribution'], loc='upper right', bbox_to_anchor=(0.98, 0.95))
+
     
     # Adjust layout
     plt.tight_layout()

@@ -2,5 +2,8 @@ Second Moment Results (E[x²])
 ============================================================
 System | True E[x²] | Naive HMC | CD-HMC | Error Ratio
 ------------------------------------------------------------
-Gaussian Moving Mean | 2.000000 | 1.121943 | 2.095995 | 83.7x
-Gaussian Annealing | 0.100000 | 86.513748 | 0.646409 | 25011.0x
+Gaussian Moving Mean | 1.010000 | 1.100354 | 0.907530 | 0.8x
+Gaussian Annealing | 0.181818 | 0.699908 | 0.310813 | 16.1x
+Double Well | 7.341395 | 1.104399 | 4.037578 | 3.6x
+2D Normal To Rosenbrock (X0 Squared) | 2.000000 | 0.618404 | 0.837087 | 1.4x
+2D Normal To Rosenbrock (X1 Squared) | 1.000000 | 1.056631 | 1.592260 | 0.0x

@@ -21,7 +21,7 @@ def make_V_gaussian_annealing(lam):
 def make_V_double_well(lam):
     """Double well potential: V(q) = (1-λ)*0.5*q^2 + λ*(q^2 - 3)^2"""
     # return lambda q: jnp.sum((1-lam)*0.5*(q**2) + lam*(((q-2)**2 - 3)**2))
-    return lambda q: (1-lam)*jnp.sum(0.5*(q**2)) + lam*jnp.sum((((q*0.5)**2-5))**2)
+    return lambda q: (1-lam)*jnp.sum(0.5*(q**2)) + lam*jnp.sum((((q*0.5)**2-2))**2)
     # return lambda q: jnp.sum((1-lam)*0.5*(q**2) + lam*(((q)**2 - 3)**2))
 
 def make_V_2d_gaussian_moving_mean(lam):
@@ -38,7 +38,7 @@ def make_V_2d_gaussian_annealing(lam):
 
 def make_V_2d_rosenbrock(lam):
     """2D Rosenbrock potential: V(q) = (1-λ)*0.5*||q||^2 + λ*((1-q_0)^2 + 100*(q_1-q_0^2)^2)"""
-    return lambda q: jnp.sum((1-lam)*0.5*(q**2) + lam*((1-q[0])**2 + 100*(q[1]-q[0]**2)**2))
+    return lambda q: jnp.sum((1-lam)*0.5*(q**2) + 0.5*(lam*((q[0]-1)**2 + ((q[0]**2) - q[1])**2)))
 
 # Dictionary of available systems
 SYSTEMS = {

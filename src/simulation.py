@@ -108,44 +108,70 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
             if isinstance(A_ansatz, AnalyticAnsatz):
                 A_ansatz = eqx.tree_at(lambda m: m.params, A_ansatz, jnp.array([lam_k]))
             
-            # Re-fit A every fit_every steps
-            if not isinstance(A_ansatz, AnalyticAnsatz) and (k % fit_every == 0) and (k < N_steps):
-                print(f"Fitting ansatz at step {k} with λ = {lam_k}")
+            # Handle ansatz fitting and loss calculation
+            if (k % fit_every == 0) and (k < N_steps):
+                print(f"Processing ansatz at step {k} with λ = {lam_k}")
                 
-                # Check samples before fitting
+                # Check samples before processing
                 check_nans("fitting_samples_q", q, k)
                 check_nans("fitting_samples_p", p, k)
                 
                 # For multi-dimensional case, stack q and p along the last axis
                 samples = np.concatenate([np.array(q), np.array(p)], axis=1)
                 
-                # Use different number of iterations for first vs subsequent fittings
-                if first_fit:
-                    num_iters = num_initial_iterations
-                    first_fit = False
+                if isinstance(A_ansatz, AnalyticAnsatz):
+                    # For analytic ansatz, just calculate and print the loss
+                    from .fitting import calculate_gauge_potential_loss
+                    
+                    # Convert log weights to regular weights if using weights
+                    weights = None
+                    if use_weights:
+                        weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
+                        weights = weights / jnp.sum(weights)  # Normalize
+                    
+                    # Calculate loss for analytic ansatz
+                    loss = calculate_gauge_potential_loss(lam_k, samples, make_T, make_V, A_ansatz, 
+                                                        use_regularization=False, weights=weights)
+                    print(f"  Analytic ansatz loss: {loss:.6f}")
+                    
+                    # Store single loss value as a list for consistency
+                    loss_histories.append([loss])
+                    
                 else:
-                    num_iters = num_iterations
-                
-                # Warm start: use current ansatz parameters as initialization
-                # Convert log weights to regular weights if using weights
-                weights = None
-                if use_weights:
-                    weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
-                    weights = weights / jnp.sum(weights)  # Normalize
-                
-                A_ansatz, loss_history = fit_gauge_potential(lam_k, samples,
-                                            make_T=make_T, make_V=make_V,
-                                            A_ansatz=A_ansatz,  # Pass current ansatz for warm start
-                                            num_iters=num_iters, lr=learning_rate,
-                                            use_regularization=False, weights=weights)
-                
-                # Check loss history for NaNs
-                if any(jnp.isnan(loss) for loss in loss_history):
-                    print(f"⚠️  NaN detected in loss history at step {k}")
-                    nan_indices = [i for i, loss in enumerate(loss_history) if jnp.isnan(loss)]
-                    print(f"  NaN losses at iterations: {nan_indices}")
-                
-                loss_histories.append(loss_history)
+                    # For trainable ansatzes, fit and print loss
+                    print(f"  Fitting trainable ansatz...")
+                    
+                    # Use different number of iterations for first vs subsequent fittings
+                    if first_fit:
+                        num_iters = num_initial_iterations
+                        first_fit = False
+                    else:
+                        num_iters = num_iterations
+                    
+                    # Warm start: use current ansatz parameters as initialization
+                    # Convert log weights to regular weights if using weights
+                    weights = None
+                    if use_weights:
+                        weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
+                        weights = weights / jnp.sum(weights)  # Normalize
+                    
+                    A_ansatz, loss_history = fit_gauge_potential(lam_k, samples,
+                                                make_T=make_T, make_V=make_V,
+                                                A_ansatz=A_ansatz,  # Pass current ansatz for warm start
+                                                num_iters=num_iters, lr=learning_rate,
+                                                use_regularization=False, weights=weights)
+                    
+                    # Print final loss
+                    final_loss = loss_history[-1] if loss_history else float('inf')
+                    print(f"  Final loss: {final_loss:.6f}")
+                    
+                    # Check loss history for NaNs
+                    if any(jnp.isnan(loss) for loss in loss_history):
+                        print(f"⚠️  NaN detected in loss history at step {k}")
+                        nan_indices = [i for i, loss in enumerate(loss_history) if jnp.isnan(loss)]
+                        print(f"  NaN losses at iterations: {nan_indices}")
+                    
+                    loss_histories.append(loss_history)
         
         # Compute energy statistics at every timestep
         stats = compute_energy_stats(q, p, lam_k, make_T, make_V, A_ansatz if simulation_type == 'cd' else None)
@@ -593,7 +619,7 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
         
         cd_configs = [
             {'name': 'cd_unweighted', 'use_weights': False, 'ess_threshold': None},
-            {'name': 'cd_weighted', 'use_weights': True, 'ess_threshold': ess_threshold}
+            # {'name': 'cd_weighted', 'use_weights': True, 'ess_threshold': ess_threshold}
         ]
         
         # Run simulations using the unified simulate function
