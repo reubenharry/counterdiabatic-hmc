@@ -94,7 +94,7 @@ def with_maruyama(integrator):
         return q, p, weight
     return maruyama
 
-clip_value = 10.0
+clip_value = 2.0
 
 def make_cd_euler_step(T, V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next):
     """Create a counterdiabatic Euler step function."""
