@@ -330,6 +330,107 @@ def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ans
     plt.savefig(f"{ansatz_dir}/ridge_plot_{potential_name}.png", dpi=300, bbox_inches='tight')
     plt.close()
 
+def create_overlay_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ansatz_type="polynomial"):
+    """Create a ridge plot showing both CD weighted and unweighted distributions overlaid.
+    
+    Args:
+        snapshots: Dictionary containing 'particles', 'weights', 'lam' arrays
+        delta_t: Time step
+        make_V: Function to create potential energy
+        potential_name: Name of the potential for filename
+        ansatz_type: Type of ansatz for directory structure
+    """
+    # Create figures directory if it doesn't exist
+    os.makedirs("figures", exist_ok=True)
+    ansatz_dir = f"figures/{ansatz_type}"
+    os.makedirs(ansatz_dir, exist_ok=True)
+    
+    # Check if weights are available
+    has_weights = 'weights' in snapshots and any(w is not None for w in snapshots['weights'])
+    
+    if not has_weights:
+        print("Warning: No weights found in snapshots. Creating regular ridge plot instead.")
+        create_ridge_plot(snapshots, delta_t, make_V, potential_name, ansatz_type)
+        return
+    
+    # Get time points from snapshots
+    if 'times' in snapshots and len(snapshots['times']) > 0:
+        times = np.array(snapshots['times'])  # Convert to numpy array
+    else:
+        times = np.arange(len(snapshots['particles'])) * delta_t  # Fallback
+    
+    # Create single figure for overlay
+    fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+    
+    # Create secondary y-axis for lambda values
+    ax_lambda = ax.twinx()
+    
+    # Set up axis titles
+    ax.set_title("Counterdiabatic HMC Evolution (Weighted vs Unweighted)", fontsize=14, fontweight='bold')
+    ax.set_xlabel("Position q", fontsize=12)
+    ax.set_ylabel("Time t", fontsize=12)
+    ax_lambda.set_ylabel("λ", fontsize=12, color='red')
+    ax_lambda.tick_params(axis='y', labelcolor='red')
+    
+    # Find global range for consistent x-axis
+    all_qs = np.concatenate(snapshots['particles']).flatten()
+    x_min = np.min(all_qs) - 0.5
+    x_max = np.max(all_qs) + 0.5
+    
+    # Create x grid for smooth curves
+    x_grid = np.linspace(x_min, x_max, 200)
+    
+    # Plot both weighted and unweighted distributions
+    for i, (t, cd_snap, lam_val, weights) in enumerate(zip(times, snapshots['particles'], snapshots['lam'], snapshots['weights'])):
+        offset = t * 2.0  # Spacing between plots
+        
+        # Plot unweighted distribution (red, more transparent)
+        density_unweighted = compute_weighted_kde(cd_snap.flatten(), weights=None, x_grid=x_grid)
+        density_unweighted = density_unweighted / np.max(density_unweighted) * 1.5
+        ax.fill_between(x_grid, offset, offset + density_unweighted, 
+                       color='red', alpha=0.4, edgecolor='red', linewidth=1.0, label='Unweighted' if i == 0 else "")
+        
+        # Plot weighted distribution (blue, more opaque)
+        if weights is not None:
+            # Convert log weights to regular weights
+            weights_array = np.exp(weights - np.max(weights))  # Normalize to prevent overflow
+            density_weighted = compute_weighted_kde(cd_snap.flatten(), weights=weights_array, x_grid=x_grid)
+            density_weighted = density_weighted / np.max(density_weighted) * 1.5
+            ax.fill_between(x_grid, offset, offset + density_weighted, 
+                           color='blue', alpha=0.8, edgecolor='blue', linewidth=1.5, label='Weighted' if i == 0 else "")
+            
+            # Also plot the difference as a separate line
+            diff = density_weighted - density_unweighted
+            ax.plot(x_grid, offset + diff + 0.2, 'g-', linewidth=1.0, alpha=0.7, label='Difference' if i == 0 else "")
+        
+        # Add true distribution at each time step (black dashed)
+        potential_fn = make_V(lam_val)
+        rho = np.array(jax.vmap(lambda x: jnp.exp(-potential_fn(x)))(x_grid))
+        rho = rho / np.max(rho) * 1.5  # Scale to match
+        ax.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8, label='True distribution' if i == 0 else "")
+    
+    # Set consistent limits
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(times[0] * 2.0 - 0.1, times[-1] * 2.0 + 2.0)
+    
+    # Set y-axis ticks
+    ax.set_yticks(times * 2.0)
+    
+    # Configure lambda axis (secondary y-axis)
+    lambda_values = snapshots['lam']
+    ax_lambda.set_ylim(ax.get_ylim())
+    ax_lambda.set_yticks(times * 2.0)
+    lambda_tick_labels = [f"{lam:.3f}" for lam in lambda_values]
+    ax_lambda.set_yticklabels(lambda_tick_labels)
+    
+    # Add legend
+    ax.legend(loc='upper right')
+    
+    # Adjust layout and save
+    plt.tight_layout()
+    plt.savefig(f"{ansatz_dir}/ridge_plot_{potential_name}_overlay.png", dpi=300, bbox_inches='tight')
+    plt.close()
+
 def plot_results(snapshots, loss_histories, delta_t, make_V, param_history=None, ansatz=None, potential_name="harmonic", dim=1, plot_ansatz=False, make_T=None, naive_snapshots=None):
     """Simplified plotting function that only creates two figures:
     1. Comparison ridge plot (handled in main.py)
@@ -667,10 +768,28 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim):
         raise ValueError("No saved times found in snapshots - cannot create comparison plots")
     
     # Find global range for consistent x-axis
+    # Exclude methods with extreme particle values that would dominate the range
     all_qs = []
     for method, snapshots in all_snapshots.items():
         if isinstance(snapshots, dict) and 'particles' in snapshots:
-            all_qs.extend(snapshots['particles'])
+            particles = snapshots['particles']
+            # Check if this method has reasonable particle values
+            method_qs = np.concatenate(particles)
+            method_range = np.max(method_qs) - np.min(method_qs)
+            
+            # Only include methods with reasonable ranges (exclude exploded naive HMC)
+            if method_range < 1000:  # Reasonable range threshold
+                all_qs.extend(particles)
+                print(f"Including {method} in global range (range: {method_range:.2f})")
+            else:
+                print(f"Excluding {method} from global range (range: {method_range:.2f})")
+    
+    if not all_qs:
+        # Fallback: use all methods if none pass the filter
+        for method, snapshots in all_snapshots.items():
+            if isinstance(snapshots, dict) and 'particles' in snapshots:
+                all_qs.extend(snapshots['particles'])
+    
     x_min = np.min(np.concatenate(all_qs)) - 0.5
     x_max = np.max(np.concatenate(all_qs)) + 0.5
     x_grid = np.linspace(x_min, x_max, 200)
@@ -803,6 +922,24 @@ def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_
                             param_history=param_history, ansatz=ansatz, 
                             potential_name=f"{system_name}_{method}", dim=1, plot_ansatz=False, 
                             make_T=make_T, naive_snapshots=naive_snapshots)
+        
+        # Create overlay ridge plot for CD weighted vs unweighted
+        if 'cd_weighted' in successful_simulations:
+            print("Creating overlay ridge plot for CD weighted vs unweighted...")
+            # Use the weighted snapshots which contain both particles and weights
+            weighted_snapshots = successful_simulations['cd_weighted']
+            
+            # Determine ansatz type for directory
+            if isinstance(ansatz, PolynomialAnsatz):
+                ansatz_type = 'polynomial'
+            elif isinstance(ansatz, NeuralNetworkAnsatz):
+                ansatz_type = 'neural_network'
+            elif isinstance(ansatz, AnalyticAnsatz):
+                ansatz_type = 'analytic'
+            else:
+                ansatz_type = 'polynomial'  # Default
+            
+            create_overlay_ridge_plot(weighted_snapshots, delta_t, make_V, system_name, ansatz_type)
     else:
         print("No successful simulations to plot.") 
 

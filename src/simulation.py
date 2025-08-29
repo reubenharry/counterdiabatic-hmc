@@ -309,7 +309,9 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
              
              # Resample if ESS is too low
              # if ess < ess_threshold * M:
-             if True:
+             # normalize weights
+             weights = weights / jnp.sum(weights)
+             if False:
                  print(f"  Resampling at step {k} (ESS = {ess:.2f})")
                  q, p, log_weights = multinomial_resample(q, p, log_weights, key, M)
                  resampling_count += 1
@@ -619,7 +621,7 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
         
         cd_configs = [
             {'name': 'cd_unweighted', 'use_weights': False, 'ess_threshold': None},
-            # {'name': 'cd_weighted', 'use_weights': True, 'ess_threshold': ess_threshold}
+            {'name': 'cd_weighted', 'use_weights': True, 'ess_threshold': ess_threshold}
         ]
         
         # Run simulations using the unified simulate function

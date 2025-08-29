@@ -19,15 +19,15 @@ def main():
     """
     # ===== CONFIGURATION =====
     # Choose your system
-    system_name = "2d_normal_to_rosenbrock"  # Options: see SYSTEMS in src/systems.py
+    system_name = "double_well"  # Options: see SYSTEMS in src/systems.py
     
     # Choose your ansatz type
-    ansatz_type = "neural_network"  # Options: "polynomial", "neural_network", "analytic"
+    ansatz_type = "polynomial"  # Options: "polynomial", "neural_network", "analytic"
     
     # Simulation parameters
     M = 1000  # Number of particles
-    N_steps = 10  # Number of simulation steps
-    delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
+    N_steps = 4  # Number of simulation steps
+    delta_t = 1.0  # Time step (eps = delta_t for this algorithm)
     momentum_refresh_interval = 1  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
     num_initial_iterations = 100000  # Initial optimization iterations
@@ -53,13 +53,13 @@ def main():
     
     # Define lambda functions
     v = 0.5
-    max_lam = 1.0
+    max_lam = 2.0
     lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
     dot_lam_fn = jax.grad(lam_fn)
     
     # ===== ANSATZ SETUP =====
     if ansatz_type == "polynomial":
-        ansatz = PolynomialAnsatz(max_degree=5, dim=dim)
+        ansatz = PolynomialAnsatz(max_degree=4, dim=dim)
     elif ansatz_type == "neural_network":
         key = jax.random.PRNGKey(42)  # Fixed seed for reproducibility
         if dim == 1:
