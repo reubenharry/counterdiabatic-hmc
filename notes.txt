@@ -1,0 +1,54 @@
+hannay angle
+
+
+tensor network for the counterdiabatic term?
+
+read up on flow matching?
+
+
+
+eef2381 has a cd double well with weighting that looks right. can we learn anything?
+
+Also , remind me next time we talk about the orthogonal polynomial stuff. I think there is some nice way to use that the distribution in momentum is always Gaussian. Maybe we can even use it to show some convergence of A
+
+why does energy spike after each momentum refresh?
+
+Resampling at step 0 (ESS = 820.63) ???
+
+consider varying the kinetic energy!
+
+phase transition (think about the double well and ising model e.g.: critical exponents...)
+
+the berry phase and hannay angle: lorentz force etc
+
+tensor network for learning A?
+
+refactor so that the work is computed by the integrator
+note the importance of a single step, using a single gradient
+check if the counterdiabatic jarzynski equality is satisfied, check if work tracking works for naive smc
+check if properly doing expectation with the weights (not in log space...)
+comment on the gauge freedom
+
+benchmark the double well and banana:
+    number of gradient calls
+
+note that  var(<dE/dl> - dE/dl) is the fisher information
+
+in discretized setting, work and heat are given by changes of lambda and x respectively
+
+curious about stochatic thermodynamics, and correlations of information and work stuff
+
+girsanov reweighting of A
+
+consider feedback and nonmarkovian:
+    nonmarkovian:
+        could do MH to correct quite general processes!
+    feedback:
+        could be very interesting for the control variable to depend on the closeness to stationarity: https://arxiv.org/pdf/1105.3262
+    nonequilibrium steady state
+
+jarzynski tilted piston paper gives another classical system to work with
+
+why not also for filtering problems in high dims? see e.g. https://people.bordeaux.inria.fr/pierre.delmoral/turbulent-signals.pdf, https://arxiv.org/pdf/1412.3501
+
+can we use the adiabatic invariant \int pdq?

@@ -211,6 +211,8 @@ def compute_counterdiabatic_work(q, p, q_new, p_new, lam_k, lam_k1, A_ansatz, ma
         
         return -work
 
+    v_q, v_p = compute_v(q, p)
+    delt = (q_new - q).dot(v_q) + (p_new - p).dot(v_p)
     work = delta_H
     return -work
     
@@ -289,7 +291,7 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
         # # q_new = q_half + 0.5 * eps * (jax.grad(T_next)(p_new) )
         
         
-        log_weight = compute_counterdiabatic_work(q, p, q_new, p_new, lam, lam_next, A_ansatz, make_T, make_V)*eps*dot_lam
+        log_weight = compute_counterdiabatic_work(q, p, q_new, p_new, lam, lam_next, A_ansatz, make_T, make_V)
 
         # jax.debug.print("change in q_new: {x}", x=q_new - q)
         
