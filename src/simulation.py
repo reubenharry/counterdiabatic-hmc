@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import numpy as np
 import equinox as eqx
 
-from .physics import make_cd_leapfrog_step, make_leapfrog_step, make_cd_euler_step, partially_refresh_momentum, with_maruyama
+from .physics import make_cd_leapfrog_step, make_cd_implicit_midpoint_step, make_leapfrog_step, make_cd_euler_step, partially_refresh_momentum, with_maruyama
 from .fitting import fit_gauge_potential
 from .ansatze import AnalyticAnsatz, PolynomialAnsatz, NeuralNetworkAnsatz
 
@@ -14,7 +14,7 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
              make_T, make_V, lam_fn, dot_lam_fn, key, dim, 
              A_ansatz=None, fit_every=1, num_initial_iterations=10000, num_iterations=10000,
              learning_rate=1e-4, use_weights=False, ess_threshold=0.5, snapshot_every=1,
-             adaptive_step_size=False, K=0.2):
+             adaptive_step_size=False, K=0.2, integrator_type="implicit_midpoint"):
     """
     Unified simulation function that handles both naive HMC and counterdiabatic HMC.
     
@@ -273,7 +273,13 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
                     if k % 10 == 0:
                         print(f"  Step {k}: Var[A] = {var_A:.6f}, using fixed delta_t = {current_delta_t:.6f}")
              
-            cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t, t=t), in_axes=(0, 0, None, None, None, None, None, None))
+            # Choose integrator based on integrator_type
+            if integrator_type == "leapfrog":
+                cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t, t=t), in_axes=(0, 0, None, None, None, None, None, None))
+            elif integrator_type == "implicit_midpoint":
+                cd_step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, t: (make_cd_implicit_midpoint_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next))(q=q, p=p, eps=delta_t, t=t), in_axes=(0, 0, None, None, None, None, None, None))
+            else:
+                raise ValueError(f"Unknown integrator type: {integrator_type}. Must be 'leapfrog' or 'implicit_midpoint'")
             q, p, step_weights_cd = jax.jit(cd_step)(q, p, lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t, t_k)
 
             # if simulation_type == 'cd' and 
@@ -588,7 +594,7 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
                                  momentum_refresh_interval=5.0, fit_every=1, 
                                  num_initial_iterations=10000, num_iterations=10000, 
                                  learning_rate=1e-4, re_equil_steps=0, ess_threshold=0.5,
-                                 adaptive_step_size=False, K=0.2):
+                                 adaptive_step_size=False, K=0.2, integrator_type="implicit_midpoint"):
     """
     Run simulations and save data for the specified system and ansatz.
     
@@ -620,8 +626,8 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
         ]
         
         cd_configs = [
-            {'name': 'cd_unweighted', 'use_weights': False, 'ess_threshold': None},
-            {'name': 'cd_weighted', 'use_weights': True, 'ess_threshold': ess_threshold}
+            {'name': f'cd_unweighted_{integrator_type}', 'use_weights': False, 'ess_threshold': None},
+            {'name': f'cd_weighted_{integrator_type}', 'use_weights': True, 'ess_threshold': ess_threshold}
         ]
         
         # Run simulations using the unified simulate function
@@ -651,7 +657,8 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
                     'fit_every': fit_every,
                     'num_initial_iterations': num_initial_iterations,
                     'num_iterations': num_iterations,
-                    'learning_rate': learning_rate
+                    'learning_rate': learning_rate,
+                    'integrator_type': integrator_type
                 })
             
             if config['ess_threshold'] is not None:

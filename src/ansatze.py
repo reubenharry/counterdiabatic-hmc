@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 import itertools
+import scipy 
 
 def check_nans(name, value):
     """Helper function to check for NaNs and print warnings."""
@@ -217,4 +218,163 @@ class NeuralNetworkAnsatz(A_ansatz):
         
         result = x.squeeze()
         
-        return result 
+        return result
+
+# the matrix S in \alpha^T S \alpha
+def construct_hermite_matrix(n, particles):
+    return jnp.ones(n), jnp.ones(n-1)
+
+def minimize_g(n, particles):
+
+    diag, upper = construct_hermite_matrix(n, particles)
+
+    _, v = scipy.linalg.eigh_tridiagonal(d=diag, e=upper, select='i', select_range=(0, 0), eigvals_only=False)
+
+    return v
+
+
+
+
+# todo: fix the recurrence relation: use probabilist's definitions
+def hermite_polynomial(n, x):
+    """
+    Compute the n-th Hermite polynomial H_n(x) using the recurrence relation:
+    H_0(x) = 1
+    H_1(x) = 2x
+    H_{n+1}(x) = 2x*H_n(x) - 2n*H_{n-1}(x)
+    
+    Args:
+        n: Order of the Hermite polynomial
+        x: Input value(s)
+    
+    Returns:
+        H_n(x)
+    """
+    if n == 0:
+        return jnp.ones_like(x)
+    elif n == 1:
+        return x
+    else:
+        # Use recurrence relation for higher orders
+        h_prev = jnp.ones_like(x)  # H_0
+        h_curr = x  # H_1
+        
+        for i in range(2, n + 1):
+            h_next = x * h_curr - (i - 1) * h_prev
+            h_prev = h_curr
+            h_curr = h_next
+        
+        return h_curr
+
+class NeuralHermiteAnsatz(A_ansatz):
+    """
+    Ansatz of the form A(q,p) = f(q) * g(p) where:
+    - f(q) is a neural network that takes q as input
+    - g(p) is a sum of Hermite polynomials in p
+    
+    This form allows for efficient optimization of the Hermite coefficients
+    using the orthogonality properties of Hermite polynomials.
+    """
+    neural_network: eqx.Module  # f(q)
+    hermite_coeffs: jnp.ndarray  # Coefficients for Hermite polynomials
+    max_hermite_order: int = eqx.static_field()
+    ansatz_type: str = eqx.static_field()
+    dim: int = eqx.static_field()
+    
+    def __init__(self, neural_dims, max_hermite_order, key, dim=1):
+        """
+        Initialize the neural-Hermite ansatz.
+        
+        Args:
+            neural_dims: List of layer sizes for the neural network f(q)
+                        e.g., [dim, 64, 32, 1] for dim-dimensional q
+            max_hermite_order: Maximum order of Hermite polynomials to include
+            key: JAX random key for neural network initialization
+            dim: Dimension of q and p vectors
+        """
+        self.dim = dim
+        self.max_hermite_order = max_hermite_order
+        self.ansatz_type = 'neural_hermite'
+        
+        # Initialize neural network f(q)
+        if neural_dims[0] != dim:
+            raise ValueError(f"Neural network input dimension should be {dim}, got {neural_dims[0]}")
+        
+        keys = jax.random.split(key, len(neural_dims) - 1)
+        self.neural_network = []
+        
+        for i in range(len(neural_dims) - 1):
+            # Use Xavier/Glorot initialization with smaller scale
+            scale = jnp.sqrt(2.0 / neural_dims[i]) * 0.1
+            layer = eqx.nn.Linear(
+                neural_dims[i], 
+                neural_dims[i+1], 
+                key=keys[i]
+            )
+            # Manually scale the weights and biases
+            layer = eqx.tree_at(lambda m: m.weight, layer, layer.weight * scale)
+            layer = eqx.tree_at(lambda m: m.bias, layer, layer.bias * 0.01)
+            self.neural_network.append(layer)
+        
+        # Initialize Hermite polynomial coefficients
+        # For each dimension of p, we have coefficients for orders 0 to max_hermite_order
+        self.hermite_coeffs = jnp.zeros((dim, max_hermite_order + 1))
+    
+    def __call__(self, q, p):
+        """
+        Evaluate the ansatz A(q,p) = f(q) * g(p).
+        
+        Args:
+            q: Position vector
+            p: Momentum vector
+            
+        Returns:
+            A(q,p) = f(q) * g(p)
+        """
+        q = jnp.atleast_1d(q)
+        p = jnp.atleast_1d(p)
+        
+        # Compute f(q) using the neural network
+        x = q
+        for i, layer in enumerate(self.neural_network[:-1]):
+            x = layer(x)
+            x = jax.nn.tanh(x)
+        
+        # Final layer
+        final_layer = self.neural_network[-1]
+        f_q = final_layer(x).squeeze()
+        
+        # Compute g(p) as sum of Hermite polynomials
+        g_p = 0.0
+        for d in range(self.dim):
+            for n in range(self.max_hermite_order + 1):
+                hermite_val = hermite_polynomial(n, p[d])
+                g_p += self.hermite_coeffs[d, n] * hermite_val
+        
+        return f_q * g_p
+    
+    def get_hermite_coeffs(self):
+        """Return the current Hermite polynomial coefficients."""
+        return self.hermite_coeffs
+    
+    def set_hermite_coeffs(self, coeffs):
+        """Set the Hermite polynomial coefficients."""
+        self.hermite_coeffs = coeffs
+    
+    def get_neural_params(self):
+        """Return the neural network parameters."""
+        return self.neural_network
+    
+    def set_neural_params(self, params):
+        """Set the neural network parameters."""
+        self.neural_network = params
+
+    # alternate optimization of g and f
+    def minimize_hermite_ansatz(self, n, particles):
+
+        alpha = minimize_g(n, particles)
+        theta = self.neural_network
+
+        self.hermite_coeffs = alpha
+        self.neural_network = theta
+        

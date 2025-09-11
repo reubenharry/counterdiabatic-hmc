@@ -24,14 +24,17 @@ def main():
     # Choose your ansatz type
     ansatz_type = "polynomial"  # Options: "polynomial", "neural_network", "analytic"
     
+    # Choose your integrator for counterdiabatic simulations
+    integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
+    
     # Simulation parameters
     M = 4000  # Number of particles
     N_steps = 2  # Number of simulation steps
     delta_t = 2/3  # Time step (eps = delta_t for this algorithm)
     momentum_refresh_interval = 1  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
-    num_initial_iterations = 20000  # Initial optimization iterations
-    num_iterations = 20000  # Optimization iterations per step
+    num_initial_iterations = 150000  # Initial optimization iterations
+    num_iterations = 150000  # Optimization iterations per step
     learning_rate = 1e-4  # Learning rate for optimization
     re_equil_steps = 0  # Re-equilibration steps
     ess_threshold = 0.5  # Effective sample size threshold for resampling
@@ -92,7 +95,8 @@ def main():
         re_equil_steps=re_equil_steps,
         ess_threshold=ess_threshold,
         adaptive_step_size=adaptive_step_size,
-        K=K
+        K=K,
+        integrator_type=integrator_type
     )
     
     # ===== CREATE PLOTS =====
@@ -106,7 +110,8 @@ def main():
                 delta_t=delta_t,
                 make_V=make_V,
                 make_T=make_T,
-                dim=dim
+                dim=dim,
+                integrator_type=integrator_type
             )
         else:
             # For 2D systems, use the 2D plotting function from plotting.py

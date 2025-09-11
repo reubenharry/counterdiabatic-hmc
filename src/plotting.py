@@ -721,11 +721,10 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
 
 # Removed unnecessary plotting functions - only keeping the essential ones 
 
-def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim):
+def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim, ansatz_type="polynomial", ansatz_dir="figures/polynomial"):
     """Create comparison plots for all four simulation methods."""
     # Create figures directory
     os.makedirs("figures", exist_ok=True)
-    ansatz_dir = f"figures/polynomial"
     os.makedirs(ansatz_dir, exist_ok=True)
     
     # Create a comprehensive comparison ridge plot
@@ -794,14 +793,25 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim):
     x_max = np.max(np.concatenate(all_qs)) + 0.5
     x_grid = np.linspace(x_min, x_max, 200)
     
-    # Plot each method
-    colors = {'naive_unweighted': 'blue', 'naive_weighted': 'green', 'cd_unweighted': 'red', 'cd_weighted': 'orange'}
-    titles = {
-        'naive_unweighted': 'Naive HMC (Unweighted)',
-        'naive_weighted': 'Naive HMC (Weighted SMC)',
-        'cd_unweighted': 'Counterdiabatic HMC (Unweighted)',
-        'cd_weighted': 'Counterdiabatic HMC (Weighted)'
-    }
+    # Create dynamic titles and colors based on actual method names
+    titles = {}
+    colors = {}
+    for method in all_snapshots.keys():
+        if isinstance(all_snapshots[method], dict) and 'particles' in all_snapshots[method]:
+            if 'naive_unweighted' in method:
+                titles[method] = f'Naive HMC (Unweighted, {ansatz_type})'
+                colors[method] = 'blue'
+            elif 'naive_weighted' in method:
+                titles[method] = f'Naive HMC (Weighted SMC, {ansatz_type})'
+                colors[method] = 'green'
+            elif 'cd_unweighted' in method:
+                integrator = method.split('_')[-1] if '_' in method else 'unknown'
+                titles[method] = f'Counterdiabatic HMC (Unweighted, {ansatz_type}, {integrator})'
+                colors[method] = 'red'
+            elif 'cd_weighted' in method:
+                integrator = method.split('_')[-1] if '_' in method else 'unknown'
+                titles[method] = f'Counterdiabatic HMC (Weighted, {ansatz_type}, {integrator})'
+                colors[method] = 'orange'
     
     # Filter out non-snapshot keys (like loss_histories and param_history)
     snapshot_methods = {k: v for k, v in all_snapshots.items() if k in titles}
@@ -880,11 +890,10 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim):
     
     print(f"Saved comparison ridge plot to {ansatz_dir}/comparison_ridge_plot_{system_name}.png")
 
-def create_comparison_histogram_plots(all_snapshots, delta_t, make_V, system_name, dim, n_bins=50):
+def create_comparison_histogram_plots(all_snapshots, delta_t, make_V, system_name, dim, n_bins=50, ansatz_type="polynomial", ansatz_dir="figures/polynomial"):
     """Create comparison plots using histograms instead of KDE for all four simulation methods."""
     # Create figures directory
     os.makedirs("figures", exist_ok=True)
-    ansatz_dir = f"figures/polynomial"
     os.makedirs(ansatz_dir, exist_ok=True)
     
     # Create a comprehensive comparison histogram ridge plot
@@ -956,14 +965,25 @@ def create_comparison_histogram_plots(all_snapshots, delta_t, make_V, system_nam
     bin_edges = np.linspace(x_min, x_max, n_bins + 1)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
     
-    # Plot each method
-    colors = {'naive_unweighted': 'blue', 'naive_weighted': 'green', 'cd_unweighted': 'red', 'cd_weighted': 'orange'}
-    titles = {
-        'naive_unweighted': 'Naive HMC (Unweighted)',
-        'naive_weighted': 'Naive HMC (Weighted SMC)',
-        'cd_unweighted': 'Counterdiabatic HMC (Unweighted)',
-        'cd_weighted': 'Counterdiabatic HMC (Weighted)'
-    }
+    # Create dynamic titles and colors based on actual method names
+    titles = {}
+    colors = {}
+    for method in all_snapshots.keys():
+        if isinstance(all_snapshots[method], dict) and 'particles' in all_snapshots[method]:
+            if 'naive_unweighted' in method:
+                titles[method] = f'Naive HMC (Unweighted, {ansatz_type})'
+                colors[method] = 'blue'
+            elif 'naive_weighted' in method:
+                titles[method] = f'Naive HMC (Weighted SMC, {ansatz_type})'
+                colors[method] = 'green'
+            elif 'cd_unweighted' in method:
+                integrator = method.split('_')[-1] if '_' in method else 'unknown'
+                titles[method] = f'Counterdiabatic HMC (Unweighted, {ansatz_type}, {integrator})'
+                colors[method] = 'red'
+            elif 'cd_weighted' in method:
+                integrator = method.split('_')[-1] if '_' in method else 'unknown'
+                titles[method] = f'Counterdiabatic HMC (Weighted, {ansatz_type}, {integrator})'
+                colors[method] = 'orange'
     
     # Filter out non-snapshot keys (like loss_histories and param_history)
     snapshot_methods = {k: v for k, v in all_snapshots.items() if k in titles}
@@ -1033,7 +1053,7 @@ def create_comparison_histogram_plots(all_snapshots, delta_t, make_V, system_nam
     
     print(f"Saved comparison histogram plot to {ansatz_dir}/comparison_histogram_plot_{system_name}.png")
 
-def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_V, make_T=None, dim=1):
+def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_V, make_T=None, dim=1, integrator_type="implicit_midpoint"):
     """
     Create all plots for the simulation results.
     
@@ -1046,30 +1066,42 @@ def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_
         make_T: Function to create kinetic energy (optional)
         dim: Dimension of the system (default=1)
     """
+    # Determine ansatz type and create subdirectory
+    if isinstance(ansatz, PolynomialAnsatz):
+        ansatz_type = 'polynomial'
+    elif isinstance(ansatz, NeuralNetworkAnsatz):
+        ansatz_type = 'neural_network'
+    elif isinstance(ansatz, AnalyticAnsatz):
+        ansatz_type = 'analytic'
+    else:
+        ansatz_type = 'polynomial'  # Default fallback
+    
+    ansatz_dir = f"figures/{ansatz_type}"
+    os.makedirs(ansatz_dir, exist_ok=True)
+    
     if len(successful_simulations) > 0:
         if dim == 1:
             print(f"\nCreating comparison plots for {len(successful_simulations)} successful simulations...")
-            create_comparison_plots(successful_simulations, delta_t, make_V, system_name, dim=dim)
+            create_comparison_plots(successful_simulations, delta_t, make_V, f"{system_name}_{integrator_type}", dim=dim, ansatz_type=ansatz_type, ansatz_dir=ansatz_dir)
             
             # Create histogram-based comparison plots
             print("Creating histogram-based comparison plots...")
-            create_comparison_histogram_plots(successful_simulations, delta_t, make_V, system_name, dim=dim)
+            create_comparison_histogram_plots(successful_simulations, delta_t, make_V, f"{system_name}_{integrator_type}", dim=dim, ansatz_type=ansatz_type, ansatz_dir=ansatz_dir)
             
             # Create unified distributions plot showing all time points
             print("Creating unified distributions plot...")
-            ansatz_dir = "figures/polynomial"  # Default directory
-            create_unified_distributions_plot(successful_simulations, delta_t, make_V, ansatz_dir, system_name, dim=dim)
+            create_unified_distributions_plot(successful_simulations, delta_t, make_V, ansatz_dir, f"{system_name}_{integrator_type}", dim=dim)
         else:
             print(f"\nSkipping 1D comparison plots for {dim}D system...")
         
         # Create detailed distribution plots for counterdiabatic methods
-        cd_methods = ['cd_unweighted', 'cd_weighted']
+        cd_methods = [f'cd_unweighted_{integrator_type}', f'cd_weighted_{integrator_type}']
         for method in cd_methods:
             if method in successful_simulations:
                 print(f"Creating detailed distribution plot for {method.replace('_', ' ')} case...")
                 loss_histories = successful_simulations.get(f'loss_histories_{method}', [])
                 param_history = successful_simulations.get(f'param_history_{method}', None)
-                naive_method = method.replace('cd_', 'naive_')
+                naive_method = method.replace(f'cd_{integrator_type}', 'naive').replace(f'_{integrator_type}', '')
                 naive_snapshots = successful_simulations.get(naive_method, None)
                 
                 # Use snapshots directly - times are already stored in snapshots['times']
@@ -1081,20 +1113,10 @@ def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_
                             make_T=make_T, naive_snapshots=naive_snapshots)
         
         # Create overlay ridge plot for CD weighted vs unweighted
-        if 'cd_weighted' in successful_simulations:
+        if f'cd_weighted_{integrator_type}' in successful_simulations:
             print("Creating overlay ridge plot for CD weighted vs unweighted...")
             # Use the weighted snapshots which contain both particles and weights
-            weighted_snapshots = successful_simulations['cd_weighted']
-            
-            # Determine ansatz type for directory
-            if isinstance(ansatz, PolynomialAnsatz):
-                ansatz_type = 'polynomial'
-            elif isinstance(ansatz, NeuralNetworkAnsatz):
-                ansatz_type = 'neural_network'
-            elif isinstance(ansatz, AnalyticAnsatz):
-                ansatz_type = 'analytic'
-            else:
-                ansatz_type = 'polynomial'  # Default
+            weighted_snapshots = successful_simulations[f'cd_weighted_{integrator_type}']
             
             create_overlay_ridge_plot(weighted_snapshots, delta_t, make_V, system_name, ansatz_type)
     else:

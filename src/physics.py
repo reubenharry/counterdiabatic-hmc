@@ -317,3 +317,180 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
         
         # Log weight change: -W where W = ∂H/∂λ * dλ/dt * eps
         # weight = -dV_dlam * dot_lam_t * eps
+
+# =============================================================================
+# IMPLICIT MIDPOINT INTEGRATOR
+# =============================================================================
+
+def newton_solve(f, x0, max_iter=10, tol=1e-8):
+    """
+    Solve f(x) = 0 using Newton's method.
+    
+    Args:
+        f: Function that returns (residual, jacobian) given x
+        x0: Initial guess
+        max_iter: Maximum number of iterations
+        tol: Convergence tolerance
+    
+    Returns:
+        Solution x such that f(x) ≈ 0
+    """
+    def newton_step(x):
+        residual, jacobian = f(x)
+        # Solve J * dx = -r for dx
+        dx = jnp.linalg.solve(jacobian, -residual)
+        return x + dx
+    
+    def newton_iteration(x, i):
+        new_x = newton_step(x)
+        residual, _ = f(new_x)
+        converged = jnp.linalg.norm(residual) < tol
+        return new_x, converged
+    
+    # Use JAX scan for efficient iteration
+    x_final, converged = jax.lax.scan(
+        lambda x, _: newton_iteration(x, 0),
+        x0,
+        jnp.arange(max_iter)
+    )
+    
+    return x_final
+
+def make_implicit_midpoint_step(H):
+    """
+    Create an implicit midpoint integrator step function.
+    
+    The integrator is a composition of two half-steps:
+    1. Implicit Euler: z^(n+1/2) = z^n + (1/2) * Δt * J * ∇H(z^(n+1/2))
+    2. Explicit Euler: z^(n+1) = z^(n+1/2) + (1/2) * Δt * J * ∇H(z^(n+1/2))
+    
+    Args:
+        H: Hamiltonian function H(q, p) - need not be separable
+    
+    Returns:
+        Function that takes (q, p, dt) and returns (q_new, p_new, weight)
+    """
+    
+    def implicit_midpoint_step(q, p, dt):
+        """
+        Single step of implicit midpoint integrator.
+        
+        Args:
+            q: Position vector
+            p: Momentum vector  
+            dt: Time step
+        
+        Returns:
+            (q_new, p_new, weight) where weight is the energy change
+        """
+        # Combine position and momentum into single state vector
+        z = jnp.concatenate([q, p])
+        
+        # Define the symplectic matrix J
+        n = len(q)
+        J = jnp.block([[jnp.zeros((n, n)), jnp.eye(n)],
+                       [-jnp.eye(n), jnp.zeros((n, n))]])
+        
+        # Define gradient of Hamiltonian
+        def grad_H(q, p):
+            grad_q = jax.grad(H, argnums=0)(q, p)
+            grad_p = jax.grad(H, argnums=1)(q, p)
+            return jnp.concatenate([grad_q, grad_p])
+        
+        # Define the implicit equation for the first half-step
+        # z^(n+1/2) = z^n + (1/2) * dt * J * ∇H(z^(n+1/2))
+        def implicit_equation(z_half):
+            q_half, p_half = z_half[:n], z_half[n:]
+            grad_H_half = grad_H(q_half, p_half)
+            residual = z_half - z - 0.5 * dt * J @ grad_H_half
+            return residual
+        
+        # Define function for Newton solver (residual, jacobian)
+        def newton_function(z_half):
+            residual = implicit_equation(z_half)
+            jacobian = jax.jacobian(implicit_equation)(z_half)
+            return residual, jacobian
+        
+        # Solve the implicit equation for z^(n+1/2)
+        z_half = newton_solve(newton_function, z)
+        q_half, p_half = z_half[:n], z_half[n:]
+        
+        # Second half-step: explicit Euler
+        # z^(n+1) = z^(n+1/2) + (1/2) * dt * J * ∇H(z^(n+1/2))
+        grad_H_half = grad_H(q_half, p_half)
+        z_new = z_half + 0.5 * dt * J @ grad_H_half
+        
+        q_new, p_new = z_new[:n], z_new[n:]
+        
+        # Calculate energy change for weight
+        H_old = H(q, p)
+        H_new = H(q_new, p_new)
+        weight = -(H_new - H_old)
+        
+        return q_new, p_new, weight
+    
+    return implicit_midpoint_step
+
+def make_cd_implicit_midpoint_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next):
+    """
+    Create a counterdiabatic implicit midpoint step function.
+    
+    The full Hamiltonian is H + dot_lam*A where H = T + V.
+    This uses the implicit midpoint integrator for the combined Hamiltonian.
+    
+    Args:
+        make_T: Function to create kinetic energy T(lam)
+        make_V: Function to create potential energy V(lam)
+        A_ansatz: Gauge potential ansatz
+        lam: Current lambda value
+        lam_next: Next lambda value
+        dot_lam: Current lambda derivative
+        dot_lam_next: Next lambda derivative
+    
+    Returns:
+        Function that takes (q, p, eps, t) and returns (q_new, p_new, weight)
+    """
+    
+    def cd_implicit_midpoint_step(q, p, eps, t=None):
+        """
+        Single step of counterdiabatic implicit midpoint integrator.
+        
+        Args:
+            q: Position vector
+            p: Momentum vector
+            eps: Time step
+            t: Time (optional, for compatibility)
+        
+        Returns:
+            (q_new, p_new, weight) where weight is the energy change
+        """
+        # Define the full Hamiltonian H + dot_lam*A
+        def H_full(q, p):
+            T = make_T(lam)
+            V = make_V(lam)
+            # return T(p) + V(q) + dot_lam * A_ansatz(q, p)
+            return dot_lam * A_ansatz(q, p)
+        
+        # Create the implicit midpoint integrator for the full Hamiltonian
+        implicit_midpoint = make_implicit_midpoint_step(H_full)
+        
+        # Take one step
+        q_new, p_new, weight = implicit_midpoint(q, p, eps)
+        
+        # Compute counterdiabatic work for weight calculation
+        # The weight from implicit midpoint is the energy change of H_full
+        # We want the counterdiabatic work, which is the change in the original Hamiltonian H
+        T_old = make_T(lam)
+        V_old = make_V(lam)
+        T_new = make_T(lam_next)
+        V_new = make_V(lam_next)
+        
+        H_old = T_old(p) + V_old(q)
+        H_new = T_new(p_new) + V_new(q_new)
+        
+        # Counterdiabatic work is the change in the original Hamiltonian
+        cd_work = H_new - H_old
+        
+        return q_new, p_new, -cd_work
+    
+    return cd_implicit_midpoint_step
