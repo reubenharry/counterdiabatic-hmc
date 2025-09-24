@@ -519,13 +519,8 @@ def construct_hermite_tridiagonal_matrix(f_function, samples, make_V, lam, max_o
     # Construct tridiagonal matrix for odd sector
     num_coeffs = (max_order + 1) // 2  # Number of odd indices ≤ max_order
     
-    diagonal = jnp.zeros(num_coeffs)
-    upper_diagonal = jnp.zeros(num_coeffs - 1)
-    
-    for k in range(num_coeffs):
-        diagonal[k] = c0 * (2*k + 2) + c1 * (2*k + 1)
-        if k < num_coeffs - 1:
-            upper_diagonal[k] = c2 * jnp.sqrt((2*k + 2) * (2*k + 3))
+    diagonal = jnp.array([c0 * (2*k + 2) + c1 * (2*k + 1) for k in range(num_coeffs)])
+    upper_diagonal = jnp.array([c2 * jnp.sqrt((2*k + 2) * (2*k + 3)) for k in range(num_coeffs - 1)])
     
     return diagonal, upper_diagonal
 
@@ -547,9 +542,21 @@ def compute_linear_term_coefficient(f_function, samples, make_V, lam):
     dim = qp_batch.shape[1] // 2
     qs = qp_batch[:, :dim]
     
-    # Compute ∂²V/∂q∂λ
+    # Compute ∂²V/∂q∂λ using automatic differentiation
     def d2V_dqdlam(q):
-        return jax.grad(lambda q, lam: jax.grad(make_V(lam), argnums=0)(q), argnums=1)(q, lam)
+        # Define a function that takes both q and lam as arguments
+        def V_with_lam(q, lam):
+            V_func = make_V(lam)
+            return V_func(q)
+        
+        # Compute ∂²V/∂q∂λ = ∂/∂λ (∂V/∂q)
+        # First compute ∂V/∂q, then take ∂/∂λ of that
+        def grad_V_wrt_q(q, lam):
+            return jax.grad(V_with_lam, argnums=0)(q, lam)
+        
+        # Use jacfwd to compute the Jacobian of grad_V_wrt_q with respect to λ
+        # This gives us ∂²V/∂q∂λ (the Jacobian of the gradient)
+        return jax.jacfwd(grad_V_wrt_q, argnums=1)(q, lam)
     
     f_vals = jax.vmap(f_function)(qs)
     d2V_dqdlam_vals = jax.vmap(d2V_dqdlam)(qs)

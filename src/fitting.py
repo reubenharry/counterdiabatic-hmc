@@ -97,6 +97,10 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
         use_regularization: Whether to use L2 regularization
         weights: Optional array of weights for weighted expectation (shape (N,))
     """
+    # Check if this is a HermiteAnsatz and use special fitting
+    if hasattr(A_ansatz, 'ansatz_type') and A_ansatz.ansatz_type == 'hermite':
+        return fit_hermite_ansatz(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, use_regularization, weights)
+    
     # Check input samples for NaNs
     check_nans("input_samples", samples)
     
@@ -173,7 +177,7 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
     print(f"Fitting completed after {len(loss_history)} iterations")
     return A_ansatz, loss_history
 
-def fit_hermite_ansatz(lam, samples, make_T, make_V, hermite_ansatz, num_iters, lr, use_regularization=False, weights=None):
+def fit_hermite_ansatz_optimize(lam, samples, make_T, make_V, hermite_ansatz, num_iters, lr, use_regularization=False, weights=None):
     """
     Special fitting function for HermiteAnsatz that only optimizes g(p) coefficients (alpha_coeffs)
     while keeping f(q) parameters fixed.
@@ -260,6 +264,111 @@ def fit_hermite_ansatz(lam, samples, make_T, make_V, hermite_ansatz, num_iters, 
             break
 
     print(f"Fitting completed after {len(loss_history)} iterations")
+    
+    # Print learned coefficients
+    hermite_ansatz.print_coefficients()
+    
+    return hermite_ansatz, loss_history
+
+
+def fit_hermite_ansatz(lam, samples, make_T, make_V, hermite_ansatz, num_iters, lr, use_regularization=False, weights=None):
+    """
+    Fit HermiteAnsatz using the tridiagonal matrix optimization approach.
+    
+    This function constructs the tridiagonal matrix M^(o) and linear term b^(o)
+    from the mathematical derivation, then solves the linear system M^(o) α̃^(o) = -b^(o).
+    
+    Args:
+        lam: Current lambda value
+        samples: Array of shape (N, 2*dim) where first dim columns are q and last dim columns are p
+        make_T: Function to create kinetic energy
+        make_V: Function to create potential energy
+        hermite_ansatz: HermiteAnsatz instance to fit
+        num_iters: Number of optimization iterations (ignored for tridiagonal approach)
+        lr: Learning rate (ignored for tridiagonal approach)
+        use_regularization: Whether to use L2 regularization (ignored for tridiagonal approach)
+        weights: Optional array of weights for weighted expectation (shape (N,))
+        
+    Returns:
+        Updated hermite_ansatz and loss history
+    """
+    print("  Using tridiagonal matrix optimization for Hermite ansatz")
+    
+    # Check input samples for NaNs
+    check_nans("input_samples", samples)
+    
+    # Import the existing functions from ansatze.py
+    from .ansatze import construct_hermite_tridiagonal_matrix, compute_linear_term_coefficient
+    
+    # Get f(q) function from the ansatz
+    f_function = hermite_ansatz.f_ansatz
+    
+    # Use existing functions to construct tridiagonal matrix
+    diagonal, upper_diagonal = construct_hermite_tridiagonal_matrix(
+        f_function, samples, make_V, lam, hermite_ansatz.max_order
+    )
+    
+    # Use existing function to compute linear term
+    L_q = compute_linear_term_coefficient(f_function, samples, make_V, lam)
+    
+    print(f"  Linear term: L_q={L_q:.6f}")
+    
+    # Construct tridiagonal matrix for odd sector
+    num_coeffs = len(hermite_ansatz.alpha_coeffs)
+    
+    # Build full tridiagonal matrix for pretty printing and solving
+    M = jnp.zeros((num_coeffs, num_coeffs))
+    for i in range(num_coeffs):
+        M = M.at[i, i].set(diagonal[i])
+        if i < num_coeffs - 1:
+            M = M.at[i, i+1].set(upper_diagonal[i])
+            M = M.at[i+1, i].set(upper_diagonal[i])
+    
+    # Pretty print the tridiagonal matrix M^(o)
+    print(f"  Tridiagonal matrix M^(o) ({num_coeffs}x{num_coeffs}):")
+    for i in range(num_coeffs):
+        row_str = "    ["
+        for j in range(num_coeffs):
+            if j > 0:
+                row_str += " "
+            if abs(M[i, j]) < 1e-10:
+                row_str += "0.000000"
+            else:
+                row_str += f"{M[i, j]:8.6f}"
+        row_str += "]"
+        print(row_str)
+    
+    # Construct right-hand side vector b^(o)
+    b_vector = jnp.zeros(num_coeffs)
+    b_vector = b_vector.at[0].set(2.0 * L_q)  # Only first component is non-zero
+    
+    print(f"  Right-hand side b^(o): {b_vector}")
+    
+    # Solve the linear system M^(o) α̃^(o) = -b^(o)
+    # Use scipy's efficient tridiagonal solver
+    import scipy.linalg
+    alpha_optimized = scipy.linalg.solve_banded(
+        (1, 1),  # Upper and lower bandwidth
+        jnp.vstack([
+            jnp.concatenate([jnp.array([0]), upper_diagonal]),  # Upper diagonal
+            diagonal,  # Main diagonal
+            jnp.concatenate([upper_diagonal, jnp.array([0])])   # Lower diagonal
+        ]),
+        -b_vector
+    )
+    
+    print(f"  Solution α̃^(o): {alpha_optimized}")
+    
+    # Update the ansatz with optimized coefficients
+    hermite_ansatz = eqx.tree_at(lambda m: m.alpha_coeffs, hermite_ansatz, alpha_optimized)
+    
+    # Compute final loss for comparison
+    qp_batch = jnp.array(samples)
+    final_loss = calculate_gauge_potential_loss(lam, qp_batch, make_T, make_V, hermite_ansatz, use_regularization, weights)
+    loss_history = [final_loss]
+    
+    print(f"  Tridiagonal optimization completed")
+    print(f"  Final loss: {final_loss:.6f}")
     
     # Print learned coefficients
     hermite_ansatz.print_coefficients()

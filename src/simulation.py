@@ -166,21 +166,12 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
                         weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
                         weights = weights / jnp.sum(weights)  # Normalize
                     
-                    # Check if this is a HermiteAnsatz and use special fitting
-                    if hasattr(A_ansatz, 'ansatz_type') and A_ansatz.ansatz_type == 'hermite':
-                        from .fitting import fit_hermite_ansatz
-                        A_ansatz, loss_history = fit_hermite_ansatz(lam_k, samples,
+                    # Fit the gauge potential (automatically handles Hermite ansatz special case)
+                    A_ansatz, loss_history = fit_gauge_potential(lam_k, samples,
                                                 make_T=make_T, make_V=make_V,
-                                                hermite_ansatz=A_ansatz,  # Pass current ansatz for warm start
+                                                A_ansatz=A_ansatz,  # Pass current ansatz for warm start
                                                 num_iters=num_iters, lr=learning_rate,
                                                 use_regularization=False, weights=weights)
-                    else:
-                        # Use standard fitting for other ansatzes
-                        A_ansatz, loss_history = fit_gauge_potential(lam_k, samples,
-                                                    make_T=make_T, make_V=make_V,
-                                                    A_ansatz=A_ansatz,  # Pass current ansatz for warm start
-                                                    num_iters=num_iters, lr=learning_rate,
-                                                    use_regularization=False, weights=weights)
                     
                     # Print final loss
                     final_loss = loss_history[-1] if loss_history else float('inf')
