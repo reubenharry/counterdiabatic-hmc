@@ -7,7 +7,37 @@ import equinox as eqx
 import os
 from scipy.stats import gaussian_kde
 
-from .ansatze import PolynomialAnsatz, NeuralNetworkAnsatz, AnalyticAnsatz
+from .ansatze import PolynomialAnsatz, NeuralNetworkAnsatz, AnalyticAnsatz, HermiteAnsatz
+
+def create_plot_directory(ansatz, system_name, integrator_type):
+    """
+    Create the proper directory structure for saving plots.
+    
+    Args:
+        ansatz: The ansatz object used
+        system_name: Name of the system
+        integrator_type: Type of integrator (e.g., "leapfrog", "implicit_midpoint")
+    
+    Returns:
+        str: The directory path where plots should be saved
+    """
+    # Determine ansatz type
+    if isinstance(ansatz, PolynomialAnsatz):
+        ansatz_type = 'polynomial'
+    elif isinstance(ansatz, NeuralNetworkAnsatz):
+        ansatz_type = 'neural_network'
+    elif isinstance(ansatz, AnalyticAnsatz):
+        ansatz_type = 'analytic'
+    elif isinstance(ansatz, HermiteAnsatz):
+        ansatz_type = 'hermite'
+    else:
+        ansatz_type = 'polynomial'  # Default fallback
+    
+    # Create directory structure: figures/{ansatz_type}/{system_name}/{integrator_type}
+    plot_dir = f"figures/{ansatz_type}/{system_name}/{integrator_type}"
+    os.makedirs(plot_dir, exist_ok=True)
+    
+    return plot_dir
 
 # Plotting constants
 PLOTTING_CONSTANTS = {
@@ -177,7 +207,7 @@ def compute_weighted_kde(samples, weights=None, x_grid=None):
     
     return density
 
-def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ansatz_type="polynomial"):
+def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ansatz_type="polynomial", plot_dir=None):
     """Create a ridge plot showing the evolution of 1D distributions over time.
     
     Args:
@@ -188,10 +218,14 @@ def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ans
         potential_name: Name of the potential for filename
         ansatz_type: Type of ansatz for directory structure
     """
+    # Use provided plot_dir or create default structure
+    if plot_dir is None:
     # Create figures directory if it doesn't exist
-    os.makedirs("figures", exist_ok=True)
-    ansatz_dir = f"figures/{ansatz_type}"
-    os.makedirs(ansatz_dir, exist_ok=True)
+        os.makedirs("figures", exist_ok=True)
+        ansatz_dir = f"figures/{ansatz_type}"
+        os.makedirs(ansatz_dir, exist_ok=True)
+    else:
+        ansatz_dir = plot_dir
     
     # Check if re-equilibration was used (simplified - no post-equilibration for now)
     has_re_equil = False
@@ -330,7 +364,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ans
     plt.savefig(f"{ansatz_dir}/ridge_plot_{potential_name}.png", dpi=300, bbox_inches='tight')
     plt.close()
 
-def create_overlay_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ansatz_type="polynomial"):
+def create_overlay_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ansatz_type="polynomial", plot_dir=None):
     """Create a ridge plot showing both CD weighted and unweighted distributions overlaid.
     
     Args:
@@ -339,18 +373,23 @@ def create_overlay_ridge_plot(snapshots, delta_t, make_V, potential_name="harmon
         make_V: Function to create potential energy
         potential_name: Name of the potential for filename
         ansatz_type: Type of ansatz for directory structure
+        plot_dir: Directory to save plots (optional)
     """
+    # Use provided plot_dir or create default structure
+    if plot_dir is None:
     # Create figures directory if it doesn't exist
-    os.makedirs("figures", exist_ok=True)
-    ansatz_dir = f"figures/{ansatz_type}"
-    os.makedirs(ansatz_dir, exist_ok=True)
+        os.makedirs("figures", exist_ok=True)
+        ansatz_dir = f"figures/{ansatz_type}"
+        os.makedirs(ansatz_dir, exist_ok=True)
+    else:
+        ansatz_dir = plot_dir
     
     # Check if weights are available
     has_weights = 'weights' in snapshots and any(w is not None for w in snapshots['weights'])
     
     if not has_weights:
         print("Warning: No weights found in snapshots. Creating regular ridge plot instead.")
-        create_ridge_plot(snapshots, delta_t, make_V, potential_name, ansatz_type)
+        create_ridge_plot(snapshots, delta_t, make_V, potential_name, ansatz_type, ansatz_dir)
         return
     
     # Get time points from snapshots
@@ -428,16 +467,18 @@ def create_overlay_ridge_plot(snapshots, delta_t, make_V, potential_name="harmon
     
     # Adjust layout and save
     plt.tight_layout()
-    plt.savefig(f"{ansatz_dir}/ridge_plot_{potential_name}_overlay.png", dpi=300, bbox_inches='tight')
+    plt.savefig(f"{ansatz_dir}/ridge_plot_overlay.png", dpi=300, bbox_inches='tight')
     plt.close()
 
-def plot_results(snapshots, loss_histories, delta_t, make_V, param_history=None, ansatz=None, potential_name="harmonic", dim=1, plot_ansatz=False, make_T=None, naive_snapshots=None):
+def plot_results(snapshots, loss_histories, delta_t, make_V, param_history=None, ansatz=None, potential_name="harmonic", dim=1, plot_ansatz=False, make_T=None, naive_snapshots=None, plot_dir=None):
     """Simplified plotting function that only creates two figures:
     1. Comparison ridge plot (handled in main.py)
     2. Distributions plot (this function)
     """
+    # Use provided plot_dir or create default structure
+    if plot_dir is None:
     # Create figures directory if it doesn't exist
-    os.makedirs("figures", exist_ok=True)
+        os.makedirs("figures", exist_ok=True)
     
     # Determine ansatz type and create subdirectory
     if isinstance(ansatz, PolynomialAnsatz):
@@ -446,25 +487,30 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, param_history=None,
         ansatz_type = 'neural_network'
     elif isinstance(ansatz, AnalyticAnsatz):
         ansatz_type = 'analytic'
+    elif hasattr(ansatz, 'ansatz_type') and ansatz.ansatz_type == 'hermite':
+        ansatz_type = 'hermite'
     else:
         raise ValueError(f"Unknown ansatz type")
     
-    ansatz_dir = f"figures/{ansatz_type}"
-    os.makedirs(ansatz_dir, exist_ok=True)
+        plot_dir = f"figures/{ansatz_type}"
+        os.makedirs(plot_dir, exist_ok=True)
     
     # Debug information
-    print(f"Plotting for ansatz type: {ansatz_type}")
-    print(f"Number of snapshots: particles={len(snapshots.get('particles', []))}")
-    print(f"Number of post-equilibration snapshots: 0")
+    if plot_dir is None:
+        print(f"Plotting for ansatz type: {ansatz_type}")
+        print(f"Number of snapshots: particles={len(snapshots.get('particles', []))}")
+        print(f"Number of post-equilibration snapshots: 0")
     
     # Check if re-equilibration was used
     has_re_equil = 'cd_post_equil' in snapshots and len(snapshots['cd_post_equil']) > 0
     
     # Create distributions plot with diagnostic information
-    create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, has_re_equil, 
+    create_distributions_plot(snapshots, delta_t, make_V, plot_dir, potential_name, dim, has_re_equil, 
                             loss_histories=loss_histories, param_history=param_history, make_T=make_T, naive_snapshots=naive_snapshots)
     
-    print(f"Saved distributions plot to {ansatz_dir}/distributions_{potential_name}.png")
+    # Extract method name for cleaner print message
+    method_name = potential_name.split('_')[-3] + '_' + potential_name.split('_')[-2] if '_' in potential_name else potential_name
+    print(f"Saved distributions plot to {plot_dir}/distributions_{method_name}.png")
 
 
 def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, has_re_equil, loss_histories=None, param_history=None, make_T=None, naive_snapshots=None):
@@ -536,22 +582,40 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
                 cd_idx = j
                 break
         
-        # Plot CD particles distribution if available
-        if cd_idx is not None and 'particles' in snapshots and cd_idx < len(snapshots['particles']):
-            particles_snap = snapshots['particles'][cd_idx]
-            if len(particles_snap) > 0:
-                if has_weights and cd_idx is not None and cd_idx < len(snapshots['weights']):
-                    # Use weighted histogram
-                    weights = snapshots['weights'][cd_idx]
-                    if weights is not None and not np.allclose(weights, 0.0):
-                        # Convert log weights to regular weights
-                        weights = np.exp(weights - np.max(weights))
-                        weights = weights / np.sum(weights)
-                        ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, label='Particles (Weighted)', density=True, color='red', weights=weights)
+        # Check if equilibration visualization is available
+        has_equilibration = ('pre_equilibration' in snapshots and 'post_equilibration' in snapshots and 
+                           cd_idx is not None and cd_idx < len(snapshots.get('pre_equilibration', [])) and 
+                           cd_idx < len(snapshots.get('post_equilibration', [])))
+        
+        if has_equilibration:
+            # Show before and after equilibration only
+            pre_equil_snap = snapshots['pre_equilibration'][cd_idx]
+            post_equil_snap = snapshots['post_equilibration'][cd_idx]
+            
+            if len(pre_equil_snap) > 0:
+                ax.hist(pre_equil_snap.flatten(), bins=25, alpha=0.6, label='Before Equilibration', 
+                       density=True, color='orange', histtype='stepfilled')
+            
+            if len(post_equil_snap) > 0:
+                ax.hist(post_equil_snap.flatten(), bins=25, alpha=0.6, label='After Equilibration', 
+                       density=True, color='purple', histtype='stepfilled')
+        else:
+            # Show regular CD particles distribution if equilibration is not available
+            if cd_idx is not None and 'particles' in snapshots and cd_idx < len(snapshots['particles']):
+                particles_snap = snapshots['particles'][cd_idx]
+                if len(particles_snap) > 0:
+                    if has_weights and cd_idx is not None and cd_idx < len(snapshots['weights']):
+                        # Use weighted histogram
+                        weights = snapshots['weights'][cd_idx]
+                        if weights is not None and not np.allclose(weights, 0.0):
+                            # Convert log weights to regular weights
+                            weights = np.exp(weights - np.max(weights))
+                            weights = weights / np.sum(weights)
+                            ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, label='Particles (Weighted)', density=True, color='red', weights=weights)
+                        else:
+                            ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, label='Particles', density=True, color='red')
                     else:
                         ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, label='Particles', density=True, color='red')
-                else:
-                    ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, label='Particles', density=True, color='red')
         
         # Plot naive HMC distribution if available
         if naive_snapshots and 'particles' in naive_snapshots:
@@ -613,7 +677,9 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         energy_stats = snapshots['detailed_energy_stats']
         
         # Use saved times for energy statistics
-        if 'times' in snapshots:
+        if 'detailed_times' in snapshots:
+            energy_times = snapshots['detailed_times']
+        elif 'times' in snapshots:
             energy_times = snapshots['times']
         else:
             raise ValueError("Snapshots missing 'times' key - cannot plot energy statistics without saved times")
@@ -662,25 +728,92 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         
 
         
-        # Plot Var[A] over time (only for counterdiabatic)
-        ax_var_A = fig.add_subplot(gs[diagnostic_row_start, 3])
+        # Plot (E_p[∂_λ H] - E_λ[∂_λ H])² over time
+        ax_expectation_diff = fig.add_subplot(gs[diagnostic_row_start, 3])
+        expectation_diff_vals = [stats['expectation_diff_sq'] for stats in energy_stats]
+        ax_expectation_diff.plot(energy_times, expectation_diff_vals, 'purple', label='Current Method', linewidth=2)
+        
+        # Add naive HMC expectation difference if available
+        if naive_snapshots and 'detailed_energy_stats' in naive_snapshots and len(naive_snapshots['detailed_energy_stats']) > 0:
+            naive_energy_stats = naive_snapshots['detailed_energy_stats']
+            if 'times' in naive_snapshots:
+                naive_energy_times = naive_snapshots['times']
+            else:
+                raise ValueError("Naive snapshots missing 'times' key - cannot plot energy statistics")
+            naive_expectation_diff_vals = [stats['expectation_diff_sq'] for stats in naive_energy_stats]
+            ax_expectation_diff.plot(naive_energy_times, naive_expectation_diff_vals, 'orange', label='Naive HMC', linewidth=2)
+        
+        ax_expectation_diff.set_xlabel('Time')
+        ax_expectation_diff.set_ylabel('(E_p[∂_λ H] - E_λ[∂_λ H])²')
+        ax_expectation_diff.set_title('Expectation Difference Squared')
+        ax_expectation_diff.legend()
+        ax_expectation_diff.grid(True, alpha=0.3)
+    
+    # Plot Var[A] and Var_λ[∂_λ H] over time (only for counterdiabatic) in second diagnostic row
+    if 'detailed_energy_stats' in snapshots and len(snapshots['detailed_energy_stats']) > 0:
+        energy_stats = snapshots['detailed_energy_stats']
+        
+        # Plot Var[A] over time
+        ax_var_A = fig.add_subplot(gs[diagnostic_row_start + 1, 0])
         var_A_vals = [stats['var_A'] for stats in energy_stats]
-        ax_var_A.plot(energy_times, var_A_vals, 'g-', label='Var[A]', linewidth=2)
+        ax_var_A.plot(energy_times, var_A_vals, 'g-', label='Current Method', linewidth=2)
         ax_var_A.set_xlabel('Time')
         ax_var_A.set_ylabel('Var[A]')
         ax_var_A.set_title('Gauge Potential Variance')
         ax_var_A.legend()
         ax_var_A.grid(True, alpha=0.3)
     
-    # Plot parameter history if available (second diagnostic row, spanning all columns)
+        # Plot variance over time (Var_λ for weighted, Var_p for unweighted)
+        ax_var_dH_dlam = fig.add_subplot(gs[diagnostic_row_start + 1, 1])
+        
+        # Determine which variance to show based on whether weights are available
+        if has_weights:
+            # Weighted case: show Var_λ (equilibrium distribution using importance weights)
+            var_dH_dlam_vals = [stats['var_lambda_dH_dlam'] for stats in energy_stats]
+            ylabel = 'Var_λ[∂_λ H]'
+            title = 'Equilibrium Energy Derivative Variance'
+        else:
+            # Unweighted case: show Var_p (current particle distribution)
+            var_dH_dlam_vals = [stats['var_dH_dlam'] for stats in energy_stats]
+            ylabel = 'Var_p[∂_λ H]'
+            title = 'Current Distribution Energy Derivative Variance'
+        
+        ax_var_dH_dlam.plot(energy_times, var_dH_dlam_vals, 'red', label='Current Method', linewidth=2)
+        
+        # Add naive HMC variance if available
+        if naive_snapshots and 'detailed_energy_stats' in naive_snapshots and len(naive_snapshots['detailed_energy_stats']) > 0:
+            naive_energy_stats = naive_snapshots['detailed_energy_stats']
+            if 'times' in naive_snapshots:
+                naive_energy_times = naive_snapshots['times']
+            else:
+                raise ValueError("Naive snapshots missing 'times' key - cannot plot energy statistics")
+            
+            # Use same logic for naive statistics
+            naive_has_weights = 'weights' in naive_snapshots and any(w is not None for w in naive_snapshots['weights'])
+            if naive_has_weights:
+                naive_var_dH_dlam_vals = [stats['var_lambda_dH_dlam'] for stats in naive_energy_stats]
+            else:
+                naive_var_dH_dlam_vals = [stats['var_dH_dlam'] for stats in naive_energy_stats]
+            
+            ax_var_dH_dlam.plot(naive_energy_times, naive_var_dH_dlam_vals, 'orange', label='Naive HMC', linewidth=2)
+        
+        ax_var_dH_dlam.set_xlabel('Time')
+        ax_var_dH_dlam.set_ylabel(ylabel)
+        ax_var_dH_dlam.set_title(title)
+        ax_var_dH_dlam.legend()
+        ax_var_dH_dlam.grid(True, alpha=0.3)
+    
+    # Plot parameter history if available (second diagnostic row, spanning remaining columns)
     if param_history and len(param_history) > 0:
-        ax_params = fig.add_subplot(gs[diagnostic_row_start + 1, :])
+        ax_params = fig.add_subplot(gs[diagnostic_row_start + 1, 2:])
         
         # Handle different parameter types
         if isinstance(param_history[0], jnp.ndarray):
             # Polynomial ansatz - simple array of parameters
             param_history_array = np.array(param_history)
-            if 'times' in snapshots:
+            if 'detailed_times' in snapshots:
+                param_times = snapshots['detailed_times']
+            elif 'times' in snapshots:
                 param_times = snapshots['times']
             else:
                 raise ValueError("Snapshots missing 'times' key - cannot plot parameter history")
@@ -690,7 +823,9 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         else:
             # Neural network ansatz - complex structure, plot norm of parameters
             param_norms = []
-            if 'times' in snapshots:
+            if 'detailed_times' in snapshots:
+                param_times = snapshots['detailed_times']
+            elif 'times' in snapshots:
                 param_times = snapshots['times']
             else:
                 raise ValueError("Snapshots missing 'times' key - cannot plot parameter history")
@@ -712,7 +847,9 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         ax_params.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig(f"{ansatz_dir}/distributions_{potential_name}.png", dpi=300, bbox_inches='tight')
+    # Extract method name from potential_name (e.g., "gaussian_annealing_cd_unweighted_leapfrog" -> "cd_unweighted")
+    method_name = potential_name.split('_')[-3] + '_' + potential_name.split('_')[-2]  # Gets "cd_unweighted" or "cd_weighted"
+    plt.savefig(f"{ansatz_dir}/distributions_{method_name}.png", dpi=300, bbox_inches='tight')
     plt.close()
 
 
@@ -885,10 +1022,10 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim, an
         ax.set_yticks(times_array * 2.0)
     
     plt.tight_layout()
-    plt.savefig(f"{ansatz_dir}/comparison_ridge_plot_{system_name}.png", dpi=300, bbox_inches='tight')
+    plt.savefig(f"{ansatz_dir}/comparison_ridge_plot.png", dpi=300, bbox_inches='tight')
     plt.close()
     
-    print(f"Saved comparison ridge plot to {ansatz_dir}/comparison_ridge_plot_{system_name}.png")
+    print(f"Saved comparison ridge plot to {ansatz_dir}/comparison_ridge_plot.png")
 
 def create_comparison_histogram_plots(all_snapshots, delta_t, make_V, system_name, dim, n_bins=50, ansatz_type="polynomial", ansatz_dir="figures/polynomial"):
     """Create comparison plots using histograms instead of KDE for all four simulation methods."""
@@ -1048,10 +1185,10 @@ def create_comparison_histogram_plots(all_snapshots, delta_t, make_V, system_nam
         ax.set_yticks(times_array * 2.0)
     
     plt.tight_layout()
-    plt.savefig(f"{ansatz_dir}/comparison_histogram_plot_{system_name}.png", dpi=300, bbox_inches='tight')
+    plt.savefig(f"{ansatz_dir}/comparison_histogram_plot.png", dpi=300, bbox_inches='tight')
     plt.close()
     
-    print(f"Saved comparison histogram plot to {ansatz_dir}/comparison_histogram_plot_{system_name}.png")
+    print(f"Saved comparison histogram plot to {ansatz_dir}/comparison_histogram_plot.png")
 
 def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_V, make_T=None, dim=1, integrator_type="implicit_midpoint"):
     """
@@ -1065,32 +1202,23 @@ def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_
         make_V: Function to create potential energy
         make_T: Function to create kinetic energy (optional)
         dim: Dimension of the system (default=1)
+        integrator_type: Type of integrator used
     """
-    # Determine ansatz type and create subdirectory
-    if isinstance(ansatz, PolynomialAnsatz):
-        ansatz_type = 'polynomial'
-    elif isinstance(ansatz, NeuralNetworkAnsatz):
-        ansatz_type = 'neural_network'
-    elif isinstance(ansatz, AnalyticAnsatz):
-        ansatz_type = 'analytic'
-    else:
-        ansatz_type = 'polynomial'  # Default fallback
-    
-    ansatz_dir = f"figures/{ansatz_type}"
-    os.makedirs(ansatz_dir, exist_ok=True)
+    # Create proper directory structure
+    plot_dir = create_plot_directory(ansatz, system_name, integrator_type)
     
     if len(successful_simulations) > 0:
         if dim == 1:
             print(f"\nCreating comparison plots for {len(successful_simulations)} successful simulations...")
-            create_comparison_plots(successful_simulations, delta_t, make_V, f"{system_name}_{integrator_type}", dim=dim, ansatz_type=ansatz_type, ansatz_dir=ansatz_dir)
+            create_comparison_plots(successful_simulations, delta_t, make_V, f"{system_name}_{integrator_type}", dim=dim, ansatz_type="", ansatz_dir=plot_dir)
             
             # Create histogram-based comparison plots
             print("Creating histogram-based comparison plots...")
-            create_comparison_histogram_plots(successful_simulations, delta_t, make_V, f"{system_name}_{integrator_type}", dim=dim, ansatz_type=ansatz_type, ansatz_dir=ansatz_dir)
+            create_comparison_histogram_plots(successful_simulations, delta_t, make_V, f"{system_name}_{integrator_type}", dim=dim, ansatz_type="", ansatz_dir=plot_dir)
             
             # Create unified distributions plot showing all time points
             print("Creating unified distributions plot...")
-            create_unified_distributions_plot(successful_simulations, delta_t, make_V, ansatz_dir, f"{system_name}_{integrator_type}", dim=dim)
+            create_unified_distributions_plot(successful_simulations, delta_t, make_V, plot_dir, f"{system_name}_{integrator_type}", dim=dim)
         else:
             print(f"\nSkipping 1D comparison plots for {dim}D system...")
         
@@ -1110,7 +1238,19 @@ def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_
                 plot_results(snapshots_with_timing, loss_histories, delta_t, make_V, 
                             param_history=param_history, ansatz=ansatz, 
                             potential_name=f"{system_name}_{method}", dim=1, plot_ansatz=False, 
-                            make_T=make_T, naive_snapshots=naive_snapshots)
+                            make_T=make_T, naive_snapshots=naive_snapshots, plot_dir=plot_dir)
+        
+        # Create detailed distribution plots for naive methods
+        naive_methods = ['naive_unweighted', 'naive_weighted']
+        for method in naive_methods:
+            if method in successful_simulations:
+                print(f"Creating detailed distribution plot for {method.replace('_', ' ')} case...")
+                
+                # Use snapshots directly - times are already stored in snapshots['times']
+                snapshots_with_timing = successful_simulations[method].copy()
+                
+                create_naive_distributions_plot(snapshots_with_timing, delta_t, make_V, 
+                                               plot_dir, f"{system_name}_{method}_{integrator_type}", dim=1)
         
         # Create overlay ridge plot for CD weighted vs unweighted
         if f'cd_weighted_{integrator_type}' in successful_simulations:
@@ -1118,7 +1258,17 @@ def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_
             # Use the weighted snapshots which contain both particles and weights
             weighted_snapshots = successful_simulations[f'cd_weighted_{integrator_type}']
             
-            create_overlay_ridge_plot(weighted_snapshots, delta_t, make_V, system_name, ansatz_type)
+            # Determine ansatz type for overlay plot
+            if isinstance(ansatz, PolynomialAnsatz):
+                ansatz_type = 'polynomial'
+            elif isinstance(ansatz, NeuralNetworkAnsatz):
+                ansatz_type = 'neural_network'
+            elif isinstance(ansatz, AnalyticAnsatz):
+                ansatz_type = 'analytic'
+            else:
+                ansatz_type = 'polynomial'
+            
+            create_overlay_ridge_plot(weighted_snapshots, delta_t, make_V, system_name, ansatz_type, plot_dir)
     else:
         print("No successful simulations to plot.") 
 
@@ -1288,12 +1438,193 @@ def create_unified_distributions_plot(successful_simulations, delta_t, make_V, a
         ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig(f"{ansatz_dir}/unified_distributions_{potential_name}.png", dpi=300, bbox_inches='tight')
+    plt.savefig(f"{ansatz_dir}/unified_distributions.png", dpi=300, bbox_inches='tight')
     plt.close()
     
-    print(f"Saved unified distributions plot to {ansatz_dir}/unified_distributions_{potential_name}.png")
+    print(f"Saved unified distributions plot to {ansatz_dir}/unified_distributions.png")
 
-def create_2d_ansatz_plot(successful_simulations, system_name, ansatz):
+def create_naive_distributions_plot(snapshots, delta_t, make_V, plot_dir, potential_name, dim):
+    """Create distributions plot for naive methods with diagnostic subplots."""
+    # Get times and lambda values from snapshots
+    if 'detailed_times' in snapshots:
+        times = snapshots['detailed_times']
+    elif 'times' in snapshots and len(snapshots['times']) > 0:
+        times = snapshots['times']
+    else:
+        raise ValueError("Naive snapshots missing 'times' key - cannot plot without saved times")
+    lambda_values = snapshots['lam']
+    
+    # Check if this is a weighted simulation
+    has_weights = 'weights' in snapshots and len(snapshots['weights']) > 0
+    
+    # Create figure with subplots for distributions and diagnostics
+    num_snapshots = len(times)
+    cols = 4
+    rows_histograms = int(np.ceil(num_snapshots / cols))
+    rows_diagnostics = 2  # For energy statistics and Var_λ[∂_λ H]
+    total_rows = rows_histograms + rows_diagnostics
+    
+    fig = plt.figure(figsize=(20, 5*total_rows))
+    gs = fig.add_gridspec(total_rows, cols, height_ratios=[1]*rows_histograms + [1]*rows_diagnostics, width_ratios=[1]*cols)
+    
+    # Find global range for consistent x-axis
+    all_qs = snapshots['particles']
+    if all_qs:
+        x_min = np.min(np.concatenate(all_qs)) - 0.5
+        x_max = np.max(np.concatenate(all_qs)) + 0.5
+    else:
+        x_min, x_max = -3, 3
+    
+    # Plot histograms at different time points
+    for i, (time, lam_val) in enumerate(zip(times, lambda_values)):
+        row = i // 4
+        col = i % 4
+        ax = fig.add_subplot(gs[row, col])
+        
+        # Plot naive particles distribution
+        particles_snap = snapshots['particles'][i]
+        if len(particles_snap) > 0:
+            if has_weights and i < len(snapshots['weights']):
+                weights = snapshots['weights'][i]
+                if weights is not None and not np.allclose(weights, 0.0):
+                    # Convert log weights to probabilities
+                    weights = np.exp(weights - np.max(weights))
+                    weights = weights / np.sum(weights)
+                    ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, 
+                           label='Naive (Weighted)', density=True, color='blue', weights=weights)
+                else:
+                    ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, 
+                           label='Naive', density=True, color='blue')
+            else:
+                ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, 
+                       label='Naive', density=True, color='blue')
+        
+        # Plot true distribution using the appropriate lambda value
+        x_grid = np.linspace(x_min, x_max, 1000)
+        potential_fn = make_V(lam_val)
+        # Use list comprehension like other functions
+        rho = np.array([np.exp(-potential_fn(x)) for x in x_grid])
+        # Normalize the density
+        if len(rho) > 0:
+            integral = np.trapz(rho, x_grid)
+            if integral > 0:
+                rho = rho / integral
+        ax.plot(x_grid, rho, 'k--', linewidth=2, label='True Distribution', alpha=0.8)
+        
+        # Set title and labels
+        ax.set_title(f'Naive t = {time:.3f}, λ = {lam_val:.3f}')
+        ax.set_xlabel('Position')
+        ax.set_ylabel('Density')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        ax.set_xlim(x_min, x_max)
+    
+    # Remove empty subplots if any
+    for i in range(num_snapshots, rows_histograms * cols):
+        row = i // 4
+        col = i % 4
+        if row < rows_histograms and col < cols:
+            fig.delaxes(fig.add_subplot(gs[row, col]))
+    
+    # Add diagnostic subplots for energy statistics
+    diagnostic_row_start = rows_histograms
+    
+    # Plot energy statistics if available
+    if 'detailed_energy_stats' in snapshots and len(snapshots['detailed_energy_stats']) > 0:
+        energy_stats = snapshots['detailed_energy_stats']
+        
+        # Plot <∂H/∂λ> over time
+        ax_dH_dlam = fig.add_subplot(gs[diagnostic_row_start, 0])
+        dH_dlam_vals = [stats['avg_dH_dlam'] for stats in energy_stats]
+        ax_dH_dlam.plot(times, dH_dlam_vals, 'b-', label='Naive', linewidth=2)
+        ax_dH_dlam.set_xlabel('Time')
+        ax_dH_dlam.set_ylabel('<∂H/∂λ>')
+        ax_dH_dlam.set_title('Energy Derivative')
+        ax_dH_dlam.legend()
+        ax_dH_dlam.grid(True, alpha=0.3)
+        
+        # Plot <ΔH²> over time (Var[H])
+        ax_dH2 = fig.add_subplot(gs[diagnostic_row_start, 1])
+        dH2_vals = [stats['avg_delta_H_sq'] for stats in energy_stats]
+        ax_dH2.plot(times, dH2_vals, 'b-', label='Var[H]', linewidth=2)
+        ax_dH2.set_xlabel('Time')
+        ax_dH2.set_ylabel('<ΔH²>')
+        ax_dH2.set_title('Energy Change Variance')
+        ax_dH2.legend()
+        ax_dH2.grid(True, alpha=0.3)
+        
+        # Plot (E_p[∂_λ H] - E_λ[∂_λ H])² over time
+        ax_expectation_diff = fig.add_subplot(gs[diagnostic_row_start, 2])
+        expectation_diff_vals = [stats['expectation_diff_sq'] for stats in energy_stats]
+        ax_expectation_diff.plot(times, expectation_diff_vals, 'purple', label='(E_p - E_λ)²', linewidth=2)
+        ax_expectation_diff.set_xlabel('Time')
+        ax_expectation_diff.set_ylabel('(E_p[∂_λ H] - E_λ[∂_λ H])²')
+        ax_expectation_diff.set_title('Expectation Difference Squared')
+        ax_expectation_diff.legend()
+        ax_expectation_diff.grid(True, alpha=0.3)
+        
+        # Plot effective sample size if available (for weighted methods)
+        if has_weights and 'ess' in energy_stats[0]:
+            ax_ess = fig.add_subplot(gs[diagnostic_row_start, 3])
+            ess_vals = [stats['ess'] for stats in energy_stats]
+            ax_ess.plot(times, ess_vals, 'g-', label='ESS', linewidth=2)
+            ax_ess.set_xlabel('Time')
+            ax_ess.set_ylabel('ESS')
+            ax_ess.set_title('Effective Sample Size')
+            ax_ess.legend()
+            ax_ess.grid(True, alpha=0.3)
+        else:
+            # Plot resampling events if available
+            if 'resampling_events' in snapshots and len(snapshots['resampling_events']) > 0:
+                ax_resampling = fig.add_subplot(gs[diagnostic_row_start, 3])
+                resampling_times = snapshots['resampling_events']
+                ax_resampling.scatter(resampling_times, [1]*len(resampling_times), 
+                                     color='red', alpha=0.7, s=50, label='Resampling')
+                ax_resampling.set_xlabel('Time')
+                ax_resampling.set_ylabel('Resampling Events')
+                ax_resampling.set_title('Resampling Events')
+                ax_resampling.legend()
+                ax_resampling.grid(True, alpha=0.3)
+            else:
+                # Add a placeholder
+                ax_placeholder = fig.add_subplot(gs[diagnostic_row_start, 3])
+                ax_placeholder.text(0.5, 0.5, 'No additional\nstatistics', 
+                                   ha='center', va='center', transform=ax_placeholder.transAxes)
+                ax_placeholder.set_title('Additional Stats')
+        
+        # Plot variance over time in second diagnostic row (Var_λ for weighted, Var_p for unweighted)
+        ax_var_dH_dlam = fig.add_subplot(gs[diagnostic_row_start + 1, 0])
+        
+        # Determine which variance to show based on whether weights are available
+        if has_weights:
+            # Weighted case: show Var_λ (equilibrium distribution using importance weights)
+            var_dH_dlam_vals = [stats['var_lambda_dH_dlam'] for stats in energy_stats]
+            ylabel = 'Var_λ[∂_λ H]'
+            title = 'Equilibrium Energy Derivative Variance'
+            label = 'Var_λ[∂_λ H]'
+        else:
+            # Unweighted case: show Var_p (current particle distribution)
+            var_dH_dlam_vals = [stats['var_dH_dlam'] for stats in energy_stats]
+            ylabel = 'Var_p[∂_λ H]'
+            title = 'Current Distribution Energy Derivative Variance'
+            label = 'Var_p[∂_λ H]'
+        
+        ax_var_dH_dlam.plot(times, var_dH_dlam_vals, 'red', label=label, linewidth=2)
+        ax_var_dH_dlam.set_xlabel('Time')
+        ax_var_dH_dlam.set_ylabel(ylabel)
+        ax_var_dH_dlam.set_title(title)
+        ax_var_dH_dlam.legend()
+        ax_var_dH_dlam.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    # Extract method name from potential_name (e.g., "gaussian_annealing_naive_unweighted_leapfrog" -> "naive_unweighted")
+    method_name = potential_name.split('_')[-3] + '_' + potential_name.split('_')[-2]  # Gets "naive_unweighted" or "naive_weighted"
+    plt.savefig(f"{plot_dir}/distributions_{method_name}.png", dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Saved naive distributions plot to {plot_dir}/distributions_{method_name}.png")
+
+def create_2d_ansatz_plot(successful_simulations, system_name, ansatz, plot_dir):
     """
     Create ansatz plots for 2D CD simulations showing A(q₁,p₁) and A(q₂,p₂).
     """
@@ -1373,12 +1704,12 @@ def create_2d_ansatz_plot(successful_simulations, system_name, ansatz):
             plt.colorbar(im2, ax=ax2, label='A(q₂,p₂)')
     
     plt.tight_layout()
-    plt.savefig(f'figures/polynomial/2d_{system_name}_ansatz.png', dpi=300, bbox_inches='tight')
+    plt.savefig(f'{plot_dir}/2d_ansatz.png', dpi=300, bbox_inches='tight')
     plt.close()
     
     print(f"✓ Created ansatz plots for {len(available_methods)} CD method(s)")
 
-def create_2d_loss_plot(successful_simulations, system_name):
+def create_2d_loss_plot(successful_simulations, system_name, plot_dir):
     """
     Create loss curve plots for 2D CD simulations.
     """
@@ -1433,17 +1764,20 @@ def create_2d_loss_plot(successful_simulations, system_name):
             ax.legend()
     
     plt.tight_layout()
-    plt.savefig(f'figures/polynomial/2d_{system_name}_loss_curves.png', dpi=300, bbox_inches='tight')
+    plt.savefig(f'{plot_dir}/2d_loss_curves.png', dpi=300, bbox_inches='tight')
     plt.close()
     
     print(f"✓ Created loss curves for {len(available_methods)} CD method(s)")
 
-def create_2d_plots(successful_simulations, system_name, ansatz, delta_t, make_V, make_T=None):
+def create_2d_plots(successful_simulations, system_name, ansatz, delta_t, make_V, make_T=None, integrator_type="implicit_midpoint"):
     """
     Create 2D plots for simulation results.
     This function handles 2D systems that can't use the 1D plotting functions.
     """
     print(f"Creating 2D plots for {len(successful_simulations)} successful simulations...")
+    
+    # Create proper directory structure
+    plot_dir = create_plot_directory(ansatz, system_name, integrator_type)
     
     # Create a comprehensive plot
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
@@ -1644,19 +1978,17 @@ def create_2d_plots(successful_simulations, system_name, ansatz, delta_t, make_V
     ax4.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig(f'figures/polynomial/2d_{system_name}_method_comparison.png', dpi=300, bbox_inches='tight')
+    plt.savefig(f'{plot_dir}/2d_method_comparison.png', dpi=300, bbox_inches='tight')
     plt.close()
     
     # Create loss curve plot for CD methods
-    create_2d_loss_plot(successful_simulations, system_name)
+    create_2d_loss_plot(successful_simulations, system_name, plot_dir)
     
     # Create ansatz plots for CD methods
-    create_2d_ansatz_plot(successful_simulations, system_name, ansatz)
+    create_2d_ansatz_plot(successful_simulations, system_name, ansatz, plot_dir)
     
     print(f"✓ Created 2D {system_name} distribution plots")
-    print(f"📁 Plots saved to: figures/polynomial/")
-    print(f"   - 2d_{system_name}_final_distributions.png")
-    print(f"   - 2d_{system_name}_evolution.png")
-    print(f"   - 2d_{system_name}_method_comparison.png")
-    print(f"   - 2d_{system_name}_loss_curves.png")
-    print(f"   - 2d_{system_name}_ansatz.png") 
+    print(f"📁 Plots saved to: {plot_dir}/")
+    print(f"   - 2d_method_comparison.png")
+    print(f"   - 2d_loss_curves.png")
+    print(f"   - 2d_ansatz.png") 

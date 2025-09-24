@@ -62,7 +62,7 @@ def make_leapfrog_step(T, V, T_next, V_next, lam_fn=None, dot_lam_fn=None):
     x_update = make_x_update(T_next)
     # T_next = T
 
-    def leapfrog(q, p, eps, t=None):
+    def leapfrog(q, p, eps):
         
         p_half = p_update(q, p, eps*0.5)
         q_new = x_update(q, p_half, eps)
@@ -86,15 +86,15 @@ def make_leapfrog_step(T, V, T_next, V_next, lam_fn=None, dot_lam_fn=None):
     return leapfrog
 
 def with_maruyama(integrator):
-    def maruyama(q, p, eps, L, rng_key, t=None):
+    def maruyama(q, p, eps, L, rng_key):
         key1, key2 = jax.random.split(rng_key)
         p = partially_refresh_momentum(p, key1, eps/2, L)
-        q, p, weight = integrator(q, p, eps, t)
+        q, p, weight = integrator(q, p, eps)
         p = partially_refresh_momentum(p, key2, eps/2, L)
         return q, p, weight
     return maruyama
 
-clip_value = 2.0
+clip_value = jnp.inf
 
 def make_cd_euler_step(T, V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next):
     """Create a counterdiabatic Euler step function."""

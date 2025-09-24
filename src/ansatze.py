@@ -23,6 +23,11 @@ class A_ansatz(eqx.Module):
     def __call__(self, q, p):
         raise NotImplementedError
 
+class F_ansatz(eqx.Module):
+    """Base class for f(q) ansatz (position-only)."""
+    def __call__(self, q):
+        raise NotImplementedError
+
 def generate_polynomial_terms(max_degree, dim):
     """Generate all polynomial terms up to max_degree in p and q for dim-dimensional vectors.
     
@@ -129,6 +134,51 @@ class PolynomialAnsatz(A_ansatz):
             descriptions.append(f"{coeff_name}: {term_str}")
         return descriptions
 
+class PolynomialFAnsatz(F_ansatz):
+    """Polynomial ansatz for f(q) (position-only)."""
+    params: jnp.ndarray
+    terms: list = eqx.static_field()
+    ansatz_type: str = eqx.static_field()
+    dim: int = eqx.static_field()
+
+    def __init__(self, max_degree, dim=1):
+        self.dim = dim
+        # Generate terms for f(q) only (no p terms)
+        self.terms = []
+        term_idx = 1
+        
+        for total_degree in range(max_degree + 1):
+            # Only q terms, no p terms
+            if total_degree == 0:
+                q_powers_list = [[0] * dim]
+            else:
+                q_powers_list = []
+                for powers in itertools.combinations_with_replacement(range(dim), total_degree):
+                    q_powers = [0] * dim
+                    for power_idx in powers:
+                        q_powers[power_idx] += 1
+                    q_powers_list.append(q_powers)
+            
+            for q_powers in q_powers_list:
+                self.terms.append((f"θ{term_idx}", q_powers))
+                term_idx += 1
+        
+        self.params = jnp.zeros(len(self.terms))
+        self.ansatz_type = 'polynomial_f'
+
+    def __call__(self, q):
+        q = jnp.atleast_1d(q)
+        result = 0.0
+        for i, (_, q_powers) in enumerate(self.terms):
+            term = self.params[i]
+            # Compute q^q_powers
+            for d in range(self.dim):
+                if q_powers[d] > 0:
+                    term = term * (q[d] ** q_powers[d])
+            result += term
+        
+        return result
+
 class AnalyticAnsatz(A_ansatz):
     """
     An ansatz with a fixed analytical form from a screenshot.
@@ -156,22 +206,6 @@ class AnalyticAnsatz(A_ansatz):
         else:
             # For multi-dimensional case, return the first component
             return -(q * p)[0]
-
-        # return p
-        
-        # For the 'gaussian_annealing' system, V(q) = 0.5 * (lam_schedule + 0.1) * q^2.
-        # The parameter in the analytic formula corresponds to the coefficient of 0.5*q^2.
-        # potential_param = lam_schedule + 0.001
-        
-        # Formula from screenshot: A = (p^2 + L*q^2) / (4*L*sqrt(L)) * arctan(p / (q*sqrt(L)))
-        # where L is the potential parameter.
-        # numerator = p**2 + potential_param * q**2
-        # denominator = 4 * potential_param**(1.5)
-        
-        # Use arctan2 to handle q=0 case
-        # arctan_term = jnp.arctan2(p, jnp.sqrt(potential_param) * q)
-        
-        # return (numerator / denominator) * arctan_term
 
 class NeuralNetworkAnsatz(A_ansatz):
     """Neural network ansatz for the gauge potential."""
@@ -235,13 +269,16 @@ def minimize_g(n, particles):
 
 
 
-# todo: fix the recurrence relation: use probabilist's definitions
+# =============================================================================
+# ORTHONORMAL HERMITE POLYNOMIAL BASIS (PROBABILISTS' DEFINITION)
+# =============================================================================
+
 def hermite_polynomial(n, x):
     """
     Compute the n-th Hermite polynomial H_n(x) using the recurrence relation:
     H_0(x) = 1
-    H_1(x) = 2x
-    H_{n+1}(x) = 2x*H_n(x) - 2n*H_{n-1}(x)
+    H_1(x) = x
+    H_{n+1}(x) = x*H_n(x) - n*H_{n-1}(x)
     
     Args:
         n: Order of the Hermite polynomial
@@ -266,59 +303,70 @@ def hermite_polynomial(n, x):
         
         return h_curr
 
-class NeuralHermiteAnsatz(A_ansatz):
+def orthonormal_hermite_basis(n, x):
+    # Use the base hermite_polynomial function and normalize
+    H_n = hermite_polynomial(n, x)
+    # Use JAX-compatible factorial calculation
+    factorial_n = jax.scipy.special.factorial(n)
+    return H_n / jnp.sqrt(factorial_n)
+
+def evaluate_g(p, alpha_coeffs, max_order):
+    """
+    Evaluate g(p) = Σ_{i odd} α̃ᵢ φᵢ(p).
+    
+    Args:
+        p: Momentum vector
+        alpha_coeffs: Coefficients for odd-indexed Hermite polynomials
+        max_order: Maximum order of Hermite polynomials
+        
+    Returns:
+        g(p) = Σ_{i odd} α̃ᵢ φᵢ(p)
+    """
+    p = jnp.atleast_1d(p)
+    g_p = 0.0
+    for k, alpha_k in enumerate(alpha_coeffs):
+        i = 2 * k + 1  # Map k=0,1,2,... to i=1,3,5,...
+        phi_i = orthonormal_hermite_basis(i, p[0])  # For 1D case
+        g_p += alpha_k * phi_i
+    return g_p
+
+class HermiteAnsatz(A_ansatz):
     """
     Ansatz of the form A(q,p) = f(q) * g(p) where:
-    - f(q) is a neural network that takes q as input
-    - g(p) is a sum of Hermite polynomials in p
+    - f(q) is a parameterized ansatz for the position-dependent part
+    - g(p) = Σ_{i odd} α̃ᵢ φᵢ(p) where φᵢ are orthonormal Hermite polynomials
     
-    This form allows for efficient optimization of the Hermite coefficients
-    using the orthogonality properties of Hermite polynomials.
+    This implements the technique described in the notes with:
+    - Orthonormal basis: φᵢ = Hᵢ / √(i!)
+    - Only odd-indexed coefficients (i ≥ 1, i odd)
+    - Tridiagonal quadratic form for efficient optimization
+    
+    The f(q) ansatz can be any parameterized function (neural network, polynomial, etc.)
     """
-    neural_network: eqx.Module  # f(q)
-    hermite_coeffs: jnp.ndarray  # Coefficients for Hermite polynomials
-    max_hermite_order: int = eqx.static_field()
+    f_ansatz: F_ansatz  # Parameterized ansatz for f(q)
+    alpha_coeffs: jnp.ndarray  # Coefficients α̃ᵢ for odd i
+    max_order: int = eqx.static_field()
     ansatz_type: str = eqx.static_field()
     dim: int = eqx.static_field()
     
-    def __init__(self, neural_dims, max_hermite_order, key, dim=1):
+    def __init__(self, f_ansatz, max_order=5, dim=1):
         """
-        Initialize the neural-Hermite ansatz.
+        Initialize the Hermite ansatz.
         
         Args:
-            neural_dims: List of layer sizes for the neural network f(q)
-                        e.g., [dim, 64, 32, 1] for dim-dimensional q
-            max_hermite_order: Maximum order of Hermite polynomials to include
-            key: JAX random key for neural network initialization
+            f_ansatz: Parameterized ansatz for f(q) (e.g., PolynomialFAnsatz)
+            max_order: Maximum order of Hermite polynomials (must be odd)
             dim: Dimension of q and p vectors
         """
         self.dim = dim
-        self.max_hermite_order = max_hermite_order
-        self.ansatz_type = 'neural_hermite'
+        self.max_order = max_order
+        self.ansatz_type = 'hermite'
+        self.f_ansatz = f_ansatz
         
-        # Initialize neural network f(q)
-        if neural_dims[0] != dim:
-            raise ValueError(f"Neural network input dimension should be {dim}, got {neural_dims[0]}")
-        
-        keys = jax.random.split(key, len(neural_dims) - 1)
-        self.neural_network = []
-        
-        for i in range(len(neural_dims) - 1):
-            # Use Xavier/Glorot initialization with smaller scale
-            scale = jnp.sqrt(2.0 / neural_dims[i]) * 0.1
-            layer = eqx.nn.Linear(
-                neural_dims[i], 
-                neural_dims[i+1], 
-                key=keys[i]
-            )
-            # Manually scale the weights and biases
-            layer = eqx.tree_at(lambda m: m.weight, layer, layer.weight * scale)
-            layer = eqx.tree_at(lambda m: m.bias, layer, layer.bias * 0.01)
-            self.neural_network.append(layer)
-        
-        # Initialize Hermite polynomial coefficients
-        # For each dimension of p, we have coefficients for orders 0 to max_hermite_order
-        self.hermite_coeffs = jnp.zeros((dim, max_hermite_order + 1))
+        # Initialize coefficients for odd indices only (i = 1, 3, 5, ...)
+        # For max_order = 5, we have coefficients for i = 1, 3, 5
+        num_coeffs = (max_order + 1) // 2  # Number of odd indices ≤ max_order
+        self.alpha_coeffs = jnp.zeros(num_coeffs)
     
     def __call__(self, q, p):
         """
@@ -334,47 +382,228 @@ class NeuralHermiteAnsatz(A_ansatz):
         q = jnp.atleast_1d(q)
         p = jnp.atleast_1d(p)
         
-        # Compute f(q) using the neural network
-        x = q
-        for i, layer in enumerate(self.neural_network[:-1]):
-            x = layer(x)
-            x = jax.nn.tanh(x)
+        # Compute f(q) using the parameterized f_ansatz
+        f_q = self.f_ansatz(q)  # f_ansatz only needs q
         
-        # Final layer
-        final_layer = self.neural_network[-1]
-        f_q = final_layer(x).squeeze()
-        
-        # Compute g(p) as sum of Hermite polynomials
-        g_p = 0.0
-        for d in range(self.dim):
-            for n in range(self.max_hermite_order + 1):
-                hermite_val = hermite_polynomial(n, p[d])
-                g_p += self.hermite_coeffs[d, n] * hermite_val
+        # Compute g(p) using the global evaluate_g function
+        g_p = evaluate_g(p, self.alpha_coeffs, self.max_order)
         
         return f_q * g_p
     
-    def get_hermite_coeffs(self):
-        """Return the current Hermite polynomial coefficients."""
-        return self.hermite_coeffs
+    def get_alpha_coeffs(self):
+        """Return the current Hermite coefficients."""
+        return self.alpha_coeffs
     
-    def set_hermite_coeffs(self, coeffs):
+    def set_alpha_coeffs(self, coeffs):
         """Set the Hermite polynomial coefficients."""
-        self.hermite_coeffs = coeffs
+        self.alpha_coeffs = coeffs
     
-    def get_neural_params(self):
-        """Return the neural network parameters."""
-        return self.neural_network
+    def get_f_ansatz(self):
+        """Return the f(q) ansatz."""
+        return self.f_ansatz
     
-    def set_neural_params(self, params):
-        """Set the neural network parameters."""
-        self.neural_network = params
+    def set_f_ansatz(self, f_ansatz):
+        """Set the f(q) ansatz."""
+        self.f_ansatz = f_ansatz
+    
+    def get_all_params(self):
+        """Return all parameters (f_ansatz params + alpha_coeffs)."""
+        # Get f_ansatz parameters
+        if hasattr(self.f_ansatz, 'params'):
+            f_params = self.f_ansatz.params
+        else:
+            # For neural networks, extract all array parameters
+            f_params = eqx.filter(self.f_ansatz, eqx.is_array)
+        
+        return {
+            'f_params': f_params,
+            'alpha_coeffs': self.alpha_coeffs
+        }
+    
+    def set_all_params(self, params_dict):
+        """Set all parameters (f_ansatz params + alpha_coeffs)."""
+        if 'alpha_coeffs' in params_dict:
+            self.alpha_coeffs = params_dict['alpha_coeffs']
+        
+        if 'f_params' in params_dict and hasattr(self.f_ansatz, 'params'):
+            self.f_ansatz = eqx.tree_at(lambda m: m.params, self.f_ansatz, params_dict['f_params'])
+        elif 'f_params' in params_dict:
+            # For neural networks, update all array parameters
+            self.f_ansatz = eqx.tree_at(lambda m: eqx.filter(m, eqx.is_array), self.f_ansatz, params_dict['f_params'])
+    
+    def print_coefficients(self):
+        """Print the learned Hermite coefficients in a readable format."""
+        print("=== Hermite Ansatz Coefficients ===")
+        print(f"Max order: {self.max_order}")
+        print(f"Number of coefficients: {len(self.alpha_coeffs)}")
+        print()
+        
+        # Print f(q) ansatz info
+        print("f(q) ansatz:")
+        if hasattr(self.f_ansatz, 'ansatz_type'):
+            print(f"  Type: {self.f_ansatz.ansatz_type}")
+        if hasattr(self.f_ansatz, 'params'):
+            print(f"  Parameters: {self.f_ansatz.params}")
+        print()
+        
+        # Print g(p) coefficients
+        print("g(p) = Σ_{i odd} α̃ᵢ φᵢ(p) coefficients:")
+        for k, alpha_k in enumerate(self.alpha_coeffs):
+            i = 2 * k + 1  # Map k=0,1,2,... to i=1,3,5,...
+            print(f"  α̃_{i} = {alpha_k:.6f}  (coefficient for φ_{i}(p))")
+        
+        print()
+        print("Note: φᵢ(p) are orthonormal Hermite polynomials")
+        print("      Only odd indices (i=1,3,5,...) are used")
+        print("=" * 40)
 
-    # alternate optimization of g and f
-    def minimize_hermite_ansatz(self, n, particles):
 
-        alpha = minimize_g(n, particles)
-        theta = self.neural_network
+def construct_hermite_tridiagonal_matrix(f_function, samples, make_V, lam, max_order):
+    """
+    Construct the tridiagonal matrix M^(o) for the quadratic form in the odd sector.
+    
+    The quadratic form is:
+    E[{A,H}²] = Σₖ (α̃ₖ^(o))² M^(o)_{k,k} + 2 Σₖ α̃ₖ^(o) α̃ₖ₊₁^(o) M^(o)_{k,k+1}
+    
+    where:
+    M^(o)_{k,k} = c₀(2k+2) + c₁(2k+1)
+    M^(o)_{k,k+1} = c₂√((2k+2)(2k+3))
+    
+    with:
+    c₀ = E_q[(∂f/∂q)²]
+    c₁ = E_q[(∂f/∂q - f ∂V/∂q)²] 
+    c₂ = E_q[(∂f/∂q)(∂f/∂q - f ∂V/∂q)]
+    
+    Args:
+        f_function: Function f(q)
+        samples: Array of samples (N, 2*dim) for computing expectations
+        make_V: Function to create potential V(lam)
+        lam: Current lambda value
+        max_order: Maximum order of Hermite polynomials
+        
+    Returns:
+        (diagonal, upper_diagonal): Tridiagonal matrix components
+    """
+    qp_batch = jnp.array(samples)
+    dim = qp_batch.shape[1] // 2
+    qs = qp_batch[:, :dim]
+    
+    V = make_V(lam)
+    
+    # Compute gradients of f(q)
+    def f_grad(q):
+        return jax.grad(f_function)(q)
+    
+    def f_hess(q):
+        return jax.hessian(f_function)(q)
+    
+    # Compute V gradient
+    def V_grad(q):
+        return jax.grad(V)(q)
+    
+    # Compute expectations over q samples
+    f_grad_vals = jax.vmap(f_grad)(qs)
+    V_grad_vals = jax.vmap(V_grad)(qs)
+    f_vals = jax.vmap(f_function)(qs)
+    
+    # Compute coefficients
+    c0 = jnp.mean(jnp.sum(f_grad_vals**2, axis=1))  # E_q[(∂f/∂q)²]
+    
+    # c₁ = E_q[(∂f/∂q - f ∂V/∂q)²]
+    diff_vals = f_grad_vals - f_vals[:, None] * V_grad_vals
+    c1 = jnp.mean(jnp.sum(diff_vals**2, axis=1))
+    
+    # c₂ = E_q[(∂f/∂q)(∂f/∂q - f ∂V/∂q)]
+    c2 = jnp.mean(jnp.sum(f_grad_vals * diff_vals, axis=1))
+    
+    # Construct tridiagonal matrix for odd sector
+    num_coeffs = (max_order + 1) // 2  # Number of odd indices ≤ max_order
+    
+    diagonal = jnp.zeros(num_coeffs)
+    upper_diagonal = jnp.zeros(num_coeffs - 1)
+    
+    for k in range(num_coeffs):
+        diagonal[k] = c0 * (2*k + 2) + c1 * (2*k + 1)
+        if k < num_coeffs - 1:
+            upper_diagonal[k] = c2 * jnp.sqrt((2*k + 2) * (2*k + 3))
+    
+    return diagonal, upper_diagonal
 
-        self.hermite_coeffs = alpha
-        self.neural_network = theta
+
+def compute_linear_term_coefficient(f_function, samples, make_V, lam):
+    """
+    Compute the linear term coefficient L_q = E_q[f(q) ∂²V/∂q∂λ].
+    
+    Args:
+        f_function: Function f(q)
+        samples: Array of samples (N, 2*dim)
+        make_V: Function to create potential V(lam)
+        lam: Current lambda value
+        
+    Returns:
+        L_q: Linear term coefficient
+    """
+    qp_batch = jnp.array(samples)
+    dim = qp_batch.shape[1] // 2
+    qs = qp_batch[:, :dim]
+    
+    # Compute ∂²V/∂q∂λ
+    def d2V_dqdlam(q):
+        return jax.grad(lambda q, lam: jax.grad(make_V(lam), argnums=0)(q), argnums=1)(q, lam)
+    
+    f_vals = jax.vmap(f_function)(qs)
+    d2V_dqdlam_vals = jax.vmap(d2V_dqdlam)(qs)
+    
+    # L_q = E_q[f(q) ∂²V/∂q∂λ]
+    L_q = jnp.mean(f_vals * d2V_dqdlam_vals)
+    
+    return L_q
+
+
+def optimize_hermite_ansatz(hermite_ansatz, samples, make_T, make_V, lam, max_order):
+    """
+    Optimize the Hermite ansatz using the tridiagonal structure.
+    
+    This solves the linear system M^(o) α̃^(o) = -b^(o) where:
+    - M^(o) is the tridiagonal matrix from construct_hermite_tridiagonal_matrix
+    - b^(o) has only the first component non-zero: b^(o)₀ = 2*L_q
+    - L_q is the linear term coefficient
+    
+    Args:
+        hermite_ansatz: HermiteAnsatz instance to optimize
+        samples: Array of samples (N, 2*dim)
+        make_T: Function to create kinetic energy
+        make_V: Function to create potential energy  
+        lam: Current lambda value
+        max_order: Maximum order of Hermite polynomials
+        
+    Returns:
+        Updated hermite_ansatz with optimized coefficients
+    """
+    # Construct tridiagonal matrix
+    diagonal, upper_diagonal = construct_hermite_tridiagonal_matrix(
+        hermite_ansatz.f_function, samples, make_V, lam, max_order
+    )
+    
+    # Compute linear term coefficient
+    L_q = compute_linear_term_coefficient(hermite_ansatz.f_function, samples, make_V, lam)
+    
+    # Construct right-hand side vector b^(o)
+    num_coeffs = len(hermite_ansatz.alpha_coeffs)
+    b_vector = jnp.zeros(num_coeffs)
+    b_vector = b_vector.at[0].set(2.0 * L_q)  # Only first component is non-zero
+    
+    # Solve tridiagonal system M^(o) α̃^(o) = -b^(o)
+    # Using scipy's tridiagonal solver
+    import scipy.linalg
+    alpha_optimized = scipy.linalg.solve_banded(
+        (1, 1),  # Upper and lower bandwidth
+        jnp.vstack([jnp.concatenate([[0], upper_diagonal]), diagonal, jnp.concatenate([upper_diagonal, [0]])]),
+        -b_vector
+    )
+    
+    # Update the ansatz with optimized coefficients
+    hermite_ansatz.set_alpha_coeffs(alpha_optimized)
+    
+    return hermite_ansatz
         

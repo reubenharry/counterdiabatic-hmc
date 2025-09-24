@@ -1,15 +1,37 @@
-hannay angle
+todo:
 
+    you need to correct the var[dlambda h]: for the unweighted case, it should be weighted on the inner expectation, and unweighted on the outer. or maybe this doesn't matter. but that's the work, at any rate. oh i guess i report this elsewhere?
+
+    write up your improved understanding of w_ex
+    write up metric stuff (fisher at least)
+    write up feynmac-kac
+
+for hamiltonian dynamics, work is an exact form, which means that it is path independent
+
+a second base manifold dimension: temperature
+
+mass matrix: should make things a lot better, no?
+
+consider calculating the metric <dX(0)dX(t)>
+
+work out the right integrator given the time varying hamiltonian A and H 
+
+why not also for filtering problems in high dims? see e.g. https://people.bordeaux.inria.fr/pierre.delmoral/turbulent-signals.pdf, https://arxiv.org/pdf/1412.3501
+
+why can't we compute A using feynmac kac by running the cheap dynamics?
+
+aha! the equation for the flow in (14) of nets is made much simpler in the underdamped case, where there's no divergence
+
+this stuff is very second law, ala caticha: you evolve forward and necessarily leave max-ent behind
+
+the relevance of contact geometry: we have a contact geometry here too presumably, when we include lambda
+
+hannay angle
+the berry phase and hannay angle: lorentz force etc
 
 tensor network for the counterdiabatic term?
 
 read up on flow matching?
-
-
-
-eef2381 has a cd double well with weighting that looks right. can we learn anything?
-
-Also , remind me next time we talk about the orthogonal polynomial stuff. I think there is some nice way to use that the distribution in momentum is always Gaussian. Maybe we can even use it to show some convergence of A
 
 why does energy spike after each momentum refresh?
 
@@ -19,20 +41,7 @@ consider varying the kinetic energy!
 
 phase transition (think about the double well and ising model e.g.: critical exponents...)
 
-the berry phase and hannay angle: lorentz force etc
-
-tensor network for learning A?
-
-refactor so that the work is computed by the integrator
-note the importance of a single step, using a single gradient
-check if the counterdiabatic jarzynski equality is satisfied, check if work tracking works for naive smc
-check if properly doing expectation with the weights (not in log space...)
 comment on the gauge freedom
-
-benchmark the double well and banana:
-    number of gradient calls
-
-note that  var(<dE/dl> - dE/dl) is the fisher information
 
 in discretized setting, work and heat are given by changes of lambda and x respectively
 
@@ -48,7 +57,5 @@ consider feedback and nonmarkovian:
     nonequilibrium steady state
 
 jarzynski tilted piston paper gives another classical system to work with
-
-why not also for filtering problems in high dims? see e.g. https://people.bordeaux.inria.fr/pierre.delmoral/turbulent-signals.pdf, https://arxiv.org/pdf/1412.3501
 
 can we use the adiabatic invariant \int pdq?

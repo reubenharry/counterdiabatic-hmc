@@ -14,7 +14,8 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
              make_T, make_V, lam_fn, dot_lam_fn, key, dim, 
              A_ansatz=None, fit_every=1, num_initial_iterations=10000, num_iterations=10000,
              learning_rate=1e-4, use_weights=False, ess_threshold=0.5, snapshot_every=1,
-             adaptive_step_size=False, K=0.2, integrator_type="implicit_midpoint"):
+             adaptive_step_size=False, K=0.2, integrator_type="leapfrog", 
+             equilibration_steps=0):
     """
     Unified simulation function that handles both naive HMC and counterdiabatic HMC.
     
@@ -39,6 +40,7 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
         use_weights: Whether to use importance weights
         ess_threshold: Effective sample size threshold for resampling
         snapshot_every: Rate at which snapshots are taken
+        equilibration_steps: Number of equilibration HMC steps after each CD step
         
     Returns:
         For 'naive' type: snapshots
@@ -68,6 +70,11 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
     
     # Initialize snapshots and tracking variables
     snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': []}
+    
+    # Add equilibration tracking for CD simulations
+    if simulation_type == 'cd' and equilibration_steps > 0:
+        snapshots['pre_equilibration'] = []
+        snapshots['post_equilibration'] = []
     resampling_count = 0
     loss_histories = []
     param_history = []
@@ -89,6 +96,10 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
     current_delta_t = delta_t
     
     for k in range(N_steps + 1):
+        # Break if we've completed the desired number of steps
+        if k >= N_steps:
+            break
+            
         # print("\n\n\n\n\nt_k", t_k)
         # Always use cumulative time for consistency
         lam_k = float(lam_fn(t_k))
@@ -155,11 +166,21 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
                         weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
                         weights = weights / jnp.sum(weights)  # Normalize
                     
-                    A_ansatz, loss_history = fit_gauge_potential(lam_k, samples,
+                    # Check if this is a HermiteAnsatz and use special fitting
+                    if hasattr(A_ansatz, 'ansatz_type') and A_ansatz.ansatz_type == 'hermite':
+                        from .fitting import fit_hermite_ansatz
+                        A_ansatz, loss_history = fit_hermite_ansatz(lam_k, samples,
                                                 make_T=make_T, make_V=make_V,
-                                                A_ansatz=A_ansatz,  # Pass current ansatz for warm start
+                                                hermite_ansatz=A_ansatz,  # Pass current ansatz for warm start
                                                 num_iters=num_iters, lr=learning_rate,
                                                 use_regularization=False, weights=weights)
+                    else:
+                        # Use standard fitting for other ansatzes
+                        A_ansatz, loss_history = fit_gauge_potential(lam_k, samples,
+                                                    make_T=make_T, make_V=make_V,
+                                                    A_ansatz=A_ansatz,  # Pass current ansatz for warm start
+                                                    num_iters=num_iters, lr=learning_rate,
+                                                    use_regularization=False, weights=weights)
                     
                     # Print final loss
                     final_loss = loss_history[-1] if loss_history else float('inf')
@@ -174,7 +195,7 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
                     loss_histories.append(loss_history)
         
         # Compute energy statistics at every timestep
-        stats = compute_energy_stats(q, p, lam_k, make_T, make_V, A_ansatz if simulation_type == 'cd' else None)
+        stats = compute_energy_stats(q, p, lam_k, make_T, make_V, A_ansatz if simulation_type == 'cd' else None, log_weights)
         
         # Compute energy changes if we have previous values
         if prev_H_vals is not None:
@@ -196,41 +217,76 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
         # all_energy_stats.append({simulation_type: stats})
         # all_times.append(t_k)
         
-        # Store detailed energy statistics for plotting
-        detailed_energy_stats.append(stats)
-        detailed_times.append(t_k)
+        # Store detailed energy statistics for plotting (only when taking snapshots)
+        if k % snapshot_every == 0:
+            detailed_energy_stats.append(stats)
+            detailed_times.append(t_k)
         
         # Update previous energy values for next iteration
         prev_H_vals = stats['H_vals']
         
-        # Record snapshots every snapshot_every steps
-        if k % snapshot_every == 0:
-            snapshots['particles'].append(np.array(q))
+        # 1. Run equilibration at current time (if enabled and taking snapshots)
+        if equilibration_steps > 0 and k % snapshot_every == 0 and k < N_steps:
+            # Store pre-equilibration particles
+            pre_equil_q = np.array(q)
+            if 'pre_equilibration' in snapshots:
+                snapshots['pre_equilibration'].append(pre_equil_q)
+            
+            # Run equilibration steps using standard HMC at current lambda
+            # T_current = make_T(lam_k)
+            # V_current = make_V(lam_k)
+            
+            # Create HMC step function for equilibration
+            hmc_step = jax.vmap(lambda q, p, lam, lam_next, delta_t: (make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t), in_axes=(0, 0, None, None, None))
+            
+            # Run equilibration steps
+            print("\n\nEquilibrating at time", t_k, "with lambda", lam_k)
+            key, equil_key, refresh_key = jax.random.split(key, 3)
+            p = jax.random.normal(refresh_key, (M, dim))
+            
+            for equil_iter in range(equilibration_steps):
+                # refresh_key, update_key = jax.random.split(equil_key)
+                # Refresh momentum before each equilibration step
+                
+                # Take HMC step
+                # subs = jax.random.split(update_key, M)
+                # print("\n\nlam_k\n\n", lam_k)
+                if k%5 == 0:
+                    q, p, _ = jax.jit(hmc_step)(q, p, lam_k, lam_k, 1e-2)
+                if equil_iter%10 == 0:
+                    equil_key, refresh_key = jax.random.split(equil_key)
+                    p = jax.random.normal(refresh_key, (M, dim))
+            
+            # Store post-equilibration particles
+            post_equil_q = np.array(q)
+            if 'post_equilibration' in snapshots:
+                snapshots['post_equilibration'].append(post_equil_q)
+        
+        # 2. Save snapshot (after potential equilibration) - before evolution steps
+        if k % snapshot_every == 0 and k < N_steps:
+            snapshots['particles'].append(np.array(q))  # This will be post-equilibration if equilibration was done
             snapshots['weights'].append(np.array(log_weights))
             snapshots['resampling_events'].append(resampling_count)
             snapshots['lam'].append(lam_k)
             snapshots['times'].append(t_k)
             print("\n\n\n\n\n times", t_k, lam_k)
-            
-            # Record parameters for counterdiabatic simulations
-            if simulation_type == 'cd':
-                if isinstance(A_ansatz, PolynomialAnsatz):
-                    param_history.append(np.array(A_ansatz.params))
-                    check_nans("polynomial_params", A_ansatz.params, k)
-                elif isinstance(A_ansatz, NeuralNetworkAnsatz):
-                    # Store just the parameters as a tuple of arrays
-                    params = []
-                    for layer in A_ansatz.layers:
-                        if isinstance(layer, eqx.nn.Linear):
-                            params.append(np.array(layer.weight))
-                            params.append(np.array(layer.bias))
-                    param_history.append(tuple(params))
-                elif isinstance(A_ansatz, AnalyticAnsatz):
-                    param_history.append(np.array(A_ansatz.params))
-                    check_nans("analytic_params", A_ansatz.params, k)
         
-        if k == N_steps:
-            break
+        # Record parameters for counterdiabatic simulations (do this before potential equilibration)
+        if k % snapshot_every == 0 and simulation_type == 'cd':
+            if isinstance(A_ansatz, PolynomialAnsatz):
+                param_history.append(np.array(A_ansatz.params))
+                check_nans("polynomial_params", A_ansatz.params, k)
+            elif isinstance(A_ansatz, NeuralNetworkAnsatz):
+                # Store just the parameters as a tuple of arrays
+                params = []
+                for layer in A_ansatz.layers:
+                    if isinstance(layer, eqx.nn.Linear):
+                        params.append(np.array(layer.weight))
+                        params.append(np.array(layer.bias))
+                param_history.append(tuple(params))
+            elif isinstance(A_ansatz, AnalyticAnsatz):
+                param_history.append(np.array(A_ansatz.params))
+                check_nans("analytic_params", A_ansatz.params, k)
         
         # Use adaptive step size for time progression if enabled
         # step_delta_t = current_delta_t if simulation_type == 'cd' and adaptive_step_size else delta_t
@@ -245,17 +301,21 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
             print(f"⚠️  NaN detected in dot_lam_k1 at step {k}")
             break
         
+        # Continue with evolution step
+            
         key, sub = jax.random.split(key)
         subs = jax.random.split(sub, M)
          
-        # Execute the appropriate step based on simulation type
+        # 2. Evolve - Execute the appropriate step based on simulation type
         if simulation_type == 'naive':
-             naive_step = jax.vmap(lambda q, p, lam, lam_next, delta_t, L, rng_key, t: with_maruyama(make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t, L=L, rng_key=rng_key, t=t), in_axes=(0, 0, None, None, None, None, 0, None))
+             naive_step = jax.vmap(lambda q, p, lam, lam_next, delta_t, L, rng_key: with_maruyama(make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t, L=L, rng_key=rng_key), in_axes=(0, 0, None, None, None, None, 0))
              
-             q, p, step_weights = jax.jit(naive_step)(q, p, lam_k, lam_k1, delta_t, delta_t*momentum_refresh_interval, subs, t_k)
+             q, p, step_weights = jax.jit(naive_step)(q, p, lam_k, lam_k1, delta_t, delta_t*momentum_refresh_interval, subs)
              if use_weights:
                  # Naive step with weight calculation
                  log_weights = log_weights + step_weights
+             
+             # Naive snapshots are now recorded in the unified section above
 
         else:  # cd
              # Compute adaptive step size for CD if enabled (at beginning of step)
@@ -281,6 +341,8 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
             else:
                 raise ValueError(f"Unknown integrator type: {integrator_type}. Must be 'leapfrog' or 'implicit_midpoint'")
             q, p, step_weights_cd = jax.jit(cd_step)(q, p, lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t, t_k)
+
+            # Equilibration now happens before evolution, not after
 
             # if simulation_type == 'cd' and 
             if k % momentum_refresh_interval == 0 and k > 0:
@@ -329,6 +391,8 @@ def simulate(simulation_type, M, N_steps, delta_t, momentum_refresh_interval,
         #      cumulative_time += delta_t
         # print("\n\n\ncurrent delta_t\n\n\n", current_delta_t)
         t_k += current_delta_t
+        
+        # Time is updated for the next iteration
          
          # Momentum refresh for counterdiabatic
        
@@ -394,7 +458,24 @@ def multinomial_resample(q, p, log_weights, rng_key, M):
     
     return q_resampled, p_resampled, log_weights_reset
 
-def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None):
+def compute_expectation_over_particles(values, weights=None):
+    """Compute expectation E_p over current particle distribution (unweighted average)."""
+    return jnp.mean(values)
+
+def compute_expectation_over_equilibrium(values, log_weights):
+    """Compute expectation E_λ over equilibrium distribution (weighted average)."""
+    if log_weights is None or len(log_weights) == 0:
+        # If no weights, fall back to unweighted average
+        raise ValueError("No weights provided")
+    
+    # Convert log weights to probabilities
+    weights = jnp.exp(log_weights - jnp.max(log_weights))
+    weights = weights / jnp.sum(weights)
+    
+    # Compute weighted average
+    return jnp.sum(values * weights)
+
+def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None, log_weights=None):
     """Compute average H, H², ∂H/∂λ, (∂H/∂λ)², and {A,H} over particles."""
     T = make_T(lam)
     V = make_V(lam)
@@ -407,11 +488,26 @@ def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None):
     
     dH_dlam_vals = jax.vmap(lambda qr, pr: dH_dlam(qr, pr))(q, p)
     
-    # Compute averages
-    avg_H = jnp.mean(H_vals)
-    avg_H_sq = jnp.mean(H_vals ** 2)
-    avg_dH_dlam = jnp.mean(dH_dlam_vals)
-    avg_dH_dlam_sq = jnp.mean(dH_dlam_vals ** 2)
+    # Compute expectations over current particle distribution (E_p)
+    E_p_H = compute_expectation_over_particles(H_vals)
+    E_p_H_sq = compute_expectation_over_particles(H_vals ** 2)
+    E_p_dH_dlam = compute_expectation_over_particles(dH_dlam_vals)
+    E_p_dH_dlam_sq = compute_expectation_over_particles(dH_dlam_vals ** 2)
+    
+    # Compute expectations over equilibrium distribution (E_λ)
+    E_lambda_H = compute_expectation_over_equilibrium(H_vals, log_weights)
+    E_lambda_H_sq = compute_expectation_over_equilibrium(H_vals ** 2, log_weights)
+    E_lambda_dH_dlam = compute_expectation_over_equilibrium(dH_dlam_vals, log_weights)
+    E_lambda_dH_dlam_sq = compute_expectation_over_equilibrium(dH_dlam_vals ** 2, log_weights)
+    
+    # Compute variance under current distribution
+    var_dH_dlam = E_p_dH_dlam_sq - E_p_dH_dlam ** 2
+    
+    # Compute variance under equilibrium distribution
+    var_lambda_dH_dlam = E_lambda_dH_dlam_sq - E_lambda_dH_dlam ** 2
+    
+    # Compute the expectation difference squared
+    expectation_diff_sq = (E_p_dH_dlam - E_lambda_dH_dlam) ** 2
     
     # Compute {A,H} and Var[A] if A_ansatz is provided
     avg_A_H = 0.0
@@ -431,10 +527,30 @@ def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None):
         var_A = avg_A_sq - avg_A ** 2
     
     return {
-        'avg_H': float(avg_H),
-        'avg_H_sq': float(avg_H_sq),
-        'avg_dH_dlam': float(avg_dH_dlam),
-        'avg_dH_dlam_sq': float(avg_dH_dlam_sq),
+        # Current particle distribution expectations (E_p)
+        'E_p_H': float(E_p_H),
+        'E_p_H_sq': float(E_p_H_sq),
+        'E_p_dH_dlam': float(E_p_dH_dlam),
+        'E_p_dH_dlam_sq': float(E_p_dH_dlam_sq),
+        'var_dH_dlam': float(var_dH_dlam),  # Var_p[∂_λ H] under current distribution
+        
+        # Equilibrium distribution expectations (E_λ)
+        'E_lambda_H': float(E_lambda_H),
+        'E_lambda_H_sq': float(E_lambda_H_sq),
+        'E_lambda_dH_dlam': float(E_lambda_dH_dlam),
+        'E_lambda_dH_dlam_sq': float(E_lambda_dH_dlam_sq),
+        'var_lambda_dH_dlam': float(var_lambda_dH_dlam),  # Var_λ[∂_λ H] under equilibrium distribution
+        
+        # Expectation difference squared
+        'expectation_diff_sq': float(expectation_diff_sq),  # (E_p[∂_λ H] - E_λ[∂_λ H])²
+        
+        # Legacy fields for backward compatibility
+        'avg_H': float(E_p_H),
+        'avg_H_sq': float(E_p_H_sq),
+        'avg_dH_dlam': float(E_p_dH_dlam),
+        'avg_dH_dlam_sq': float(E_p_dH_dlam_sq),
+        
+        # Gauge potential statistics (for CD methods)
         'avg_A_H': avg_A_H,
         'avg_A_H_sq': avg_A_H_sq,
         'var_A': float(var_A),
@@ -593,7 +709,7 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
                                  M=1000, N_steps=40, delta_t=0.05, 
                                  momentum_refresh_interval=5.0, fit_every=1, 
                                  num_initial_iterations=10000, num_iterations=10000, 
-                                 learning_rate=1e-4, re_equil_steps=0, ess_threshold=0.5,
+                                 learning_rate=1e-4, equilibration_steps=0, ess_threshold=0.5,
                                  adaptive_step_size=False, K=0.2, integrator_type="implicit_midpoint"):
     """
     Run simulations and save data for the specified system and ansatz.
@@ -658,7 +774,8 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
                     'num_initial_iterations': num_initial_iterations,
                     'num_iterations': num_iterations,
                     'learning_rate': learning_rate,
-                    'integrator_type': integrator_type
+                    'integrator_type': integrator_type,
+                    'equilibration_steps': equilibration_steps
                 })
             
             if config['ess_threshold'] is not None:

@@ -171,4 +171,97 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
             break
 
     print(f"Fitting completed after {len(loss_history)} iterations")
-    return A_ansatz, loss_history 
+    return A_ansatz, loss_history
+
+def fit_hermite_ansatz(lam, samples, make_T, make_V, hermite_ansatz, num_iters, lr, use_regularization=False, weights=None):
+    """
+    Special fitting function for HermiteAnsatz that only optimizes g(p) coefficients (alpha_coeffs)
+    while keeping f(q) parameters fixed.
+    
+    Args:
+        lam: Current lambda value
+        samples: Array of shape (N, 2*dim) where first dim columns are q and last dim columns are p
+        make_T: Function to create kinetic energy
+        make_V: Function to create potential energy
+        hermite_ansatz: HermiteAnsatz instance to fit
+        num_iters: Number of optimization iterations
+        lr: Learning rate
+        use_regularization: Whether to use L2 regularization
+        weights: Optional array of weights for weighted expectation (shape (N,))
+        
+    Returns:
+        Updated hermite_ansatz and loss history
+    """
+    print("  Using gradient descent for g(p) coefficients only (f(q) fixed)")
+    
+    # Check input samples for NaNs
+    check_nans("input_samples", samples)
+    
+    qp_batch = jnp.array(samples)  # shape (N, 2*dim)
+
+    def loss_fn(alpha_coeffs, qp_batch):
+        # Create a temporary ansatz with the given alpha_coeffs
+        temp_ansatz = hermite_ansatz
+        temp_ansatz = eqx.tree_at(lambda m: m.alpha_coeffs, temp_ansatz, alpha_coeffs)
+        return calculate_gauge_potential_loss(lam, qp_batch, make_T, make_V, temp_ansatz, use_regularization, weights)
+
+    # Use gradient clipping to prevent exploding gradients
+    optimizer = optax.chain(
+        optax.clip_by_global_norm(1.0),  # Clip gradients by global norm
+        optax.adam(lr)
+    )
+    
+    # Initialize optimizer with only alpha_coeffs
+    opt_state = optimizer.init(hermite_ansatz.alpha_coeffs)
+
+    @jax.jit
+    def update(alpha_coeffs, opt_state, qp_batch):
+        loss, grads = jax.value_and_grad(loss_fn)(alpha_coeffs, qp_batch)
+        
+        # Clip gradients to prevent extreme values
+        clipped_grads = jnp.clip(grads, -10.0, 10.0)
+        updates, opt_state = optimizer.update(clipped_grads, opt_state)
+        alpha_coeffs = alpha_coeffs + updates
+        
+        return alpha_coeffs, opt_state, loss
+
+    loss_history = []
+    best_loss = float('inf')
+    patience = 50  # Number of iterations to wait for improvement
+    patience_counter = 0
+    
+    # Initialize alpha_coeffs with small random values instead of zeros
+    import jax.random as jr
+    key = jr.PRNGKey(42)
+    hermite_ansatz = eqx.tree_at(lambda m: m.alpha_coeffs, hermite_ansatz, 0.01 * jr.normal(key, shape=hermite_ansatz.alpha_coeffs.shape))
+    
+    for iteration in range(num_iters):
+        new_alpha_coeffs, opt_state, loss = update(hermite_ansatz.alpha_coeffs, opt_state, qp_batch)
+        hermite_ansatz = eqx.tree_at(lambda m: m.alpha_coeffs, hermite_ansatz, new_alpha_coeffs)
+        
+        # Check loss for NaNs (outside of JIT-compiled function)
+        if jnp.isnan(loss):
+            print(f"⚠️  NaN detected in loss at iteration {iteration}")
+            print(f"  Stopping optimization early due to NaN loss")
+            break
+            
+        loss_history.append(float(loss))
+        
+        # Early stopping: check if loss has improved
+        if loss < best_loss:
+            best_loss = loss
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            
+        # Stop if loss hasn't improved for patience iterations
+        if patience_counter >= patience and iteration > 100:  # Wait at least 100 iterations
+            print(f"Early stopping at iteration {iteration} (loss: {loss:.6f})")
+            break
+
+    print(f"Fitting completed after {len(loss_history)} iterations")
+    
+    # Print learned coefficients
+    hermite_ansatz.print_coefficients()
+    
+    return hermite_ansatz, loss_history 
