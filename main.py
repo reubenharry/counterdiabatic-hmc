@@ -30,8 +30,8 @@ def main():
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
     
     # Simulation parameters
-    M = 2000  # Number of particles (reduced for testing)
-    N_steps = 3  # Number of simulation steps (reduced for testing)
+    M = 4000  # Number of particles (reduced for testing)
+    N_steps = 2  # Number of simulation steps (reduced for testing)
     delta_t = 2.0  # Time step (eps = delta_t for this algorithm)
     momentum_refresh_interval = 1  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
@@ -57,7 +57,7 @@ def main():
     print(f"Dimension: {dim}")
     
     # Define lambda functions
-    v = 0.5
+    v = 1.0
     max_lam = 3.0
     lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
     dot_lam_fn = jax.grad(lam_fn)

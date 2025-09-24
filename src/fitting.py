@@ -345,14 +345,13 @@ def fit_hermite_ansatz(lam, samples, make_T, make_V, hermite_ansatz, num_iters, 
     print(f"  Right-hand side b^(o): {b_vector}")
     
     # Solve the linear system M^(o) α̃^(o) = -b^(o)
-    # Use scipy's efficient tridiagonal solver
+    # Use scipy's efficient Hermitian banded solver (more efficient for symmetric matrices)
     import scipy.linalg
-    alpha_optimized = scipy.linalg.solve_banded(
-        (1, 1),  # Upper and lower bandwidth
-        jnp.vstack([
+    alpha_optimized = scipy.linalg.solveh_banded(
+        # the two comes from solving 2Ma + b = 0, which is the derivative of the loss function with respect to the coefficients
+        2*jnp.vstack([
             jnp.concatenate([jnp.array([0]), upper_diagonal]),  # Upper diagonal
             diagonal,  # Main diagonal
-            jnp.concatenate([upper_diagonal, jnp.array([0])])   # Lower diagonal
         ]),
         -b_vector
     )
@@ -364,7 +363,7 @@ def fit_hermite_ansatz(lam, samples, make_T, make_V, hermite_ansatz, num_iters, 
     
     # Compute final loss for comparison
     qp_batch = jnp.array(samples)
-    final_loss = calculate_gauge_potential_loss(lam, qp_batch, make_T, make_V, hermite_ansatz, use_regularization, weights)
+    final_loss = calculate_gauge_potential_loss(lam, qp_batch, make_T, make_V, hermite_ansatz, False, weights)
     loss_history = [final_loss]
     
     print(f"  Tridiagonal optimization completed")

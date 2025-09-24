@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import equinox as eqx
 import itertools
 import scipy 
+import scipy.linalg
 
 def check_nans(name, value):
     """Helper function to check for NaNs and print warnings."""
@@ -487,6 +488,12 @@ def construct_hermite_tridiagonal_matrix(f_function, samples, make_V, lam, max_o
     qp_batch = jnp.array(samples)
     dim = qp_batch.shape[1] // 2
     qs = qp_batch[:, :dim]
+
+
+
+    # print("qs: ", qs.shape)
+    # jax.debug.print("E[q^2]: {x}", x=jnp.mean(qs**2))
+    # jax.debug.print("E[q^2]: {x}", x=jnp.mean(jax.random.normal(jax.random.key(0), (4000, dim))**2))
     
     V = make_V(lam)
     
@@ -551,12 +558,14 @@ def compute_linear_term_coefficient(f_function, samples, make_V, lam):
         
         # Compute ∂²V/∂q∂λ = ∂/∂λ (∂V/∂q)
         # First compute ∂V/∂q, then take ∂/∂λ of that
-        def grad_V_wrt_q(q, lam):
-            return jax.grad(V_with_lam, argnums=0)(q, lam)
+        def grad_V_wrt_lam(q, lam):
+            return jax.grad(V_with_lam, argnums=1)(q, lam)
         
         # Use jacfwd to compute the Jacobian of grad_V_wrt_q with respect to λ
         # This gives us ∂²V/∂q∂λ (the Jacobian of the gradient)
-        return jax.jacfwd(grad_V_wrt_q, argnums=1)(q, lam)
+        out = jax.grad(grad_V_wrt_lam, argnums=0)(q, lam)
+        # jax.debug.print("\nout: {x}\n", x=grad_V_wrt_q(jnp.array([10.0]), 0.0))
+        return out
     
     f_vals = jax.vmap(f_function)(qs)
     d2V_dqdlam_vals = jax.vmap(d2V_dqdlam)(qs)
@@ -596,13 +605,10 @@ def optimize_hermite_ansatz(hermite_ansatz, samples, make_T, make_V, lam, max_or
     L_q = compute_linear_term_coefficient(hermite_ansatz.f_function, samples, make_V, lam)
     
     # Construct right-hand side vector b^(o)
-    num_coeffs = len(hermite_ansatz.alpha_coeffs)
-    b_vector = jnp.zeros(num_coeffs)
-    b_vector = b_vector.at[0].set(2.0 * L_q)  # Only first component is non-zero
+    b_vector = jnp.zeros(len(hermite_ansatz.alpha_coeffs))
+    b_vector = b_vector.at[0].set(2.0 * L_q)
     
-    # Solve tridiagonal system M^(o) α̃^(o) = -b^(o)
-    # Using scipy's tridiagonal solver
-    import scipy.linalg
+    # Solve tridiagonal system M^(o) α̃^(o) = -b^(o)    
     alpha_optimized = scipy.linalg.solve_banded(
         (1, 1),  # Upper and lower bandwidth
         jnp.vstack([jnp.concatenate([[0], upper_diagonal]), diagonal, jnp.concatenate([upper_diagonal, [0]])]),
