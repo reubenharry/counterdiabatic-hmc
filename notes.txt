@@ -1,16 +1,28 @@
 todo:
 
-    you need to correct the var[dlambda h]: for the unweighted case, it should be weighted on the inner expectation, and unweighted on the outer. or maybe this doesn't matter. but that's the work, at any rate. oh i guess i report this elsewhere?
+    clean up: fitting in the classes
+        experiment with just having a store comonad
+    better alternation of g and f updates
+    try a schedule...
+    try microcanonical ensemble
+    try implementing a second dimension of lambda:
+        requires A_1 and A_2
 
-    write up your improved understanding of w_ex
-    write up metric stuff (fisher at least)
-    write up feynmac-kac
+
+can we use the adiabatic invariant \int pdq? e.g. if we're in microcanonical, we have a closed surface?
+
+application:
+
+    i think phi4 is actually quite nice, and other physics models of this kind
 
 for hamiltonian dynamics, work is an exact form, which means that it is path independent
 
-a second base manifold dimension: temperature
+a second base manifold dimension: temperature?
+    or a geometric mean involving a second quantity?
+    ooh or make varying mass matrix the second dimension...
 
 mass matrix: should make things a lot better, no?
+consider varying the kinetic energy! (mass matrix counts as this...)
 
 consider calculating the metric <dX(0)dX(t)>
 
@@ -37,7 +49,6 @@ why does energy spike after each momentum refresh?
 
 Resampling at step 0 (ESS = 820.63) ???
 
-consider varying the kinetic energy!
 
 phase transition (think about the double well and ising model e.g.: critical exponents...)
 
@@ -58,4 +69,3 @@ consider feedback and nonmarkovian:
 
 jarzynski tilted piston paper gives another classical system to work with
 
-can we use the adiabatic invariant \int pdq?

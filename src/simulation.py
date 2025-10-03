@@ -701,7 +701,8 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
                                  momentum_refresh_interval=5.0, fit_every=1, 
                                  num_initial_iterations=10000, num_iterations=10000, 
                                  learning_rate=1e-4, equilibration_steps=0, ess_threshold=0.5,
-                                 adaptive_step_size=False, K=0.2, integrator_type="implicit_midpoint"):
+                                 adaptive_step_size=False, K=0.2, integrator_type="implicit_midpoint",
+                                 simulation_types=None):
     """
     Run simulations and save data for the specified system and ansatz.
     
@@ -710,6 +711,8 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
         ansatz: The ansatz object (PolynomialAnsatz, NeuralNetworkAnsatz, etc.)
         run_simulations: Whether to run simulations or load from saved data
         snapshot_every: Rate at which snapshots are taken
+        simulation_types: List of simulation types to run. Options: ['naive_unweighted', 'naive_weighted', 'cd_unweighted', 'cd_weighted']. 
+                        If None, runs all simulations.
     
     Returns:
         dict: Dictionary containing successful simulation results
@@ -727,18 +730,23 @@ def run_simulation_and_save_data(system_name, ansatz, lam_fn, dot_lam_fn, run_si
         key = jax.random.PRNGKey(0)
         
         # Define simulation configurations
-        naive_configs = [
-            {'name': 'naive_unweighted', 'use_weights': False, 'ess_threshold': None},
-            {'name': 'naive_weighted', 'use_weights': True, 'ess_threshold': ess_threshold}
-        ]
+        all_configs = {
+            'naive_unweighted': {'name': 'naive_unweighted', 'use_weights': False, 'ess_threshold': None},
+            'naive_weighted': {'name': 'naive_weighted', 'use_weights': True, 'ess_threshold': ess_threshold},
+            'cd_unweighted': {'name': f'cd_unweighted_{integrator_type}', 'use_weights': False, 'ess_threshold': None},
+            'cd_weighted': {'name': f'cd_weighted_{integrator_type}', 'use_weights': True, 'ess_threshold': ess_threshold}
+        }
         
-        cd_configs = [
-            {'name': f'cd_unweighted_{integrator_type}', 'use_weights': False, 'ess_threshold': None},
-            {'name': f'cd_weighted_{integrator_type}', 'use_weights': True, 'ess_threshold': ess_threshold}
-        ]
+        # Filter configurations based on simulation_types parameter
+        if simulation_types is None:
+            # Default: run all simulations
+            configs_to_run = list(all_configs.values())
+        else:
+            # Run only specified simulation types
+            configs_to_run = [all_configs[sim_type] for sim_type in simulation_types if sim_type in all_configs]
         
         # Run simulations using the unified simulate function
-        for config in naive_configs + cd_configs:
+        for config in configs_to_run:
             print(f"\n{'='*50}")
             print(f"Running {config['name'].replace('_', ' ').title()}")
             print(f"{'='*50}")

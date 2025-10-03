@@ -74,17 +74,19 @@ def main():
     elif ansatz_type == "hermite":
         # Hermite ansatz: A(q,p) = f(q) * g(p) where g(p) = Σ_{i odd} α̃ᵢ φᵢ(p)
         # Uses orthonormal Hermite polynomials φᵢ = Hᵢ / √(i!) with only odd indices
-        # Use a polynomial ansatz for f(q) (position-only) with degree 0 (constant)
+        # Use a polynomial ansatz for f(q) (position-only) with degree 1 (linear)
         f_ansatz = PolynomialFAnsatz(max_degree=0, dim=dim)
+        # print(f_ansatz(jnp.array([1.0])), f_ansatz(jnp.array([2.0])))
         # Set the constant term to 1 (f(q) = 1)
         f_ansatz = eqx.tree_at(lambda m: m.params, f_ansatz, f_ansatz.params.at[0].set(1.0))
-        # print(f_ansatz(jnp.array([1.0])), f_ansatz(jnp.array([2.0])))
+        # print(f_ansatz(jnp.array([1.0])), "f_ansatz 1 orig orig")
         # raise Exception("Stop here")
         ansatz = HermiteAnsatz(
             f_ansatz=f_ansatz,  # Parameterized ansatz for f(q)
             max_order=5,  # Use Hermite polynomials up to order 5 (odd indices: 1, 3, 5)
             dim=dim
         )
+        # print(ansatz.f_ansatz(jnp.array([1.0])), "ansatz.f_ansatz 1 orig orig next")
     else:
         raise ValueError(f"Unknown ansatz type: {ansatz_type}")
     
@@ -109,7 +111,8 @@ def main():
         ess_threshold=ess_threshold,
         adaptive_step_size=adaptive_step_size,
         K=K,
-        integrator_type=integrator_type
+        integrator_type=integrator_type,
+        simulation_types=['cd_unweighted']  # Run only unweighted CD simulation
     )
     
     # ===== CREATE PLOTS =====

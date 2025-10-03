@@ -4,6 +4,12 @@ import equinox as eqx
 import itertools
 import scipy 
 import scipy.linalg
+import jax.random as jr
+
+def initialize_params(key, shape, scale=0.1):
+    """Helper function to initialize parameters with small random values."""
+    key, subkey = jr.split(key)
+    return key, scale * jr.normal(subkey, shape=shape)
 
 def check_nans(name, value):
     """Helper function to check for NaNs and print warnings."""
@@ -87,10 +93,14 @@ class PolynomialAnsatz(A_ansatz):
     ansatz_type: str = eqx.static_field()
     dim: int = eqx.static_field()
 
-    def __init__(self, max_degree, dim=1):
+    def __init__(self, max_degree, dim=1, key=jr.PRNGKey(42)):
+        
+        
         self.dim = dim
         self.terms = generate_polynomial_terms(max_degree, dim)
-        self.params = jnp.zeros(len(self.terms))
+    
+        # Initialize parameters with small random values
+        key, self.params = initialize_params(key, (len(self.terms),))
         self.ansatz_type = 'polynomial'
 
     def __call__(self, q, p):
@@ -142,7 +152,9 @@ class PolynomialFAnsatz(F_ansatz):
     ansatz_type: str = eqx.static_field()
     dim: int = eqx.static_field()
 
-    def __init__(self, max_degree, dim=1):
+    def __init__(self, max_degree, dim=1, key=jr.PRNGKey(42)):
+        
+        
         self.dim = dim
         # Generate terms for f(q) only (no p terms)
         self.terms = []
@@ -164,7 +176,8 @@ class PolynomialFAnsatz(F_ansatz):
                 self.terms.append((f"θ{term_idx}", q_powers))
                 term_idx += 1
         
-        self.params = jnp.zeros(len(self.terms))
+        # Initialize parameters with small random values
+        key, self.params = initialize_params(key, (len(self.terms),))
         self.ansatz_type = 'polynomial_f'
 
     def __call__(self, q):
@@ -350,24 +363,29 @@ class HermiteAnsatz(A_ansatz):
     ansatz_type: str = eqx.static_field()
     dim: int = eqx.static_field()
     
-    def __init__(self, f_ansatz, max_order=5, dim=1):
+    def __init__(self, f_ansatz, max_order=5, dim=1, key=jr.PRNGKey(42)):
         """
         Initialize the Hermite ansatz.
         
         Args:
-            f_ansatz: Parameterized ansatz for f(q) (e.g., PolynomialFAnsatz)
+            f_ansatz: Parameterized ansatz for f(q) (e.g., PolynomialFAnsatz) - should already be initialized
             max_order: Maximum order of Hermite polynomials (must be odd)
             dim: Dimension of q and p vectors
+            key: Random key for initialization (optional)
         """
+        import jax.random as jr
+        
         self.dim = dim
         self.max_order = max_order
         self.ansatz_type = 'hermite'
-        self.f_ansatz = f_ansatz
+        self.f_ansatz = f_ansatz  # Assume f_ansatz is already properly initialized
         
         # Initialize coefficients for odd indices only (i = 1, 3, 5, ...)
         # For max_order = 5, we have coefficients for i = 1, 3, 5
         num_coeffs = (max_order + 1) // 2  # Number of odd indices ≤ max_order
-        self.alpha_coeffs = jnp.zeros(num_coeffs)
+        
+        # Initialize g(p) coefficients with small random values
+        key, self.alpha_coeffs = initialize_params(key, (num_coeffs,))
     
     def __call__(self, q, p):
         """
@@ -432,6 +450,7 @@ class HermiteAnsatz(A_ansatz):
             # For neural networks, update all array parameters
             self.f_ansatz = eqx.tree_at(lambda m: eqx.filter(m, eqx.is_array), self.f_ansatz, params_dict['f_params'])
     
+    
     def print_coefficients(self):
         """Print the learned Hermite coefficients in a readable format."""
         print("=== Hermite Ansatz Coefficients ===")
@@ -489,20 +508,11 @@ def construct_hermite_tridiagonal_matrix(f_function, samples, make_V, lam, max_o
     dim = qp_batch.shape[1] // 2
     qs = qp_batch[:, :dim]
 
-
-
-    # print("qs: ", qs.shape)
-    # jax.debug.print("E[q^2]: {x}", x=jnp.mean(qs**2))
-    # jax.debug.print("E[q^2]: {x}", x=jnp.mean(jax.random.normal(jax.random.key(0), (4000, dim))**2))
-    
     V = make_V(lam)
     
     # Compute gradients of f(q)
     def f_grad(q):
         return jax.grad(f_function)(q)
-    
-    def f_hess(q):
-        return jax.hessian(f_function)(q)
     
     # Compute V gradient
     def V_grad(q):
