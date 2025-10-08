@@ -11,19 +11,6 @@ def initialize_params(key, shape, scale=0.1):
     key, subkey = jr.split(key)
     return key, scale * jr.normal(subkey, shape=shape)
 
-def check_nans(name, value):
-    """Helper function to check for NaNs and print warnings."""
-    # Convert to numpy for checking to avoid JAX tracing issues
-    if hasattr(value, 'numpy'):
-        value_np = value.numpy()
-    else:
-        value_np = value
-    
-    if jnp.isnan(value_np).any():
-        count = jnp.isnan(value_np).sum()
-        print(f"⚠️  NaN detected in {name} (count: {count})")
-        return True
-    return False
 
 class A_ansatz(eqx.Module):
     """Base class for gauge potential ansatz."""
@@ -209,6 +196,8 @@ class AnalyticAnsatz(A_ansatz):
 
     def __call__(self, q, p):
         lam_schedule = self.params[0]  # Get current schedule lambda value
+
+        return p[0]
         
         # Ensure q and p are arrays and handle different shapes
         q = jnp.atleast_1d(q)
@@ -229,7 +218,6 @@ class NeuralNetworkAnsatz(A_ansatz):
 
     def __init__(self, dims, key, dim=1):
         # dims: list of layer sizes, e.g. [2*dim, 64, 32, 1] for dim-dimensional q and p
-        # The input dimension should be 2*dim (q and p concatenated)
         if dims[0] != 2 * dim:
             raise ValueError(f"First layer dimension should be 2*dim = {2*dim}, got {dims[0]}")
         
@@ -268,17 +256,6 @@ class NeuralNetworkAnsatz(A_ansatz):
         
         return result
 
-# the matrix S in \alpha^T S \alpha
-def construct_hermite_matrix(n, particles):
-    return jnp.ones(n), jnp.ones(n-1)
-
-def minimize_g(n, particles):
-
-    diag, upper = construct_hermite_matrix(n, particles)
-
-    _, v = scipy.linalg.eigh_tridiagonal(d=diag, e=upper, select='i', select_range=(0, 0), eigvals_only=False)
-
-    return v
 
 
 

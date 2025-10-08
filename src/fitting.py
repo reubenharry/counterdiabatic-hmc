@@ -2,24 +2,12 @@ import jax
 import jax.numpy as jnp
 import optax
 import equinox as eqx
+from src.ansatze import AnalyticAnsatz
 from .physics import poisson_bracket_fn
-from .utils import print_tridiagonal_matrix_info, print_optimization_summary
+from .utils import check_nans, print_tridiagonal_matrix_info, print_optimization_summary
 import scipy.linalg
 
-def check_nans(name, value, iteration=None):
-    """Helper function to check for NaNs and print warnings."""
-    # Convert to numpy for checking to avoid JAX tracing issues
-    if hasattr(value, 'numpy'):
-        value_np = value.numpy()
-    else:
-        value_np = value
-    
-    if jnp.isnan(value_np).any():
-        count = jnp.isnan(value_np).sum()
-        iter_info = f" at iteration {iteration}" if iteration is not None else ""
-        print(f"⚠️  NaN detected in {name}{iter_info} (count: {count})")
-        return True
-    return False
+
 
 # =============================================================================
 #  FIT FUNCTION USING GENERAL POISSON BRACKET
@@ -84,6 +72,12 @@ def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_r
     return total_loss
 
 def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, use_regularization=False, weights=None):
+
+    if isinstance(A_ansatz, AnalyticAnsatz):
+        A_ansatz = eqx.tree_at(lambda m: m.params, A_ansatz, jnp.array([lam]))
+        loss = calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, 
+                                                        use_regularization=False, weights=weights)
+        return A_ansatz, [loss]
 
     # Check if this is a HermiteAnsatz and use special fitting
     if hasattr(A_ansatz, 'ansatz_type') and A_ansatz.ansatz_type == 'hermite':
