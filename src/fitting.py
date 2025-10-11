@@ -13,22 +13,7 @@ import scipy.linalg
 #  FIT FUNCTION USING GENERAL POISSON BRACKET
 # =============================================================================
 def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_regularization=False, weights=None):
-    """
-    Calculate the loss for a gauge potential ansatz without optimization.
-    This is the same loss function used in fitting.
     
-    Args:
-        lam: Current lambda value
-        samples: Array of shape (N, 2*dim) where first dim columns are q and last dim columns are p
-        make_T: Function to create kinetic energy
-        make_V: Function to create potential energy
-        A_ansatz: The ansatz to evaluate
-        use_regularization: Whether to include L2 regularization
-        weights: Optional array of weights for weighted expectation (shape (N,))
-        
-    Returns:
-        The loss value (float)
-    """
     qp_batch = jnp.array(samples)  # shape (N, 2*dim)
     dim = qp_batch.shape[1] // 2  # Extract dimension from sample shape
 
@@ -39,7 +24,6 @@ def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_r
     def R(A_ansatz, q, p):
         return poisson_bracket_fn(A_ansatz, H_fixed)(q, p) - dH_fixed(q, p)
 
-    # Split samples into q and p components
     qs = qp_batch[:, :dim]  # First dim columns
     ps = qp_batch[:, dim:]  # Last dim columns
     
@@ -73,6 +57,9 @@ def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_r
 
 def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, use_regularization=False, weights=None):
 
+    if A_ansatz is None:
+        return [], None
+
     if isinstance(A_ansatz, AnalyticAnsatz):
         A_ansatz = eqx.tree_at(lambda m: m.params, A_ansatz, jnp.array([lam]))
         loss = calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, 
@@ -80,7 +67,7 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
         return A_ansatz, [loss]
 
     # Check if this is a HermiteAnsatz and use special fitting
-    if hasattr(A_ansatz, 'ansatz_type') and A_ansatz.ansatz_type == 'hermite':
+    if A_ansatz.ansatz_type == 'hermite':
         print(A_ansatz.f_ansatz(jnp.array([1.0])), "A_ansatz.f_ansatz 1 orig")
         return fit_hermite_ansatz(
             lam=lam, samples=samples, make_T=make_T, make_V=make_V, hermite_ansatz=A_ansatz, num_iters=5, lr=lr, use_regularization=use_regularization, weights=weights)

@@ -3,38 +3,31 @@
 Main script for running counterdiabatic simulations.
 """
 
+import itertools
 import jax
 import jax.numpy as jnp
 import numpy as np
 import matplotlib.pyplot as plt
 import equinox as eqx
-from src.simulation import simulate
+from src.simulation import smc
 from src.ansatze import PolynomialAnsatz, NeuralNetworkAnsatz, AnalyticAnsatz, HermiteAnsatz, PolynomialFAnsatz
 from src.systems import get_system
-from src.plotting import create_all_plots, create_2d_plots
+from src.plotting import create_all_plots
+from src.utils import save_simulation_data
 
 
 def main():
-    """
-    Main function for running counterdiabatic simulations.
-    Easily configure the system and ansatz type here.
-    """
+    
     # ===== CONFIGURATION =====
     # Choose your system
-    system_name = "gaussian_moving_mean"  # Options: see SYSTEMS in src/systems.py
-    
-    # Choose your ansatz type
-    ansatz_type = "analytic"  # Options: "polynomial", "neural_network", "analytic", "hermite"
-    
-    # Choose your integrator for counterdiabatic simulations
+    system_name = "double_well"  # Options: see SYSTEMS in src/
+    # ansatz_type = 'polynomial' # Options: "polynomial", "neural_network", "analytic", "hermite"
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
-
-    use_weights = False
     
     # Simulation parameters
-    M = 400  # Number of particles (reduced for testing)
-    N_steps = 2  # Number of simulation steps (reduced for testing)
-    delta_t = 2.0  # Time step (eps = delta_t for this algorithm)
+    M = 4000  # Number of particles (reduced for testing)
+    N_steps = 20  # Number of simulation steps (reduced for testing)
+    delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
     momentum_refresh_interval = 10  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
     num_iters = 10000  # Optimization iterations per step (reduced for testing)
@@ -44,10 +37,8 @@ def main():
     
     # Adaptive step size settings (for CD simulations only)
     adaptive_step_size = False  # Set to True to enable adaptive delta_t = K/sqrt(Var[A])
-    K = delta_t  # Constant for adaptive step size calculation
     
     # Simulation settings
-    run_simulations = True  # Set to False to load from saved data instead of running simulations
     snapshot_every = 1  # Record snapshots every N steps
     
     # ===== SYSTEM SETUP =====
@@ -59,20 +50,16 @@ def main():
     
     # Define lambda functions
     v = 0.5
-    max_lam = 3.0
+    max_lam = 2.0
     lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
     dot_lam_fn = jax.grad(lam_fn)
     
     # ===== ANSATZ SETUP =====
     # Hermite ansatz: A(q,p) = f(q) * g(p) where g(p) = Σ_{i odd} α̃ᵢ φᵢ(p)
-    # Uses orthonormal Hermite polynomials φᵢ = Hᵢ / √(i!) with only odd indices
-    # Use a polynomial ansatz for f(q) (position-only) with degree 1 (linear)
     f_ansatz = PolynomialFAnsatz(max_degree=0, dim=dim)
     # print(f_ansatz(jnp.array([1.0])), f_ansatz(jnp.array([2.0])))
     # Set the constant term to 1 (f(q) = 1)
     f_ansatz = eqx.tree_at(lambda m: m.params, f_ansatz, f_ansatz.params.at[0].set(1.0))
-    # print(f_ansatz(jnp.array([1.0])), "f_ansatz 1 orig orig")
-    # raise Exception("Stop here")
     hermite_ansatz = HermiteAnsatz(
         f_ansatz=f_ansatz,  # Parameterized ansatz for f(q)
         max_order=5,  # Use Hermite polynomials up to order 5 (odd indices: 1, 3, 5)
@@ -86,80 +73,46 @@ def main():
         "hermite": hermite_ansatz
     }
 
-    ansatz = ansatz_dict[ansatz_type]
-    
-    # ===== RUN SIMULATIONS OR LOAD DATA =====
-    # Set run_simulations=False above to load existing data instead of running new simulations
-    # successful_simulations = run_simulation_and_save_data(
-    #     system_name=system_name,
-    #     ansatz=ansatz,
-    #     lam_fn=lam_fn,
-    #     dot_lam_fn=dot_lam_fn,
-    #     run_simulations=run_simulations,
-    #     snapshot_every=snapshot_every,
-    #     M=M,
-    #     N_steps=N_steps,
-    #     delta_t=delta_t,
-    #     momentum_refresh_interval=momentum_refresh_interval,
-    #     fit_every=fit_every,
-    #     num_initial_iterations=num_initial_iterations,
-    #     num_iterations=num_iterations,
-    #     learning_rate=learning_rate,
-    #     equilibration_steps=equilibration_steps,
-    #     ess_threshold=ess_threshold,
-    #     adaptive_step_size=adaptive_step_size,
-    #     K=K,
-    #     integrator_type=integrator_type,
-    #     # simulation_types=['cd_unweighted']  # Run only unweighted CD simulation
-    # )
-    A_ansatz, snapshots, loss_histories, param_history = simulate(
-        M=M, 
-        N_steps=N_steps, 
-        delta_t=delta_t, 
-        momentum_refresh_interval=momentum_refresh_interval, 
-        make_T=make_T, 
-        make_V=make_V, 
-        lam_fn=lam_fn, 
-        dot_lam_fn=dot_lam_fn, 
-        key=jax.random.PRNGKey(0), 
-        dim=dim, 
-        A_ansatz=ansatz, 
-        fit_every=fit_every, 
-        num_iters=num_iters, 
-        learning_rate=learning_rate, 
-        ess_threshold=ess_threshold, 
-        snapshot_every=snapshot_every, 
-        equilibration_steps=equilibration_steps,
-        use_weights=use_weights,
-        )
+    for ansatz_type, use_weights in itertools.product([None], [True]):
 
-    # print("snapshots", (snapshots['particles'][0].shape))
-    # print("snapshots", (snapshots['weights'][0].shape))
-    # print("snapshots", (snapshots['lam']))
-    # print("snapshots", (snapshots['times']))
-    # print("snapshots", (snapshots['resampling_events']))
-    # print("snapshots", (snapshots['detailed_energy_stats']))
-    # print("snapshots", (snapshots['detailed_times']))
-    # raise Exception("Stop here")
-    
-    # ===== CREATE PLOTS =====
-    if dim == 1:
-            # Use the existing 1D plotting functions
-            create_all_plots(
-                successful_simulations={f'{"cd" if ansatz is not None else "naive"}_{"weighted" if use_weights else "unweighted"}': snapshots},
-                system_name=system_name,
-                ansatz=ansatz,
-                delta_t=delta_t,
-                make_V=make_V,
-                make_T=make_T,
-                dim=dim,
-                integrator_type=integrator_type
+        A_ansatz = ansatz_dict.get(ansatz_type)
+        
+        A_ansatz, snapshots, loss_histories, param_history = smc(
+            M=M, 
+            N_steps=N_steps, 
+            delta_t=delta_t, 
+            momentum_refresh_interval=momentum_refresh_interval, 
+            make_T=make_T, 
+            make_V=make_V, 
+            lam_fn=lam_fn, 
+            dot_lam_fn=dot_lam_fn, 
+            key=jax.random.PRNGKey(0), 
+            dim=dim, 
+            A_ansatz=A_ansatz, 
+            fit_every=fit_every, 
+            num_iters=num_iters, 
+            learning_rate=learning_rate, 
+            ess_threshold=ess_threshold, 
+            snapshot_every=snapshot_every, 
+            equilibration_steps=equilibration_steps,
+            use_weights=use_weights,
+            integrator_type=integrator_type
             )
-    else:
-        # For 2D systems, use the 2D plotting function from plotting.py
-        print(f"\nCreating 2D plots for {dim}D system...")
-        # create_2d_plots(successful_simulations, system_name, ansatz, delta_t, make_V, make_T, integrator_type)
-   
+
+        # save simulation data
+        save_simulation_data(
+            snapshots, 
+            system_name, 
+            f'{"cd" if A_ansatz is not None else "naive"}_{"weighted" if use_weights else "unweighted"}', 
+            delta_t, 
+            lam_fn, 
+            A_ansatz.params if A_ansatz is not None else None, 
+            loss_histories, 
+            param_history,
+            ansatz_type=ansatz_type,
+            integrator_type=integrator_type
+        )
+       
 
 if __name__ == "__main__":
     main()

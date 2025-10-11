@@ -7,7 +7,11 @@ import equinox as eqx
 import os
 from scipy.stats import gaussian_kde
 
-from .ansatze import PolynomialAnsatz, NeuralNetworkAnsatz, AnalyticAnsatz, HermiteAnsatz
+# Handle imports for both module usage and direct script execution
+try:
+    from .ansatze import PolynomialAnsatz, NeuralNetworkAnsatz, AnalyticAnsatz, HermiteAnsatz
+except ImportError:
+    from ansatze import PolynomialAnsatz, NeuralNetworkAnsatz, AnalyticAnsatz, HermiteAnsatz
 
 def create_plot_directory(ansatz, system_name, integrator_type):
     """
@@ -306,7 +310,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ans
         
         # Normalize and offset for ridge plot - increased height for more overlap
         density = density / np.max(density) * 1.8  # Increased from 1.2 to 1.8 for more overlap
-        offset = t * 2.0  # Increased spacing between plots to reduce overlap
+        offset = t * 2.0  # Visual spacing for ridge plots
         
         # Plot the ridge with transparency for overlap
         cd_ax.fill_between(x_grid, offset, offset + density, 
@@ -421,7 +425,7 @@ def create_overlay_ridge_plot(snapshots, delta_t, make_V, potential_name="harmon
     
     # Plot both weighted and unweighted distributions
     for i, (t, cd_snap, lam_val, weights) in enumerate(zip(times, snapshots['particles'], snapshots['lam'], snapshots['weights'])):
-        offset = t * 2.0  # Spacing between plots
+        offset = t * 2.0  # Visual spacing for ridge plots
         
         # Plot unweighted distribution (red, more transparent)
         density_unweighted = compute_weighted_kde(cd_snap.flatten(), weights=None, x_grid=x_grid)
@@ -593,11 +597,11 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
             post_equil_snap = snapshots['post_equilibration'][cd_idx]
             
             if len(pre_equil_snap) > 0:
-                ax.hist(pre_equil_snap.flatten(), bins=25, alpha=0.6, label='Before Equilibration', 
+                ax.hist(pre_equil_snap.flatten(), bins=50, alpha=0.6, label='Before Equilibration', 
                        density=True, color='orange', histtype='stepfilled')
             
             if len(post_equil_snap) > 0:
-                ax.hist(post_equil_snap.flatten(), bins=25, alpha=0.6, label='After Equilibration', 
+                ax.hist(post_equil_snap.flatten(), bins=50, alpha=0.6, label='After Equilibration', 
                        density=True, color='purple', histtype='stepfilled')
         else:
             # Show regular CD particles distribution if equilibration is not available
@@ -611,11 +615,11 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
                             # Convert log weights to regular weights
                             weights = np.exp(weights - np.max(weights))
                             weights = weights / np.sum(weights)
-                            ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, label='Particles (Weighted)', density=True, color='red', weights=weights)
+                            ax.hist(particles_snap.flatten(), bins=50, alpha=0.6, label='Particles (Weighted)', density=True, color='red', weights=weights)
                         else:
-                            ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, label='Particles', density=True, color='red')
+                            ax.hist(particles_snap.flatten(), bins=50, alpha=0.6, label='Particles', density=True, color='red')
                     else:
-                        ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, label='Particles', density=True, color='red')
+                        ax.hist(particles_snap.flatten(), bins=50, alpha=0.6, label='Particles', density=True, color='red')
         
         # Plot naive HMC distribution if available
         if naive_snapshots and 'particles' in naive_snapshots:
@@ -638,11 +642,11 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
                         if weights is not None and not np.allclose(weights, 0.0):
                             weights = np.exp(weights - np.max(weights))
                             weights = weights / np.sum(weights)
-                            ax.hist(naive_snap.flatten(), bins=25, alpha=0.6, label='Naive HMC (Weighted)', density=True, color='blue', weights=weights)
+                            ax.hist(naive_snap.flatten(), bins=50, alpha=0.6, label='Naive HMC (Weighted)', density=True, color='blue', weights=weights)
                         else:
-                            ax.hist(naive_snap.flatten(), bins=25, alpha=0.6, label='Naive HMC', density=True, color='blue')
+                            ax.hist(naive_snap.flatten(), bins=50, alpha=0.6, label='Naive HMC', density=True, color='blue')
                     else:
-                        ax.hist(naive_snap.flatten(), bins=25, alpha=0.6, label='Naive HMC', density=True, color='blue')
+                        ax.hist(naive_snap.flatten(), bins=50, alpha=0.6, label='Naive HMC', density=True, color='blue')
         
         # Plot true distribution using the appropriate lambda value
         x_grid = np.linspace(-10, 10, 1000)
@@ -868,40 +872,8 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim, an
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
     axes = axes.flatten()
     
-    # Get time points - use saved times if available, otherwise calculate from first snapshot
-    times = None
-    lambda_values = None
-    
-    # Try to find saved times and lambda_values
-    for method, snapshots in all_snapshots.items():
-        if isinstance(snapshots, dict) and 'particles' in snapshots:
-            # Check if this method has saved times directly in snapshots
-            if 'times' in snapshots:
-                times = snapshots['times']
-                lambda_values = snapshots['lam']
-                break
-            # Check if this method has separate times keys (old format)
-            times_key = f'times_{method}'
-            lambda_key = f'lambda_values_{method}'
-            if times_key in all_snapshots:
-                times = all_snapshots[times_key]
-                lambda_values = all_snapshots[lambda_key]
-                break
-    
-    # Fallback to calculating from first snapshot
-    if times is None:
-        first_snapshot = None
-        for snapshots in all_snapshots.values():
-            if isinstance(snapshots, dict) and 'particles' in snapshots:
-                first_snapshot = snapshots['particles']
-                break
-        
-        if not first_snapshot:
-            print("No valid snapshots found for plotting")
-            return
-        
-        # Cannot plot without saved times
-        raise ValueError("No saved times found in snapshots - cannot create comparison plots")
+    # Note: We'll use each method's own times, not a shared times array
+    # This prevents misalignment when methods have different snapshot times
     
     # Find global range for consistent x-axis
     # Exclude methods with extreme particle values that would dominate the range
@@ -964,14 +936,17 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim, an
         weights_key = 'weights'
         lam_key = 'lam'
         
-        # Use saved lambda values if available, otherwise use snapshots[lam_key]
-        if lambda_values is not None:
-            method_lambda_values = lambda_values
-        else:
-            method_lambda_values = snapshots[lam_key]
+        # FIXED: Each method uses its OWN times and lambda values
+        # This prevents misalignment when methods have different snapshot times
+        if 'times' not in snapshots:
+            print(f"Warning: No 'times' key found in snapshots for {method}, skipping...")
+            continue
+            
+        method_times = snapshots['times']
+        method_lambda_values = snapshots[lam_key]
         
         # Plot distributions
-        for j, (t, snap, lam_val) in enumerate(zip(times, snapshots[snapshot_key], method_lambda_values)):
+        for j, (t, snap, lam_val) in enumerate(zip(method_times, snapshots[snapshot_key], method_lambda_values)):
             # Get weights if available
             weights = None
             if weights_key and snapshots[weights_key][j] is not None:
@@ -1001,25 +976,28 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim, an
                 bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
                 density = np.interp(x_grid, bin_centers, hist)
             
-            # Normalize and offset for ridge plot
-            density = density / np.max(density) * 1.8
-            offset = t * 2.0  # Increased spacing between plots to reduce overlap
+            # Scale for ridge plot visualization, but maintain proper density proportions
+            density = density * 1.8
+            offset = t * 2.0  # Visual spacing for ridge plots
             
             # Plot the ridge
             ax.fill_between(x_grid, offset, offset + density, 
                            color=colors[method], alpha=0.4, edgecolor=colors[method], linewidth=0.5)
             
-            # Add true distribution
+            # Add true distribution - maintain proper density normalization
             potential_fn = make_V(lam_val)
             rho = np.array([np.exp(-potential_fn(x)) for x in x_grid])
-            rho = rho / np.max(rho) * 1.8
+            # Proper density normalization (same as individual plots)
+            rho = rho / np.trapz(rho, x_grid)
+            # Scale only for ridge plot visualization, but maintain density proportions
+            rho = rho * 1.8
             ax.plot(x_grid, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
         
         # Set limits
         ax.set_xlim(x_min, x_max)
-        times_array = np.array(times)  # Convert to numpy array for arithmetic
-        ax.set_ylim(times_array[0] * 2.0 - 0.1, times_array[-1] * 2.0 + 2.0)  # Adjusted for increased spacing
-        ax.set_yticks(times_array * 2.0)
+        method_times_array = np.array(method_times)  # Use method's own times
+        ax.set_ylim(method_times_array[0] * 2.0 - 0.1, method_times_array[-1] * 2.0 + 2.0)  # Adjusted for increased spacing
+        ax.set_yticks(method_times_array * 2.0, method_times_array)  # Show actual time values on y-axis
     
     plt.tight_layout()
     plt.savefig(f"{ansatz_dir}/comparison_ridge_plot.png", dpi=300, bbox_inches='tight')
@@ -1027,7 +1005,7 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim, an
     
     print(f"Saved comparison ridge plot to {ansatz_dir}/comparison_ridge_plot.png")
 
-def create_comparison_histogram_plots(all_snapshots, delta_t, make_V, system_name, dim, n_bins=50, ansatz_type="polynomial", ansatz_dir="figures/polynomial"):
+def create_comparison_histogram_plots(all_snapshots, delta_t, make_V, system_name, dim, n_bins=100, ansatz_type="polynomial", ansatz_dir="figures/polynomial"):
     """Create comparison plots using histograms instead of KDE for all four simulation methods."""
     # Create figures directory
     os.makedirs("figures", exist_ok=True)
@@ -1037,40 +1015,8 @@ def create_comparison_histogram_plots(all_snapshots, delta_t, make_V, system_nam
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
     axes = axes.flatten()
     
-    # Get time points - use saved times if available, otherwise calculate from first snapshot
-    times = None
-    lambda_values = None
-    
-    # Try to find saved times and lambda_values
-    for method, snapshots in all_snapshots.items():
-        if isinstance(snapshots, dict) and 'particles' in snapshots:
-            # Check if this method has saved times directly in snapshots
-            if 'times' in snapshots:
-                times = snapshots['times']
-                lambda_values = snapshots['lam']
-                break
-            # Check if this method has separate times keys (old format)
-            times_key = f'times_{method}'
-            lambda_key = f'lambda_values_{method}'
-            if times_key in all_snapshots:
-                times = all_snapshots[times_key]
-                lambda_values = all_snapshots[lambda_key]
-                break
-    
-    # Fallback to calculating from first snapshot
-    if times is None:
-        first_snapshot = None
-        for snapshots in all_snapshots.values():
-            if isinstance(snapshots, dict) and 'particles' in snapshots:
-                first_snapshot = snapshots['particles']
-                break
-        
-        if not first_snapshot:
-            print("No valid snapshots found for plotting")
-            return
-        
-        # Cannot plot without saved times
-        raise ValueError("No saved times found in snapshots - cannot create comparison plots")
+    # Note: We'll use each method's own times, not a shared times array
+    # This prevents misalignment when methods have different snapshot times
     
     # Find global range for consistent x-axis
     # Exclude methods with extreme particle values that would dominate the range
@@ -1136,14 +1082,17 @@ def create_comparison_histogram_plots(all_snapshots, delta_t, make_V, system_nam
         weights_key = 'weights'
         lam_key = 'lam'
         
-        # Use saved lambda values if available, otherwise use snapshots[lam_key]
-        if lambda_values is not None:
-            method_lambda_values = lambda_values
-        else:
-            method_lambda_values = snapshots[lam_key]
+        # FIXED: Each method uses its OWN times and lambda values
+        # This prevents misalignment when methods have different snapshot times
+        if 'times' not in snapshots:
+            print(f"Warning: No 'times' key found in snapshots for {method}, skipping...")
+            continue
+            
+        method_times = snapshots['times']
+        method_lambda_values = snapshots[lam_key]
         
         # Plot distributions
-        for j, (t, snap, lam_val) in enumerate(zip(times, snapshots[snapshot_key], method_lambda_values)):
+        for j, (t, snap, lam_val) in enumerate(zip(method_times, snapshots[snapshot_key], method_lambda_values)):
             # Get weights if available
             weights = None
             if weights_key and snapshots[weights_key][j] is not None:
@@ -1161,9 +1110,9 @@ def create_comparison_histogram_plots(all_snapshots, delta_t, make_V, system_nam
             else:
                 hist, _ = np.histogram(snap.flatten(), bins=bin_edges, density=True)
             
-            # Normalize and offset for ridge plot
-            hist = hist / np.max(hist) * 1.8
-            offset = t * 2.0  # Increased spacing between plots to reduce overlap
+            # Scale for ridge plot visualization, but maintain proper density proportions
+            hist = hist * 1.8
+            offset = t * 2.0  # Visual spacing for ridge plots
             
             # Plot the histogram as individual bars (true histogram, not filled area)
             for i, (bin_center, height) in enumerate(zip(bin_centers, hist)):
@@ -1172,17 +1121,22 @@ def create_comparison_histogram_plots(all_snapshots, delta_t, make_V, system_nam
                           bottom=offset, color=colors[method], alpha=0.6, 
                           edgecolor=colors[method], linewidth=0.3)
             
-            # Add true distribution
+            # Add true distribution - maintain proper density normalization
             potential_fn = make_V(lam_val)
-            rho = np.array([np.exp(-potential_fn(x)) for x in bin_centers])
-            rho = rho / np.max(rho) * 1.8
-            ax.plot(bin_centers, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
+            # Use higher resolution for smoother lines
+            x_smooth = np.linspace(x_min, x_max, 1000)
+            rho = np.array([np.exp(-potential_fn(x)) for x in x_smooth])
+            # Proper density normalization (same as individual plots)
+            rho = rho / np.trapz(rho, x_smooth)
+            # Scale only for ridge plot visualization, but maintain density proportions
+            rho = rho * 1.8
+            ax.plot(x_smooth, offset + rho, 'k--', linewidth=1.5, alpha=0.8)
         
         # Set limits
         ax.set_xlim(x_min, x_max)
-        times_array = np.array(times)  # Convert to numpy array for arithmetic
-        ax.set_ylim(times_array[0] * 2.0 - 0.1, times_array[-1] * 2.0 + 2.0)  # Adjusted for increased spacing
-        ax.set_yticks(times_array * 2.0)
+        method_times_array = np.array(method_times)  # Use method's own times
+        ax.set_ylim(method_times_array[0] * 2.0 - 0.1, method_times_array[-1] * 2.0 + 2.0)  # Adjusted for increased spacing
+        ax.set_yticks(method_times_array * 2.0, method_times_array)  # Show actual time values on y-axis
     
     plt.tight_layout()
     plt.savefig(f"{ansatz_dir}/comparison_histogram_plot.png", dpi=300, bbox_inches='tight')
@@ -1210,7 +1164,7 @@ def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_
     if len(successful_simulations) > 0:
         if dim == 1:
             print(f"\nCreating comparison plots for {len(successful_simulations)} successful simulations...")
-            create_comparison_plots(successful_simulations, delta_t, make_V, f"{system_name}_{integrator_type}", dim=dim, ansatz_type="", ansatz_dir=plot_dir)
+            # create_comparison_plots(successful_simulations, delta_t, make_V, f"{system_name}_{integrator_type}", dim=dim, ansatz_type="", ansatz_dir=plot_dir)
             
             # Create histogram-based comparison plots
             print("Creating histogram-based comparison plots...")
@@ -1490,13 +1444,13 @@ def create_naive_distributions_plot(snapshots, delta_t, make_V, plot_dir, potent
                     # Convert log weights to probabilities
                     weights = np.exp(weights - np.max(weights))
                     weights = weights / np.sum(weights)
-                    ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, 
+                    ax.hist(particles_snap.flatten(), bins=50, alpha=0.6, 
                            label='Naive (Weighted)', density=True, color='blue', weights=weights)
                 else:
-                    ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, 
+                    ax.hist(particles_snap.flatten(), bins=50, alpha=0.6, 
                            label='Naive', density=True, color='blue')
             else:
-                ax.hist(particles_snap.flatten(), bins=25, alpha=0.6, 
+                ax.hist(particles_snap.flatten(), bins=50, alpha=0.6, 
                        label='Naive', density=True, color='blue')
         
         # Plot true distribution using the appropriate lambda value
@@ -1991,4 +1945,122 @@ def create_2d_plots(successful_simulations, system_name, ansatz, delta_t, make_V
     print(f"📁 Plots saved to: {plot_dir}/")
     print(f"   - 2d_method_comparison.png")
     print(f"   - 2d_loss_curves.png")
-    print(f"   - 2d_ansatz.png") 
+    print(f"   - 2d_ansatz.png")
+
+
+if __name__ == "__main__":
+    """Load saved data and create all plots."""
+    import pickle
+    import sys
+    import os
+    
+    # Add parent directory to path for proper module resolution when loading pickles
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    from systems import get_system
+    from ansatze import PolynomialFAnsatz
+    
+    # ===== CONFIGURATION =====
+    system_name = "double_well"
+    ansatz_type = "polynomial"
+    integrator_type = "leapfrog"
+    
+    # Get system configuration
+    make_T, make_V, system_description, dim = get_system(system_name)
+    print(f"System: {system_name}")
+    print(f"Description: {system_description}")
+    print(f"Dimension: {dim}")
+    
+    # Create ansatz
+    if ansatz_type == "polynomial":
+        ansatz = PolynomialAnsatz(max_degree=5, dim=dim)
+    elif ansatz_type == "hermite":
+        f_ansatz = PolynomialFAnsatz(max_degree=0, dim=dim)
+        f_ansatz = eqx.tree_at(lambda m: m.params, f_ansatz, f_ansatz.params.at[0].set(1.0))
+        ansatz = HermiteAnsatz(f_ansatz=f_ansatz, max_order=5, dim=dim)
+    else:
+        raise ValueError(f"Unknown ansatz type: {ansatz_type}")
+    
+    # Load saved data
+    successful_simulations = {}
+    import os
+    
+    # Determine base data directory
+    base_data_dir = '../data' if os.path.basename(os.getcwd()) == 'src' else 'data'
+    
+    # Try new organized structure first, then fall back to flat structure
+    organized_data_dir = f'{base_data_dir}/{ansatz_type}/{system_name}/{integrator_type}'
+    
+    # Define methods to load
+    method_definitions = [
+        ('naive_unweighted', 'naive_unweighted'),
+        ('naive_weighted', 'naive_weighted'),
+        (f'cd_unweighted_{integrator_type}', 'cd_unweighted'),
+        (f'cd_weighted_{integrator_type}', 'cd_weighted'),
+    ]
+    
+    for method_key, method_file in method_definitions:
+        # Try new organized structure first
+        organized_filepath = f'{organized_data_dir}/{method_file}.pkl'
+        flat_filepath = f'{base_data_dir}/{system_name}_{method_key}.pkl'
+        
+        loaded = False
+        for filepath in [organized_filepath, flat_filepath]:
+            try:
+                with open(filepath, 'rb') as f:
+                    data = pickle.load(f)
+                    successful_simulations[method_key] = data['snapshots']
+                    if 'loss_histories' in data and data['loss_histories'] is not None:
+                        successful_simulations[f'loss_histories_{method_key}'] = data['loss_histories']
+                    if 'param_history' in data and data['param_history'] is not None:
+                        successful_simulations[f'param_history_{method_key}'] = data['param_history']
+                    print(f"✓ Loaded {method_key} from {filepath}")
+                    loaded = True
+                    break
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                print(f"✗ Error loading {filepath}: {e}")
+                continue
+        
+        if not loaded:
+            print(f"✗ Could not find data for {method_key}")
+    
+    if len(successful_simulations) == 0:
+        print("No data files found.")
+        sys.exit(1)
+    
+    # Get delta_t and detect actual dimension
+    first_key = [k for k in successful_simulations.keys() if not k.startswith('loss_')][0]
+    if 'times' in successful_simulations[first_key]:
+        times = successful_simulations[first_key]['times']
+        delta_t = float(times[1] - times[0]) if len(times) > 1 else 0.3
+    else:
+        delta_t = 0.3
+    
+    if 'particles' in successful_simulations[first_key] and len(successful_simulations[first_key]['particles']) > 0:
+        first_particles = successful_simulations[first_key]['particles'][0]
+        if len(first_particles.shape) == 1 or first_particles.shape[1] == 1:
+            actual_dim = 1
+        else:
+            actual_dim = first_particles.shape[1]
+        if actual_dim != dim:
+            print(f"⚠️  Using dim={actual_dim} from data (config said {dim})")
+            dim = actual_dim
+    
+    print(f"\nUsing delta_t={delta_t}, dim={dim}")
+    print(f"Found {len([k for k in successful_simulations.keys() if not k.startswith('loss_')])} methods\n")
+    
+    # Create all plots
+    create_all_plots(
+        successful_simulations=successful_simulations,
+        system_name=system_name,
+        ansatz=ansatz,
+        delta_t=delta_t,
+        make_V=make_V,
+        make_T=make_T,
+        dim=dim,
+        integrator_type=integrator_type
+    )
+    
+    print("\n✓ All plots created!") 

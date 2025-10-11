@@ -6,6 +6,14 @@ import jax.numpy as jnp
 import jax
 
 
+def normalize(weights):
+    """Normalize weights to sum to 1."""
+    return weights / jnp.sum(weights)
+
+def normalize_log_weights(log_weights):
+    """Normalize log weights to sum to 1."""
+    return log_weights - jnp.max(log_weights)
+
 def check_nans(name, value, step=None):
     """Helper function to check for NaNs and print warnings."""
     # Convert to numpy for checking to avoid JAX tracing issues
@@ -258,3 +266,50 @@ def print_coefficients_summary(alpha_coeffs, max_order):
     for k, alpha_k in enumerate(alpha_coeffs):
         i = 2 * k + 1  # Map k=0,1,2,... to i=1,3,5,...
         print(f"      α̃_{i} = {alpha_k:.6f}")
+
+
+
+def save_simulation_data(snapshots, system_name, method_name, delta_t, lam_fn, ansatz_params=None, loss_histories=None, param_history=None, ansatz_type=None, integrator_type=None):
+    """Save simulation data to a pickle file.
+    
+    Args:
+        snapshots: Dictionary containing simulation snapshots
+        system_name: Name of the system (e.g., "double_well")
+        method_name: Name of the method (e.g., "cd_unweighted")
+        delta_t: Time step
+        lam_fn: Lambda function
+        ansatz_params: Ansatz parameters (optional)
+        loss_histories: Loss histories (optional)
+        param_history: Parameter history (optional)
+        ansatz_type: Type of ansatz (e.g., "polynomial", "neural_network") - for directory organization
+        integrator_type: Type of integrator (e.g., "leapfrog", "implicit_midpoint") - for directory organization
+    """
+    import pickle
+    import os
+    
+    # Create organized directory structure if ansatz_type and integrator_type provided
+    if ansatz_type and integrator_type:
+        data_dir = f"data/{ansatz_type}/{system_name}/{integrator_type}"
+        os.makedirs(data_dir, exist_ok=True)
+        filename = f"{data_dir}/{method_name}.pkl"
+    else:
+        # Fallback to flat structure for backward compatibility
+        os.makedirs("data", exist_ok=True)
+        filename = f"data/{system_name}_{method_name}.pkl"
+    
+    # Prepare data to save
+    data = {
+        'snapshots': snapshots,
+        'system_name': system_name,
+        'method_name': method_name,
+        'delta_t': delta_t,
+        'ansatz_params': ansatz_params,
+        'loss_histories': loss_histories,
+        'param_history': param_history
+    }
+    
+    # Save to pickle file
+    with open(filename, 'wb') as f:
+        pickle.dump(data, f)
+    
+    print(f"Saved simulation data to {filename}")
