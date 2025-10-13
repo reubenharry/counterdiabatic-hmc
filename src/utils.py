@@ -6,13 +6,10 @@ import jax.numpy as jnp
 import jax
 
 
-def normalize(weights):
-    """Normalize weights to sum to 1."""
-    return weights / jnp.sum(weights)
+# def normalize(weights):
+#     """Normalize weights to sum to 1."""
+#     return weights / jnp.sum(weights)
 
-def normalize_log_weights(log_weights):
-    """Normalize log weights to sum to 1."""
-    return log_weights - jnp.max(log_weights)
 
 def check_nans(name, value, step=None):
     """Helper function to check for NaNs and print warnings."""
@@ -45,10 +42,12 @@ def compute_ess(log_weights):
     
     return ess
 
+def normalize_log_weights(log_weights):
+    return log_weights - jax.scipy.special.logsumexp(log_weights)
+
 def multinomial_resample(q, p, log_weights, rng_key, M):
     """Perform multinomial resampling and reset weights to uniform."""
-    weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
-    weights = weights / jnp.sum(weights)  # Normalize
+    weights = jnp.exp(normalize_log_weights(log_weights))
     
     # Generate multinomial samples
     indices = jax.random.choice(rng_key, M, shape=(M,), p=weights, replace=True)
@@ -62,7 +61,7 @@ def multinomial_resample(q, p, log_weights, rng_key, M):
     
     return q_resampled, p_resampled, log_weights_reset
 
-def compute_expectation_over_particles(values, weights=None):
+def compute_expectation_over_particles(values):
     """Compute expectation E_p over current particle distribution (unweighted average)."""
     return jnp.mean(values)
 
@@ -71,12 +70,7 @@ def compute_expectation_over_equilibrium(values, log_weights):
     if log_weights is None or len(log_weights) == 0:
         # If no weights, fall back to unweighted average
         raise ValueError("No weights provided")
-    
-    # Convert log weights to probabilities
-    weights = jnp.exp(log_weights - jnp.max(log_weights))
-    weights = weights / jnp.sum(weights)
-    
-    # Compute weighted average
+    weights = jnp.exp(normalize_log_weights(log_weights))
     return jnp.sum(values * weights)
 
 def generate_initial_samples(M, make_T, make_V, lam, key, dim, variance=None):
@@ -148,22 +142,34 @@ def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None, log_weights=N
     # Compute the expectation difference squared
     expectation_diff_sq = (E_p_dH_dlam - E_lambda_dH_dlam) ** 2
     
-    # Compute {A,H} and Var[A] if A_ansatz is provided
-    avg_A_H = 0.0
-    avg_A_H_sq = 0.0
+    # Compute gauge potential statistics if A_ansatz is provided
+    E_p_A_H = 0.0
+    E_p_A_H_sq = 0.0
+    E_lambda_A_H = 0.0
+    E_lambda_A_H_sq = 0.0
     var_A = 0.0
+    var_lambda_A = 0.0
     if A_ansatz is not None:
         from .physics import poisson_bracket_fn
         H_fixed = lambda q, p: T(p) + V(q)
-        A_H_vals = jax.vmap(lambda qr, pr: poisson_bracket_fn(A_ansatz, H_fixed)(qr, pr))(q, p)
-        avg_A_H = float(jnp.mean(A_H_vals))
-        avg_A_H_sq = float(jnp.mean(A_H_vals ** 2))
         
-        # Compute Var[A] = <A²> - <A>²
+        # Compute {A,H} for each particle
+        A_H_vals = jax.vmap(lambda qr, pr: poisson_bracket_fn(A_ansatz, H_fixed)(qr, pr))(q, p)
+        E_p_A_H = compute_expectation_over_particles(A_H_vals)
+        E_p_A_H_sq = compute_expectation_over_particles(A_H_vals ** 2)
+        E_lambda_A_H = compute_expectation_over_equilibrium(A_H_vals, log_weights)
+        E_lambda_A_H_sq = compute_expectation_over_equilibrium(A_H_vals ** 2, log_weights)
+        
+        # Compute A for each particle
         A_vals = jax.vmap(lambda qr, pr: A_ansatz(qr, pr))(q, p)
-        avg_A = float(jnp.mean(A_vals))
-        avg_A_sq = float(jnp.mean(A_vals ** 2))
-        var_A = avg_A_sq - avg_A ** 2
+        E_p_A = compute_expectation_over_particles(A_vals)
+        E_p_A_sq = compute_expectation_over_particles(A_vals ** 2)
+        E_lambda_A = compute_expectation_over_equilibrium(A_vals, log_weights)
+        E_lambda_A_sq = compute_expectation_over_equilibrium(A_vals ** 2, log_weights)
+        
+        # Compute variances: Var[A] = <A²> - <A>²
+        var_A = E_p_A_sq - E_p_A ** 2
+        var_lambda_A = E_lambda_A_sq - E_lambda_A ** 2
     
     return {
         # Current particle distribution expectations (E_p)
@@ -183,16 +189,13 @@ def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None, log_weights=N
         # Expectation difference squared
         'expectation_diff_sq': float(expectation_diff_sq),  # (E_p[∂_λ H] - E_λ[∂_λ H])²
         
-        # Legacy fields for backward compatibility
-        'avg_H': float(E_p_H),
-        'avg_H_sq': float(E_p_H_sq),
-        'avg_dH_dlam': float(E_p_dH_dlam),
-        'avg_dH_dlam_sq': float(E_p_dH_dlam_sq),
-        
         # Gauge potential statistics (for CD methods)
-        'avg_A_H': avg_A_H,
-        'avg_A_H_sq': avg_A_H_sq,
-        'var_A': float(var_A),
+        'E_p_A_H': float(E_p_A_H),  # E_p[{A,H}] - Poisson bracket under particle distribution
+        'E_p_A_H_sq': float(E_p_A_H_sq),  # E_p[{A,H}²]
+        'E_lambda_A_H': float(E_lambda_A_H),  # E_λ[{A,H}] - Poisson bracket under equilibrium
+        'E_lambda_A_H_sq': float(E_lambda_A_H_sq),  # E_λ[{A,H}²]
+        'var_A': float(var_A),  # Var_p[A] - variance of gauge potential under particle distribution
+        'var_lambda_A': float(var_lambda_A),  # Var_λ[A] - variance under equilibrium distribution
         'H_vals': H_vals  # Store individual H values
     }
 

@@ -1,4 +1,6 @@
 import jax
+import sys
+sys.path.append('src')
 import jax.numpy as jnp
 import numpy as np
 import seaborn as sns
@@ -6,6 +8,7 @@ import matplotlib.pyplot as plt
 import equinox as eqx
 import os
 from scipy.stats import gaussian_kde
+from utils import normalize_log_weights
 
 # Handle imports for both module usage and direct script execution
 try:
@@ -690,7 +693,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         
         # Plot <∂H/∂λ> over time
         ax_dH_dlam = fig.add_subplot(gs[diagnostic_row_start, 1])
-        dH_dlam_vals = [stats['avg_dH_dlam'] for stats in energy_stats]
+        dH_dlam_vals = [stats['E_p_dH_dlam'] for stats in energy_stats]
         ax_dH_dlam.plot(energy_times, dH_dlam_vals, 'r-', label='Current Method', linewidth=2)
         
         # Add naive HMC energy derivative if available
@@ -700,7 +703,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
                 naive_energy_times = naive_snapshots['times']
             else:
                 raise ValueError("Naive snapshots missing 'times' key - cannot plot energy statistics")
-            naive_dH_dlam_vals = [stats['avg_dH_dlam'] for stats in naive_energy_stats]
+            naive_dH_dlam_vals = [stats['E_p_dH_dlam'] for stats in naive_energy_stats]
             ax_dH_dlam.plot(naive_energy_times, naive_dH_dlam_vals, 'b-', label='Naive HMC', linewidth=2)
         
         ax_dH_dlam.set_xlabel('Time')
@@ -711,7 +714,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         
         # Plot <ΔH²> over time
         ax_dH2 = fig.add_subplot(gs[diagnostic_row_start, 2])
-        dH2_vals = [stats['avg_delta_H_sq'] for stats in energy_stats]
+        dH2_vals = [stats['E_p_delta_H_sq'] for stats in energy_stats]
         ax_dH2.plot(energy_times, dH2_vals, 'r-', label='Current Method', linewidth=2)
         
         # Add naive HMC energy variance if available
@@ -721,7 +724,7 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
                 naive_energy_times = naive_snapshots['times']
             else:
                 raise ValueError("Naive snapshots missing 'times' key - cannot plot energy statistics")
-            naive_dH2_vals = [stats['avg_delta_H_sq'] for stats in naive_energy_stats]
+            naive_dH2_vals = [stats['E_p_delta_H_sq'] for stats in naive_energy_stats]
             ax_dH2.plot(naive_energy_times, naive_dH2_vals, 'b-', label='Naive HMC', linewidth=2)
         
         ax_dH2.set_xlabel('Time')
@@ -955,8 +958,7 @@ def create_comparison_plots(all_snapshots, delta_t, make_V, system_name, dim, an
                 if np.allclose(log_weights, 0.0):
                     weights = None  # Use unweighted histogram
                 else:
-                    weights = np.exp(log_weights - np.max(log_weights))
-                    weights = weights / np.sum(weights)
+                    weights = np.exp(normalize_log_weights(log_weights))
             
             # Compute KDE
             try:
@@ -1101,8 +1103,7 @@ def create_comparison_histogram_plots(all_snapshots, delta_t, make_V, system_nam
                 if np.allclose(log_weights, 0.0):
                     weights = None  # Use unweighted histogram
                 else:
-                    weights = np.exp(log_weights - np.max(log_weights))
-                    weights = weights / np.sum(weights)
+                    weights = np.exp(normalize_log_weights(log_weights))
             
             # Compute histogram
             if weights is not None:
@@ -1343,8 +1344,7 @@ def create_unified_distributions_plot(successful_simulations, delta_t, make_V, a
                     if 'weights' in snapshots and len(snapshots['weights']) > time_idx:
                         log_weights = snapshots['weights'][time_idx]
                         if not np.allclose(log_weights, 0.0):
-                            weights = np.exp(log_weights - np.max(log_weights))
-                            weights = weights / np.sum(weights)
+                            weights = np.exp(normalize_log_weights(log_weights))
                     
                     # Create histogram
                     if weights is not None:
@@ -1489,7 +1489,7 @@ def create_naive_distributions_plot(snapshots, delta_t, make_V, plot_dir, potent
         
         # Plot <∂H/∂λ> over time
         ax_dH_dlam = fig.add_subplot(gs[diagnostic_row_start, 0])
-        dH_dlam_vals = [stats['avg_dH_dlam'] for stats in energy_stats]
+        dH_dlam_vals = [stats['E_p_dH_dlam'] for stats in energy_stats]
         ax_dH_dlam.plot(times, dH_dlam_vals, 'b-', label='Naive', linewidth=2)
         ax_dH_dlam.set_xlabel('Time')
         ax_dH_dlam.set_ylabel('<∂H/∂λ>')
@@ -1499,7 +1499,7 @@ def create_naive_distributions_plot(snapshots, delta_t, make_V, plot_dir, potent
         
         # Plot <ΔH²> over time (Var[H])
         ax_dH2 = fig.add_subplot(gs[diagnostic_row_start, 1])
-        dH2_vals = [stats['avg_delta_H_sq'] for stats in energy_stats]
+        dH2_vals = [stats['E_p_delta_H_sq'] for stats in energy_stats]
         ax_dH2.plot(times, dH2_vals, 'b-', label='Var[H]', linewidth=2)
         ax_dH2.set_xlabel('Time')
         ax_dH2.set_ylabel('<ΔH²>')
@@ -1871,7 +1871,7 @@ def create_2d_plots(successful_simulations, system_name, ansatz, delta_t, make_V
             if 'detailed_energy_stats' in snapshots and 'times' in snapshots:
                 energy_stats = snapshots['detailed_energy_stats']
                 times = snapshots['times']
-                H_vals = [stats.get('avg_H', 0) for stats in energy_stats]
+                H_vals = [stats.get('E_p_H', 0) for stats in energy_stats]
                 ax1.plot(times, H_vals, color=colors[method], label=method.replace('_', ' '), linewidth=2)
     
     ax1.set_xlabel('Time')
@@ -1888,7 +1888,7 @@ def create_2d_plots(successful_simulations, system_name, ansatz, delta_t, make_V
             if 'detailed_energy_stats' in snapshots and 'times' in snapshots:
                 energy_stats = snapshots['detailed_energy_stats']
                 times = snapshots['times']
-                dH_dlam_vals = [stats.get('avg_dH_dlam', 0) for stats in energy_stats]
+                dH_dlam_vals = [stats.get('E_p_dH_dlam', 0) for stats in energy_stats]
                 ax2.plot(times, dH_dlam_vals, color=colors[method], label=method.replace('_', ' '), linewidth=2)
     
     ax2.set_xlabel('Time')
@@ -1905,7 +1905,7 @@ def create_2d_plots(successful_simulations, system_name, ansatz, delta_t, make_V
             if 'detailed_energy_stats' in snapshots and 'times' in snapshots:
                 energy_stats = snapshots['detailed_energy_stats']
                 times = snapshots['times']
-                dH2_vals = [stats.get('avg_delta_H_sq', 0) for stats in energy_stats]
+                dH2_vals = [stats.get('E_p_delta_H_sq', 0) for stats in energy_stats]
                 ax3.plot(times, dH2_vals, color=colors[method], label=method.replace('_', ' '), linewidth=2)
     
     ax3.set_xlabel('Time')

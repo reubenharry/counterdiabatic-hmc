@@ -56,34 +56,30 @@ def make_x_update(T):
 # =============================================================================
 # GENERAL LEAPFROG INTEGRATOR FOR SEPARABLE HAMILTONIAN
 # =============================================================================
+
+def leapfrog(O1, O2, eps, q, p):
+    p_half = O1(q, p, eps*0.5)
+    q_new = O2(q, p_half, eps)
+    p_new = O1(q_new, p_half, eps*0.5)
+    return q_new, p_new
+
+
 def make_leapfrog_step(T, V, T_next, V_next, lam_fn=None, dot_lam_fn=None):
     """Create a leapfrog step function for separable Hamiltonian with optional weight calculation."""
     p_update = make_p_update(V_next)
     x_update = make_x_update(T_next)
     # T_next = T
 
-    def leapfrog(q, p, eps):
-        
-        p_half = p_update(q, p, eps*0.5)
-        q_new = x_update(q, p_half, eps)
-        p_new = p_update(q_new, p_half, eps*0.5)
-        
-        # Calculate weight if lambda functions are provided
-        
-            
-        # Energy at old lambda
+    def step(q, p, eps):
+
+        q_new, p_new = leapfrog(p_update, x_update, eps, q, p)
         H_old = T(p) + V(q)
-        # Energy at new lambda (using new positions)
         H_new = T_next(p_new) + V_next(q_new)
-        # print("SHAPES", q.shape, q_new.shape, p.shape, p_new.shape)
-        # print("Shapes", T(p).shape, T_next(p).shape)
-        # jax.debug.print("weights {x}", x=H_new - H_old)
         
-        # Log weight change: -(H_new - H_old)
         weight = -(H_new - H_old)
         
         return q_new, p_new, weight
-    return leapfrog
+    return step
 
 def with_maruyama(integrator):
     def maruyama(q, p, eps, L, rng_key):
@@ -255,16 +251,9 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
 
 
 
-        # q_new = q + eps * dot_lam * dA_dp
-        # p_new = p - eps * dot_lam * dA_dq
+        # half update of H
 
-        # q_new = q
-        # p_new = p
-        
-
-        # for i in range(1):
-        #     # raise Exception("Stop")
-        #     # jax.debug.print("q_new: {x}", x=q_new)
+        q, p = leapfrog(make_p_update(make_V(lam)), make_x_update(make_T(lam)), eps, q, p)
 
             # q_half = q_new + 0.5 * eps * (jax.grad(T_next)(p_new))
         #     p_new = p_new - eps * (jax.grad(V_next)(q_half))
@@ -289,6 +278,8 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
         # q_new = q_half + 0.5 * eps * (jax.grad(T)(p_new) + dot_lam * dA_dp_new)
         q_new = q_half + 0.5 * eps * (dot_lam * dA_dp_new)
         # # q_new = q_half + 0.5 * eps * (jax.grad(T_next)(p_new) )
+
+        q_new, p_new = leapfrog(make_p_update(make_V(lam_next)), make_x_update(make_T(lam_next)), eps, q_new, p_new)
         
         
         log_weight = compute_counterdiabatic_work(q, p, q_new, p_new, lam, lam_next, A_ansatz, make_T, make_V)

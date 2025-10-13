@@ -28,7 +28,7 @@ def main():
     M = 4000  # Number of particles (reduced for testing)
     N_steps = 20  # Number of simulation steps (reduced for testing)
     delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
-    momentum_refresh_interval = 10  # Momentum refresh interval
+    momentum_refresh_interval = 2  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
     num_iters = 10000  # Optimization iterations per step (reduced for testing)
     learning_rate = 1e-4  # Learning rate for optimization
@@ -73,7 +73,7 @@ def main():
         "hermite": hermite_ansatz
     }
 
-    for ansatz_type, use_weights in itertools.product([None], [True]):
+    for ansatz_type, use_weights in itertools.product(['polynomial', None], [False, True]):
 
         A_ansatz = ansatz_dict.get(ansatz_type)
         

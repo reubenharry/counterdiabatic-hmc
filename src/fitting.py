@@ -4,7 +4,7 @@ import optax
 import equinox as eqx
 from src.ansatze import AnalyticAnsatz
 from .physics import poisson_bracket_fn
-from .utils import check_nans, print_tridiagonal_matrix_info, print_optimization_summary
+from .utils import check_nans, normalize_log_weights, print_tridiagonal_matrix_info, print_optimization_summary
 import scipy.linalg
 
 
@@ -29,14 +29,7 @@ def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_r
     
     R_vals = jax.vmap(lambda qr, pr, A_ansatz: R(A_ansatz, qr, pr), in_axes=(0, 0, None))(qs, ps, A_ansatz)
     
-    # Main loss term - use weighted mean if weights are provided
-    if weights is not None:
-        # Normalize weights to sum to 1
-        weights = jnp.array(weights)
-        weights = weights / jnp.sum(weights)
-        main_loss = jnp.sum(weights * (R_vals ** 2))
-    else:
-        main_loss = jnp.mean(R_vals ** 2)
+    main_loss = jnp.sum(jnp.exp(normalize_log_weights(weights)) * (R_vals ** 2))
     
     # Add weight regularization to prevent large weights (optional)
     reg_loss = 0.0
@@ -87,31 +80,23 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
         optax.adam(lr)
     )
     
-    # Initialize optimizer based on ansatz type
-    if hasattr(A_ansatz, 'params') and isinstance(A_ansatz.params, jnp.ndarray):
-        # PolynomialAnsatz case - just use the params array
+    if isinstance(A_ansatz.params, jnp.ndarray):
         opt_state = optimizer.init(A_ansatz.params)
     else:
-        # Neural network case - use eqx.filter
         opt_state = optimizer.init(eqx.filter(A_ansatz, eqx.is_array))
 
     @jax.jit
     def update(A_ansatz, opt_state, qp_batch):
         loss, grads = jax.value_and_grad(loss_fn)(A_ansatz, qp_batch)
         
-        if hasattr(A_ansatz, 'params') and isinstance(A_ansatz.params, jnp.ndarray):
-            # PolynomialAnsatz case - handle params directly
-            # Extract the gradient for the params field
+        if isinstance(A_ansatz.params, jnp.ndarray): # PolynomialAnsatz case - handle params directly
             param_grads = grads.params
             clipped_grads = jnp.clip(param_grads, -10.0, 10.0)
             updates, opt_state = optimizer.update(clipped_grads, opt_state)
             A_ansatz = eqx.tree_at(lambda m: m.params, A_ansatz, A_ansatz.params + updates)
-        else:
-            # Neural network case - use eqx.filter
+        else: # Neural network case - use eqx.filter
             grad_arrays = eqx.filter(grads, eqx.is_array)
-            # Clip gradients to prevent extreme values
             clipped_grads = jax.tree_map(lambda g: jnp.clip(g, -10.0, 10.0), grad_arrays)
-            
             updates, opt_state = optimizer.update(clipped_grads, opt_state)
             A_ansatz = eqx.apply_updates(A_ansatz, updates)
         
@@ -140,7 +125,6 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
         else:
             patience_counter += 1
             
-        # Stop if loss hasn't improved for patience iterations
         if patience_counter >= patience and iteration > 100:  # Wait at least 100 iterations
             print(f"Early stopping at iteration {iteration} (loss: {loss:.6f})")
             break
@@ -197,7 +181,7 @@ def fit_hermite_ansatz_optimize(lam, samples, make_T, make_V, hermite_ansatz, nu
         new_alpha_coeffs, opt_state, loss = update(hermite_ansatz.alpha_coeffs, opt_state, qp_batch)
         hermite_ansatz = eqx.tree_at(lambda m: m.alpha_coeffs, hermite_ansatz, new_alpha_coeffs)
         
-        # Check loss for NaNs (outside of JIT-compiled function)
+        # todo: this code is duplicated from the main fit_gauge_potential function
         if jnp.isnan(loss):
             print(f"⚠️  NaN detected in loss at iteration {iteration}")
             print(f"  Stopping optimization early due to NaN loss")

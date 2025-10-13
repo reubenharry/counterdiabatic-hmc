@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import equinox as eqx
-from src.utils import check_nans, compute_energy_stats, compute_expectation_over_equilibrium, compute_expectation_over_particles, generate_initial_samples, multinomial_resample, normalize
+from src.utils import check_nans, compute_energy_stats, compute_expectation_over_equilibrium, compute_expectation_over_particles, generate_initial_samples, multinomial_resample, normalize_log_weights
 
 from .physics import make_cd_leapfrog_step, make_cd_implicit_midpoint_step, make_leapfrog_step, make_cd_euler_step, partially_refresh_momentum, with_maruyama
 from .fitting import fit_gauge_potential, calculate_gauge_potential_loss
@@ -103,7 +103,7 @@ def smc(
 
             samples = np.concatenate([np.array(q), np.array(p)], axis=1)
             check_nans("fitting_samples", samples, k)
-            weights = normalize(jnp.exp(log_weights - jnp.max(log_weights))) 
+            weights = jnp.exp(normalize_log_weights(log_weights))
             
             A_ansatz, loss_history = fit_gauge_potential(lam_k, samples,
                                         make_T=make_T, make_V=make_V,
@@ -127,16 +127,17 @@ def smc(
                 # Compute individual particle energy changes
                 delta_H_vals = stats['H_vals'] - prev_H_vals
                 
-                # Average the individual changes
-                avg_delta_H = jnp.mean(delta_H_vals)
+                # Compute expectations of energy changes
+                E_p_delta_H = compute_expectation_over_particles(delta_H_vals)
+                E_p_delta_H_sq = compute_expectation_over_particles(delta_H_vals ** 2)
                 
                 # Add change statistics to the stats dictionaries
-                stats['avg_delta_H'] = float(avg_delta_H)
-                stats['avg_delta_H_sq'] = float(jnp.mean(delta_H_vals ** 2))
+                stats['E_p_delta_H'] = float(E_p_delta_H)
+                stats['E_p_delta_H_sq'] = float(E_p_delta_H_sq)
             else:
                 # First timestep - no change to compute
-                stats['avg_delta_H'] = 0.0
-                stats['avg_delta_H_sq'] = 0.0
+                stats['E_p_delta_H'] = 0.0
+                stats['E_p_delta_H_sq'] = 0.0
 
             detailed_energy_stats.append(stats)
             detailed_times.append(t_k)
@@ -219,11 +220,7 @@ def smc(
         dot_lam_k1 = float(dot_lam_fn(t_k + current_delta_t))
         print("delta t", t_k)
         
-        
-        # Continue with evolution step
   
-         
-        # 2. Evolve - Execute the appropriate step based on simulation type
         if A_ansatz is None:
             step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t ,t: (make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t), in_axes=(0, 0, None, None, None, None, None, None))
         # TODO vvv
@@ -253,10 +250,6 @@ def smc(
         
         q, p, step_weights = jax.jit(step)(q, p, lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t, t_k)
 
-        # q, p, step_weights = jax.jit(step)(q, p, lam_k, lam_k1, delta_t, delta_t*momentum_refresh_interval, subs)
-
-        
-
         # refresh momentum
         if k % momentum_refresh_interval == 0 and k > 0:
             key, sub = jax.random.split(key)
@@ -264,9 +257,7 @@ def smc(
 
         if use_weights: 
             log_weights += step_weights
-            # Compute effective sample size
-            weights = jnp.exp(log_weights - jnp.max(log_weights))  # Numerical stability
-            weights = weights / jnp.sum(weights)  # Normalize
+            weights = jnp.exp(normalize_log_weights(log_weights))
             ess = jnp.sum(weights)**2 / jnp.sum(weights ** 2)
              
             # TODO vvv
