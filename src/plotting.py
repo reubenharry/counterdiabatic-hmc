@@ -513,14 +513,14 @@ def plot_results(snapshots, loss_histories, delta_t, make_V, param_history=None,
     
     # Create distributions plot with diagnostic information
     create_distributions_plot(snapshots, delta_t, make_V, plot_dir, potential_name, dim, has_re_equil, 
-                            loss_histories=loss_histories, param_history=param_history, make_T=make_T, naive_snapshots=naive_snapshots)
+                            loss_histories=loss_histories, param_history=param_history, make_T=make_T, naive_snapshots=naive_snapshots, ansatz=ansatz)
     
     # Extract method name for cleaner print message
     method_name = potential_name.split('_')[-3] + '_' + potential_name.split('_')[-2] if '_' in potential_name else potential_name
     print(f"Saved distributions plot to {plot_dir}/distributions_{method_name}.png")
 
 
-def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, has_re_equil, loss_histories=None, param_history=None, make_T=None, naive_snapshots=None):
+def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_name, dim, has_re_equil, loss_histories=None, param_history=None, make_T=None, naive_snapshots=None, ansatz=None):
     """Create the distributions plot showing histograms and diagnostic plots."""
     # Collect all times from both CD and naive snapshots
     cd_times = snapshots['times']
@@ -539,13 +539,14 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
     all_lambda_values = []
     
     # Add CD times and lambda values
-    for t, lam in zip(cd_times, snapshots['lam']):
-        all_times.append(float(t))
-        all_lambda_values.append(float(lam))
+    if 'times' in snapshots and 'lam' in snapshots and snapshots['times'] is not None and snapshots['lam'] is not None:
+        for t, lam in zip(snapshots['times'], snapshots['lam']):
+            all_times.append(float(t))
+            all_lambda_values.append(float(lam))
     
     # Add naive times and lambda values
-    if naive_snapshots and 'lam' in naive_snapshots:
-        for t, lam in zip(naive_times, naive_snapshots['lam']):
+    if naive_snapshots and 'times' in naive_snapshots and 'lam' in naive_snapshots and naive_snapshots['times'] is not None and naive_snapshots['lam'] is not None:
+        for t, lam in zip(naive_snapshots['times'], naive_snapshots['lam']):
             all_times.append(float(t))
             all_lambda_values.append(float(lam))
     
@@ -762,10 +763,10 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         
         # Plot Var[A] over time
         ax_var_A = fig.add_subplot(gs[diagnostic_row_start + 1, 0])
-        var_A_vals = [stats['var_A'] for stats in energy_stats]
+        var_A_vals = [stats['var_lambda_A'] for stats in energy_stats]
         ax_var_A.plot(energy_times, var_A_vals, 'g-', label='Current Method', linewidth=2)
         ax_var_A.set_xlabel('Time')
-        ax_var_A.set_ylabel('Var[A]')
+        ax_var_A.set_ylabel('Var[A] under equilibrium distribution')
         ax_var_A.set_title('Gauge Potential Variance')
         ax_var_A.legend()
         ax_var_A.grid(True, alpha=0.3)
@@ -810,9 +811,9 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         ax_var_dH_dlam.legend()
         ax_var_dH_dlam.grid(True, alpha=0.3)
     
-    # Plot parameter history if available (second diagnostic row, spanning remaining columns)
+    # Plot parameter history if available (second diagnostic row, left side)
     if param_history and len(param_history) > 0:
-        ax_params = fig.add_subplot(gs[diagnostic_row_start + 1, 2:])
+        ax_params = fig.add_subplot(gs[diagnostic_row_start + 1, 2])
         
         # Handle different parameter types
         if isinstance(param_history[0], jnp.ndarray):
@@ -852,6 +853,167 @@ def create_distributions_plot(snapshots, delta_t, make_V, ansatz_dir, potential_
         ax_params.set_title('Parameter History')
         ax_params.legend()
         ax_params.grid(True, alpha=0.3)
+    
+    # Display final learned coefficients as a plot (second diagnostic row, right side)
+    # Use param_history if available, otherwise use ansatz.get_params_for_saving()
+    has_params = False
+    final_params = None
+    
+    if param_history and len(param_history) > 0:
+        final_params = param_history[-1]
+        has_params = True
+    elif ansatz is not None and hasattr(ansatz, 'get_params_for_saving'):
+        # Fallback to ansatz.get_params_for_saving for cases where param_history wasn't saved
+        final_params = ansatz.get_params_for_saving()
+        has_params = True
+    
+    if ansatz is not None and has_params and final_params is not None:
+        ax_coeffs = fig.add_subplot(gs[diagnostic_row_start + 1, 3])
+        
+        # Create coefficient plot based on ansatz type
+        if isinstance(ansatz, PolynomialAnsatz):
+            # Polynomial ansatz - plot each coefficient
+            descriptions = ansatz.get_term_description()
+            # Extract just the term part (after the colon)
+            term_labels = [desc.split(': ')[1] for desc in descriptions]
+            
+            # Plot as vertical lines
+            x_positions = np.arange(len(final_params))
+            ax_coeffs.stem(x_positions, final_params, linefmt='b-', markerfmt='bo', basefmt='k-')
+            ax_coeffs.axhline(y=0, color='k', linestyle='--', alpha=0.3, linewidth=0.5)
+            ax_coeffs.set_xlabel('Term Index')
+            ax_coeffs.set_ylabel('Coefficient Value')
+            ax_coeffs.set_title('Learned Coefficients (Final)')
+            ax_coeffs.grid(True, alpha=0.3, axis='y')
+            
+            # Use only the labels that match the number of parameters
+            if len(term_labels) >= len(final_params):
+                # Use the first N labels to match the number of parameters
+                term_labels = term_labels[:len(final_params)]
+            else:
+                # If we have fewer labels than parameters, create generic labels
+                term_labels = [f'Term {i}' for i in range(len(final_params))]
+            
+            # Add labels for key terms (show every nth label to avoid clutter)
+            n_labels = min(10, len(term_labels))  # Show at most 10 labels
+            if len(term_labels) <= n_labels:
+                # Show all labels if we have few enough
+                selected_positions = x_positions
+                selected_labels = term_labels
+            else:
+                # Show every nth label to get approximately n_labels
+                step = max(1, len(term_labels) // n_labels)
+                selected_positions = x_positions[::step]
+                selected_labels = term_labels[::step]
+            ax_coeffs.set_xticks(selected_positions)
+            ax_coeffs.set_xticklabels(selected_labels, rotation=45, ha='right', fontsize=8)
+        
+        elif isinstance(ansatz, HermiteAnsatz):
+            # Hermite ansatz - always show both f(q) and g(p) coefficients in separate subplots
+            # Remove the main subplot and create two side-by-side subplots
+            ax_coeffs.remove()
+            
+            # Create two subplots in the same space
+            gs_sub = gs[diagnostic_row_start + 1, 3].subgridspec(1, 2, wspace=0.3)
+            ax_f = fig.add_subplot(gs_sub[0, 0])
+            ax_g = fig.add_subplot(gs_sub[0, 1])
+            
+            # Get parameters from the new dictionary structure
+            param_dict = ansatz.get_params_for_saving()
+            f_params = param_dict['f_params']
+            g_params = param_dict['g_params']
+            
+            print("Hermite parameters:")
+            print(f"  f_params: {f_params}")
+            print(f"  g_params: {g_params}")
+            print()
+            
+            # Plot f(q) coefficients on the left
+            if f_params is not None:
+                if hasattr(ansatz.f_ansatz, 'get_term_description'):
+                    descriptions = ansatz.f_ansatz.get_term_description()
+                    term_labels = [desc.split(': ')[1] for desc in descriptions]
+                else:
+                    # For PolynomialFAnsatz, generate q-only term labels
+                    term_labels = ['1'] + [f'q^{i}' if i > 1 else 'q' for i in range(1, len(f_params))]
+                
+                x_positions_f = np.arange(len(f_params))
+                ax_f.stem(x_positions_f, f_params, linefmt='b-', markerfmt='bo', basefmt='k-')
+                ax_f.axhline(y=0, color='k', linestyle='--', alpha=0.3, linewidth=0.5)
+                ax_f.set_xlabel('f(q) Term', fontsize=8)
+                ax_f.set_ylabel('Coefficient', fontsize=8)
+                ax_f.set_title('f(q) Coefficients', fontsize=9)
+                ax_f.grid(True, alpha=0.3, axis='y')
+                
+                # Show labels for f(q) terms
+                if len(term_labels) > 5:
+                    n_labels = 5  # Show at most 5 labels
+                    step = max(1, len(term_labels) // n_labels)
+                    ax_f.set_xticks(x_positions_f[::step])
+                    ax_f.set_xticklabels(term_labels[::step], rotation=45, ha='right', fontsize=7)
+                else:
+                    ax_f.set_xticks(x_positions_f)
+                    ax_f.set_xticklabels(term_labels, rotation=45, ha='right', fontsize=7)
+                ax_f.tick_params(labelsize=8)
+            else:
+                ax_f.text(0.5, 0.5, 'f(q) not available', ha='center', va='center', transform=ax_f.transAxes)
+                ax_f.set_title('f(q) Coefficients', fontsize=9)
+            
+            # Plot g(p) Hermite coefficients on the right
+            labels_g = [f'φ_{2*k+1}' for k in range(len(g_params))]
+            x_positions_g = np.arange(len(g_params))
+            
+            ax_g.stem(x_positions_g, g_params, linefmt='r-', markerfmt='ro', basefmt='k-')
+            ax_g.axhline(y=0, color='k', linestyle='--', alpha=0.3, linewidth=0.5)
+            ax_g.set_xlabel('Hermite Order', fontsize=8)
+            ax_g.set_ylabel('Coefficient α̃ᵢ', fontsize=8)
+            ax_g.set_title('g(p) Hermite Coeffs', fontsize=9)
+            ax_g.set_xticks(x_positions_g)
+            ax_g.set_xticklabels(labels_g, fontsize=8)
+            ax_g.grid(True, alpha=0.3, axis='y')
+            ax_g.tick_params(labelsize=8)
+            
+            # Ensure proper axis limits for the stem plot
+            y_min = min(0, np.min(g_params) - 0.1)
+            y_max = max(0, np.max(g_params) + 0.1)
+            ax_g.set_ylim(y_min, y_max)
+            
+            # Add text annotation showing the actual values
+            for i, (x, y) in enumerate(zip(x_positions_g, g_params)):
+                ax_g.text(x, y + 0.05, f'{y:.3f}', ha='center', va='bottom', fontsize=7)
+        
+        elif isinstance(ansatz, NeuralNetworkAnsatz):
+            # Neural network - show parameter distribution as histogram
+            param_arrays = eqx.filter(final_params, eqx.is_array)
+            all_params = []
+            for param in jax.tree_leaves(param_arrays):
+                all_params.extend(param.flatten())
+            
+            ax_coeffs.hist(all_params, bins=50, color='purple', alpha=0.7, edgecolor='black')
+            ax_coeffs.set_xlabel('Parameter Value')
+            ax_coeffs.set_ylabel('Count')
+            ax_coeffs.set_title('Parameter Distribution')
+            ax_coeffs.grid(True, alpha=0.3, axis='y')
+            
+            # Add statistics as text
+            total_params = len(all_params)
+            param_mean = np.mean(all_params)
+            param_std = np.std(all_params)
+            stats_text = f'N={total_params}\nμ={param_mean:.4f}\nσ={param_std:.4f}'
+            ax_coeffs.text(0.98, 0.98, stats_text, transform=ax_coeffs.transAxes,
+                          fontsize=9, verticalalignment='top', horizontalalignment='right',
+                          bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        else:
+            # Generic case - plot as stem plot
+            if isinstance(final_params, jnp.ndarray):
+                x_positions = np.arange(len(final_params))
+                ax_coeffs.stem(x_positions, final_params, linefmt='g-', markerfmt='go', basefmt='k-')
+                ax_coeffs.axhline(y=0, color='k', linestyle='--', alpha=0.3, linewidth=0.5)
+                ax_coeffs.set_xlabel('Parameter Index')
+                ax_coeffs.set_ylabel('Value')
+                ax_coeffs.set_title('Learned Coefficients')
+                ax_coeffs.grid(True, alpha=0.3, axis='y')
     
     plt.tight_layout()
     # Extract method name from potential_name (e.g., "gaussian_annealing_cd_unweighted_leapfrog" -> "cd_unweighted")
@@ -1198,7 +1360,7 @@ def create_all_plots(successful_simulations, system_name, ansatz, delta_t, make_
         # Create detailed distribution plots for naive methods
         naive_methods = ['naive_unweighted', 'naive_weighted']
         for method in naive_methods:
-            if method in successful_simulations:
+            if method in successful_simulations and successful_simulations[method] is not None:
                 print(f"Creating detailed distribution plot for {method.replace('_', ' ')} case...")
                 
                 # Use snapshots directly - times are already stored in snapshots['times']
@@ -1251,19 +1413,21 @@ def create_unified_distributions_plot(successful_simulations, delta_t, make_V, a
             # Get saved times if available
             # Get times and lambda values from snapshots
             snapshots = successful_simulations[method]
-            if 'times' in snapshots and len(snapshots['times']) > 0:
+            if not isinstance(snapshots, dict) or snapshots is None:
+                continue
+            if 'times' in snapshots and snapshots['times'] is not None and len(snapshots['times']) > 0:
                 # Use saved times from snapshots
                 times = snapshots['times']
-                lambda_values = snapshots['lam']
+                lambda_values = snapshots['lam'] if 'lam' in snapshots and snapshots['lam'] is not None else [None]*len(times)
             else:
-                # Cannot plot without saved times
-                raise ValueError(f"Method {method} missing 'times' key - cannot create unified distributions plot")
+                # Skip methods without times
+                continue
             
             # Add all times to the set (convert JAX arrays to Python types)
             for t, lam in zip(times, lambda_values):
                 # Convert JAX arrays to Python types for hashing
                 t_python = float(t) if hasattr(t, 'item') else t
-                lam_python = float(lam) if hasattr(lam, 'item') else lam
+                lam_python = float(lam) if (lam is not None and hasattr(lam, 'item')) else lam
                 all_times.add(t_python)
                 all_lambda_values[t_python] = lam_python
     
@@ -1288,7 +1452,7 @@ def create_unified_distributions_plot(successful_simulations, delta_t, make_V, a
     for method in methods:
         if method in successful_simulations:
             snapshots = successful_simulations[method]
-            if 'particles' in snapshots:
+            if isinstance(snapshots, dict) and snapshots is not None and 'particles' in snapshots:
                 all_qs.extend(snapshots['particles'])
     
     if all_qs:
@@ -1320,8 +1484,12 @@ def create_unified_distributions_plot(successful_simulations, delta_t, make_V, a
             if method in successful_simulations:
                 snapshots = successful_simulations[method]
                 
+                # Skip if snapshots is None or not a dict
+                if not isinstance(snapshots, dict) or snapshots is None:
+                    continue
+                
                 # Find the closest time point in this method's data
-                if 'times' in snapshots and len(snapshots['times']) > 0:
+                if 'times' in snapshots and snapshots['times'] is not None and len(snapshots['times']) > 0:
                     # Use saved times from snapshots
                     method_times = snapshots['times']
                 else:
@@ -1371,7 +1539,10 @@ def create_unified_distributions_plot(successful_simulations, delta_t, make_V, a
                 if times_key in successful_simulations:
                     method_times = successful_simulations[times_key]
                 else:
-                    method_times = np.arange(len(snapshots['particles'])) * delta_t
+                    if isinstance(snapshots, dict) and snapshots is not None and 'particles' in snapshots:
+                        method_times = np.arange(len(snapshots['particles'])) * delta_t
+                    else:
+                        continue
                 
                 # Check if this method has data near this time
                 if 'times' in snapshots and len(snapshots['times']) > 0:
@@ -1525,6 +1696,11 @@ def create_naive_distributions_plot(snapshots, delta_t, make_V, plot_dir, potent
             ax_ess.set_xlabel('Time')
             ax_ess.set_ylabel('ESS')
             ax_ess.set_title('Effective Sample Size')
+            # Overlay resampling events if available
+            if 'resampling_events' in snapshots and len(snapshots['resampling_events']) > 0:
+                resampling_times = snapshots['resampling_events']
+                ax_ess.vlines(resampling_times, ymin=min(ess_vals) if len(ess_vals) > 0 else 0, ymax=max(ess_vals) if len(ess_vals) > 0 else 1,
+                              colors='red', linestyles='dashed', alpha=0.7, label='Resampling')
             ax_ess.legend()
             ax_ess.grid(True, alpha=0.3)
         else:
@@ -1961,106 +2137,160 @@ if __name__ == "__main__":
     from ansatze import PolynomialFAnsatz
     
     # ===== CONFIGURATION =====
-    system_name = "double_well"
+    # You can specify multiple systems and integrator types to process
+    system_names = ["double_well", "gaussian_moving_mean", "gaussian_annealing"]  # List of systems to plot
     ansatz_type = "polynomial"
-    integrator_type = "leapfrog"
-    
-    # Get system configuration
-    make_T, make_V, system_description, dim = get_system(system_name)
-    print(f"System: {system_name}")
-    print(f"Description: {system_description}")
-    print(f"Dimension: {dim}")
-    
-    # Create ansatz
-    if ansatz_type == "polynomial":
-        ansatz = PolynomialAnsatz(max_degree=5, dim=dim)
-    elif ansatz_type == "hermite":
-        f_ansatz = PolynomialFAnsatz(max_degree=0, dim=dim)
-        f_ansatz = eqx.tree_at(lambda m: m.params, f_ansatz, f_ansatz.params.at[0].set(1.0))
-        ansatz = HermiteAnsatz(f_ansatz=f_ansatz, max_order=5, dim=dim)
-    else:
-        raise ValueError(f"Unknown ansatz type: {ansatz_type}")
-    
-    # Load saved data
-    successful_simulations = {}
-    import os
+    integrator_types = ["leapfrog"]  # List of integrator types to process
     
     # Determine base data directory
     base_data_dir = '../data' if os.path.basename(os.getcwd()) == 'src' else 'data'
     
-    # Try new organized structure first, then fall back to flat structure
-    organized_data_dir = f'{base_data_dir}/{ansatz_type}/{system_name}/{integrator_type}'
-    
-    # Define methods to load
-    method_definitions = [
-        ('naive_unweighted', 'naive_unweighted'),
-        ('naive_weighted', 'naive_weighted'),
-        (f'cd_unweighted_{integrator_type}', 'cd_unweighted'),
-        (f'cd_weighted_{integrator_type}', 'cd_weighted'),
-    ]
-    
-    for method_key, method_file in method_definitions:
-        # Try new organized structure first
-        organized_filepath = f'{organized_data_dir}/{method_file}.pkl'
-        flat_filepath = f'{base_data_dir}/{system_name}_{method_key}.pkl'
-        
-        loaded = False
-        for filepath in [organized_filepath, flat_filepath]:
-            try:
-                with open(filepath, 'rb') as f:
-                    data = pickle.load(f)
-                    successful_simulations[method_key] = data['snapshots']
-                    if 'loss_histories' in data and data['loss_histories'] is not None:
-                        successful_simulations[f'loss_histories_{method_key}'] = data['loss_histories']
-                    if 'param_history' in data and data['param_history'] is not None:
-                        successful_simulations[f'param_history_{method_key}'] = data['param_history']
-                    print(f"✓ Loaded {method_key} from {filepath}")
-                    loaded = True
-                    break
-            except FileNotFoundError:
+    # Loop over all system and integrator combinations
+    for system_name in system_names:
+        for integrator_type in integrator_types:
+            print(f"\n{'='*80}")
+            print(f"Processing: {system_name} with {integrator_type}")
+            print(f"{'='*80}\n")
+            
+            # Get system configuration
+            make_T, make_V, system_description, dim = get_system(system_name)
+            print(f"System: {system_name}")
+            print(f"Description: {system_description}")
+            print(f"Dimension: {dim}")
+            
+            # Create ansatz
+            if ansatz_type == "polynomial":
+                ansatz = PolynomialAnsatz(max_degree=5, dim=dim)
+            elif ansatz_type == "hermite":
+                f_ansatz = PolynomialFAnsatz(max_degree=0, dim=dim)
+                f_ansatz = eqx.tree_at(lambda m: m.params, f_ansatz, f_ansatz.params.at[0].set(1.0))
+                ansatz = HermiteAnsatz(f_ansatz=f_ansatz, max_order=5, dim=dim)
+            else:
+                raise ValueError(f"Unknown ansatz type: {ansatz_type}")
+            
+            # Load saved data
+            successful_simulations = {}
+            
+            # Define methods to load
+            method_definitions = [
+                ('naive_unweighted', 'naive_unweighted'),
+                ('naive_weighted', 'naive_weighted'),
+                (f'cd_unweighted_{integrator_type}', 'cd_unweighted'),
+                (f'cd_weighted_{integrator_type}', 'cd_weighted'),
+            ]
+            
+            for method_key, method_file in method_definitions:
+                # Choose directory based on method type
+                method_dir = 'naive' if method_key.startswith('naive') else ansatz_type
+                organized_data_dir = f'{base_data_dir}/{method_dir}/{system_name}/{integrator_type}'
+                
+                # Try new organized structure first, then fallback
+                organized_filepath = f'{organized_data_dir}/{method_file}.pkl'
+                flat_filepath = f'{base_data_dir}/{system_name}_{method_key}.pkl'
+                
+                loaded = False
+                for filepath in [organized_filepath, flat_filepath]:
+                    try:
+                        with open(filepath, 'rb') as f:
+                            data = pickle.load(f)
+                            successful_simulations[method_key] = data['snapshots']
+                            if 'loss_histories' in data and data['loss_histories'] is not None:
+                                successful_simulations[f'loss_histories_{method_key}'] = data['loss_histories']
+                            if 'param_history' in data and data['param_history'] is not None:
+                                successful_simulations[f'param_history_{method_key}'] = data['param_history']
+                            print(f"✓ Loaded {method_key} from {filepath}")
+                            loaded = True
+                            break
+                    except FileNotFoundError:
+                        continue
+                    except Exception as e:
+                        print(f"✗ Error loading {filepath}: {e}")
+                        continue
+                
+                if not loaded:
+                    print(f"✗ Could not find data for {method_key}")
+            
+            # Load ansatz parameters if available (needed when param_history is empty)
+            for method_key, method_file in method_definitions:
+                if method_key in successful_simulations:
+                    # Choose directory based on method type
+                    method_dir = 'naive' if method_key.startswith('naive') else ansatz_type
+                    organized_data_dir = f'{base_data_dir}/{method_dir}/{system_name}/{integrator_type}'
+                    
+                    # Try to load the saved parameters
+                    organized_filepath = f'{organized_data_dir}/{method_file}.pkl'
+                    flat_filepath = f'{base_data_dir}/{system_name}_{method_key}.pkl'
+                    
+                    for filepath in [organized_filepath, flat_filepath]:
+                        try:
+                            with open(filepath, 'rb') as f:
+                                data = pickle.load(f)
+                                if 'ansatz_params' in data and data['ansatz_params'] is not None:
+                                    # Update ansatz with saved parameters
+                                    if ansatz_type == "polynomial":
+                                        ansatz = eqx.tree_at(lambda m: m.params, ansatz, data['ansatz_params'])
+                                    elif ansatz_type == "hermite":
+                                        # For Hermite: handle new dictionary structure
+                                        if isinstance(data['ansatz_params'], dict):
+                                            # New dictionary structure
+                                            f_params = data['ansatz_params']['f_params']
+                                            g_params = data['ansatz_params']['g_params']
+                                            
+                                            # Update f_ansatz parameters
+                                            if f_params is not None:
+                                                ansatz = eqx.tree_at(lambda m: m.f_ansatz.params, ansatz, f_params)
+                                            # Update g(p) coefficients (alpha)
+                                            if g_params is not None:
+                                                ansatz = eqx.tree_at(lambda m: m.alpha_coeffs, ansatz, g_params)
+                                    
+                                break
+                        except FileNotFoundError:
+                            continue
+                        except Exception as e:
+                            print(f"✗ Error loading parameters from {filepath}: {e}")
+                            continue
+            
+            if len(successful_simulations) == 0:
+                print(f"⚠️  No data files found for {system_name} with {integrator_type}, skipping...")
                 continue
-            except Exception as e:
-                print(f"✗ Error loading {filepath}: {e}")
-                continue
-        
-        if not loaded:
-            print(f"✗ Could not find data for {method_key}")
+            
+            # Get delta_t and detect actual dimension
+            first_key = [k for k in successful_simulations.keys() if not k.startswith('loss_')][0]
+            first_snapshots = successful_simulations[first_key]
+            if isinstance(first_snapshots, dict) and ('times' in first_snapshots) and first_snapshots['times'] is not None:
+                times = first_snapshots['times']
+                delta_t = float(times[1] - times[0]) if len(times) > 1 else 0.3
+            else:
+                delta_t = 0.3
+            
+            if isinstance(first_snapshots, dict) and ('particles' in first_snapshots) and first_snapshots['particles'] is not None and len(first_snapshots['particles']) > 0:
+                first_particles = first_snapshots['particles'][0]
+                if hasattr(first_particles, 'shape'):
+                    if len(first_particles.shape) == 1 or first_particles.shape[1] == 1:
+                        actual_dim = 1
+                    else:
+                        actual_dim = first_particles.shape[1]
+                    if actual_dim != dim:
+                        print(f"⚠️  Using dim={actual_dim} from data (config said {dim})")
+                        dim = actual_dim
+            
+            print(f"\nUsing delta_t={delta_t}, dim={dim}")
+            print(f"Found {len([k for k in successful_simulations.keys() if not k.startswith('loss_')])} methods\n")
+            
+            # Create all plots
+            create_all_plots(
+                successful_simulations=successful_simulations,
+                system_name=system_name,
+                ansatz=ansatz,
+                delta_t=delta_t,
+                make_V=make_V,
+                make_T=make_T,
+                dim=dim,
+                integrator_type=integrator_type
+            )
+            
+            print(f"\n✓ All plots created for {system_name} with {integrator_type}!")
     
-    if len(successful_simulations) == 0:
-        print("No data files found.")
-        sys.exit(1)
-    
-    # Get delta_t and detect actual dimension
-    first_key = [k for k in successful_simulations.keys() if not k.startswith('loss_')][0]
-    if 'times' in successful_simulations[first_key]:
-        times = successful_simulations[first_key]['times']
-        delta_t = float(times[1] - times[0]) if len(times) > 1 else 0.3
-    else:
-        delta_t = 0.3
-    
-    if 'particles' in successful_simulations[first_key] and len(successful_simulations[first_key]['particles']) > 0:
-        first_particles = successful_simulations[first_key]['particles'][0]
-        if len(first_particles.shape) == 1 or first_particles.shape[1] == 1:
-            actual_dim = 1
-        else:
-            actual_dim = first_particles.shape[1]
-        if actual_dim != dim:
-            print(f"⚠️  Using dim={actual_dim} from data (config said {dim})")
-            dim = actual_dim
-    
-    print(f"\nUsing delta_t={delta_t}, dim={dim}")
-    print(f"Found {len([k for k in successful_simulations.keys() if not k.startswith('loss_')])} methods\n")
-    
-    # Create all plots
-    create_all_plots(
-        successful_simulations=successful_simulations,
-        system_name=system_name,
-        ansatz=ansatz,
-        delta_t=delta_t,
-        make_V=make_V,
-        make_T=make_T,
-        dim=dim,
-        integrator_type=integrator_type
-    )
-    
-    print("\n✓ All plots created!") 
+    print("\n" + "="*80)
+    print("✓ All systems and integrators processed!")
+    print("="*80) 

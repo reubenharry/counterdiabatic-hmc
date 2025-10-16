@@ -63,7 +63,7 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
     if A_ansatz.ansatz_type == 'hermite':
         print(A_ansatz.f_ansatz(jnp.array([1.0])), "A_ansatz.f_ansatz 1 orig")
         return fit_hermite_ansatz(
-            lam=lam, samples=samples, make_T=make_T, make_V=make_V, hermite_ansatz=A_ansatz, num_iters=5, lr=lr, use_regularization=use_regularization, weights=weights)
+            lam=lam, samples=samples, make_T=make_T, make_V=make_V, hermite_ansatz=A_ansatz, num_iters=50, lr=lr, use_regularization=use_regularization, weights=weights)
     
     # Check input samples for NaNs
     check_nans("input_samples", samples)
@@ -321,28 +321,34 @@ def fit_g_at_fixed_f(lam, samples, make_T, make_V, hermite_ansatz, use_regulariz
     regularization = 1e-6
     diagonal_reg = diagonal + regularization
     
-    try:
-        alpha_optimized = scipy.linalg.solveh_banded(
-            2* jnp.vstack([
-                jnp.concatenate([jnp.array([0]), upper_diagonal]),  # Upper diagonal
-                diagonal_reg,  # Main diagonal with regularization
-            ]),
-            -b_vector
-        )
-    except scipy.linalg.LinAlgError:
-        print("    ⚠️  Matrix not positive definite, using regular solve...")
-        # Fall back to regular solve with full matrix
-        M = jnp.zeros((num_coeffs, num_coeffs))
-        for i in range(num_coeffs):
-            M = M.at[i, i].set(diagonal_reg[i])
-            if i < num_coeffs - 1:
-                M = M.at[i, i+1].set(upper_diagonal[i])
-                M = M.at[i+1, i].set(upper_diagonal[i])
+    # try:
+    alpha_optimized = scipy.linalg.solveh_banded(
+        2* jnp.vstack([
+            jnp.concatenate([jnp.array([0]), upper_diagonal]),  # Upper diagonal
+            diagonal_reg,  # Main diagonal with regularization
+        ]),
+        -b_vector
+    )
+    # except scipy.linalg.LinAlgError:
+    #     raise Exception("Matrix not positive definite")
+    #     print("    ⚠️  Matrix not positive definite, using regular solve...")
+        # # Fall back to regular solve with full matrix
+        # M = jnp.zeros((num_coeffs, num_coeffs))
+        # for i in range(num_coeffs):
+        #     M = M.at[i, i].set(diagonal_reg[i])
+        #     if i < num_coeffs - 1:
+        #         M = M.at[i, i+1].set(upper_diagonal[i])
+        #         M = M.at[i+1, i].set(upper_diagonal[i])
         
-        alpha_optimized = jax.scipy.linalg.solve(M, -b_vector)
+        # alpha_optimized = jax.scipy.linalg.solve(M, -b_vector)
+
+    current_alpha_coeffs = hermite_ansatz.alpha_coeffs
+    # new alpha should be a small step in the direction of the optimized alpha
+    new_alpha_coeffs = current_alpha_coeffs + 0.1 * (alpha_optimized - current_alpha_coeffs)
+    # new_alpha_coeffs = alpha_optimized
     
     # Update the ansatz with optimized g(p) coefficients
-    hermite_ansatz = eqx.tree_at(lambda m: m.alpha_coeffs, hermite_ansatz, alpha_optimized)
+    hermite_ansatz = eqx.tree_at(lambda m: m.alpha_coeffs, hermite_ansatz, new_alpha_coeffs)
     
     # Compute final loss
     qp_batch = jnp.array(samples)
@@ -382,15 +388,16 @@ def fit_hermite_ansatz(lam, samples, make_T, make_V, hermite_ansatz, num_iters, 
 
     for i in range(num_iters):
     
-        # hermite_ansatz, f_losses = fit_f_at_fixed_g(
-        #     lam, samples, make_T, make_V, hermite_ansatz, 
-        #     num_steps=1000, lr=lr, use_regularization=use_regularization, weights=weights
-        # )
+        hermite_ansatz, f_losses = fit_f_at_fixed_g(
+            lam, samples, make_T, make_V, hermite_ansatz, 
+            num_steps=10, lr=lr, use_regularization=use_regularization, weights=weights
+        )
         
         hermite_ansatz, final_loss = fit_g_at_fixed_f(
             lam, samples, make_T, make_V, hermite_ansatz, 
             use_regularization=use_regularization, weights=weights
         )
+        print(hermite_ansatz.alpha_coeffs, "alpha_coeffs\n\n")
         loss_history.append(final_loss)
     
     print_optimization_summary("g(p) optimization", "N/A", final_loss)

@@ -20,9 +20,11 @@ def main():
     
     # ===== CONFIGURATION =====
     # Choose your system
-    system_name = "double_well"  # Options: see SYSTEMS in src/
+    system_name = "gaussian_annealing"  # Options: see SYSTEMS in src/
     # ansatz_type = 'polynomial' # Options: "polynomial", "neural_network", "analytic", "hermite"
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
+    ansatze = ['polynomial']
+    weightings = [False]
     
     # Simulation parameters
     M = 4000  # Number of particles (reduced for testing)
@@ -30,10 +32,10 @@ def main():
     delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
     momentum_refresh_interval = 2  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
-    num_iters = 10000  # Optimization iterations per step (reduced for testing)
+    num_iters = 100000  # Optimization iterations per step (reduced for testing)
     learning_rate = 1e-4  # Learning rate for optimization
     equilibration_steps = 0  # Equilibration steps after each CD step (reduced for testing)
-    ess_threshold = 0.5  # Effective sample size threshold for resampling
+    ess_threshold = None  # Effective sample size threshold for resampling
     
     # Adaptive step size settings (for CD simulations only)
     adaptive_step_size = False  # Set to True to enable adaptive delta_t = K/sqrt(Var[A])
@@ -73,7 +75,7 @@ def main():
         "hermite": hermite_ansatz
     }
 
-    for ansatz_type, use_weights in itertools.product(['polynomial', None], [False, True]):
+    for ansatz_type, use_weights in itertools.product(ansatze, weightings):
 
         A_ansatz = ansatz_dict.get(ansatz_type)
         
@@ -100,16 +102,18 @@ def main():
             )
 
         # save simulation data
+        ansatz_params = A_ansatz.get_params_for_saving() if A_ansatz is not None else None
+        
         save_simulation_data(
             snapshots, 
             system_name, 
             f'{"cd" if A_ansatz is not None else "naive"}_{"weighted" if use_weights else "unweighted"}', 
             delta_t, 
             lam_fn, 
-            A_ansatz.params if A_ansatz is not None else None, 
+            ansatz_params, 
             loss_histories, 
             param_history,
-            ansatz_type=ansatz_type,
+            ansatz_type="naive" if A_ansatz is None else ansatz_type,
             integrator_type=integrator_type
         )
        

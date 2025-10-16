@@ -131,6 +131,10 @@ class PolynomialAnsatz(A_ansatz):
             
             descriptions.append(f"{coeff_name}: {term_str}")
         return descriptions
+    
+    def get_params_for_saving(self):
+        """Return parameters in a format suitable for saving."""
+        return self.params
 
 class PolynomialFAnsatz(F_ansatz):
     """Polynomial ansatz for f(q) (position-only)."""
@@ -179,6 +183,25 @@ class PolynomialFAnsatz(F_ansatz):
             result += term
         
         return result
+    
+    def get_term_description(self):
+        """Return a description of what each parameter represents."""
+        descriptions = []
+        for coeff_name, q_powers in self.terms:
+            term_str = ""
+            
+            # Add q terms
+            for d in range(self.dim):
+                if q_powers[d] > 0:
+                    if term_str:
+                        term_str += " "
+                    term_str += f"q_{d}^{q_powers[d]}" if q_powers[d] > 1 else f"q_{d}"
+            
+            if not term_str:
+                term_str = "1"
+            
+            descriptions.append(f"{coeff_name}: {term_str}")
+        return descriptions
 
 class AnalyticAnsatz(A_ansatz):
     """
@@ -209,6 +232,10 @@ class AnalyticAnsatz(A_ansatz):
         else:
             # For multi-dimensional case, return the first component
             return -(q * p)[0]
+    
+    def get_params_for_saving(self):
+        """Return parameters in a format suitable for saving."""
+        return self.params
 
 class NeuralNetworkAnsatz(A_ansatz):
     """Neural network ansatz for the gauge potential."""
@@ -255,6 +282,16 @@ class NeuralNetworkAnsatz(A_ansatz):
         result = x.squeeze()
         
         return result
+    
+    def get_params_for_saving(self):
+        """Return parameters in a format suitable for saving."""
+        # For neural networks, we need to extract all parameters
+        param_arrays = []
+        for layer in self.layers:
+            if isinstance(layer, eqx.nn.Linear):
+                param_arrays.append(layer.weight)
+                param_arrays.append(layer.bias)
+        return param_arrays
 
 
 
@@ -385,6 +422,25 @@ class HermiteAnsatz(A_ansatz):
         g_p = evaluate_g(p, self.alpha_coeffs, self.max_order)
         
         return f_q * g_p
+    
+    def get_params_for_saving(self):
+        """
+        Return all parameters as a dictionary with separate f_params and g_params.
+        This provides clear separation between f(q) and g(p) components.
+        """
+        if hasattr(self.f_ansatz, 'params'):
+            return {
+                'f_params': self.f_ansatz.params,
+                'g_params': self.alpha_coeffs
+            }
+        else:
+            # If f_ansatz doesn't have params (e.g., neural network), just return g_params
+            return {
+                'f_params': None,
+                'g_params': self.alpha_coeffs
+            }
+    
+
     
     def get_alpha_coeffs(self):
         """Return the current Hermite coefficients."""

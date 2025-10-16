@@ -206,13 +206,14 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
     def cd_leapfrog(q, p, eps, t=None):
         
         
-        q, p = leapfrog(make_p_update(make_V(lam)), make_x_update(make_T(lam)), eps, q, p)
+        q, p = leapfrog(make_p_update(make_V(lam)), make_x_update(make_T(lam)), eps/2, q, p)
+        # return q, p, 0
 
         q_half = q + 0.5 * eps * (dot_lam * jnp.clip(dA_dp_scalar(q, p), -clip_value, clip_value))
         p_new = p - eps * (dot_lam * jnp.clip(dA_dq_scalar(q_half, p), -clip_value, clip_value))
         q_new = q_half + 0.5 * eps * (dot_lam * jnp.clip(dA_dp_scalar(q_half, p_new), -clip_value, clip_value))
 
-        q_new, p_new = leapfrog(make_p_update(make_V(lam_next)), make_x_update(make_T(lam_next)), eps, q_new, p_new)
+        q_new, p_new = leapfrog(make_p_update(make_V(lam_next)), make_x_update(make_T(lam_next)), eps/2, q_new, p_new)
         
         log_weight = compute_counterdiabatic_work(q, p, q_new, p_new, lam, lam_next, A_ansatz, make_T, make_V)
 

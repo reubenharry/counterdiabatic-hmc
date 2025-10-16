@@ -50,7 +50,7 @@ def multinomial_resample(q, p, log_weights, rng_key, M):
     weights = jnp.exp(normalize_log_weights(log_weights))
     
     # Generate multinomial samples
-    indices = jax.random.choice(rng_key, M, shape=(M,), p=weights, replace=True)
+    indices = jax.random.choice(key=rng_key, a=M, shape=(M,), p=weights, replace=True)
     
     # Resample particles
     q_resampled = q[indices]

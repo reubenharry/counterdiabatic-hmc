@@ -6,7 +6,7 @@ from src.utils import check_nans, compute_energy_stats, compute_expectation_over
 
 from .physics import make_cd_leapfrog_step, make_cd_implicit_midpoint_step, make_leapfrog_step, make_cd_euler_step, partially_refresh_momentum, with_maruyama
 from .fitting import fit_gauge_potential, calculate_gauge_potential_loss
-from .ansatze import AnalyticAnsatz, PolynomialAnsatz, NeuralNetworkAnsatz
+from .ansatze import AnalyticAnsatz, PolynomialAnsatz, NeuralNetworkAnsatz, HermiteAnsatz
 
 def initialize(delta_t, M, make_T, make_V, key, dim, lam_fn):
     snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': []}
@@ -117,6 +117,7 @@ def smc(
                 print(f"  NaN losses at iterations: {nan_indices}")
             
             loss_histories.append(loss_history)
+            print(A_ansatz.params)
         
         # Compute energy statistics at every timestep
         stats = compute_energy_stats(q, p, lam_k, make_T, make_V, A_ansatz, log_weights)
@@ -144,7 +145,6 @@ def smc(
 
             snapshots['particles'].append(np.array(q))
             snapshots['weights'].append(np.array(log_weights))
-            snapshots['resampling_events'].append(resampling_count)
             snapshots['lam'].append(lam_k)
             snapshots['times'].append(t_k)
 
@@ -162,6 +162,14 @@ def smc(
             elif A_ansatz is not None and isinstance(A_ansatz, AnalyticAnsatz):
                 param_history.append(np.array(A_ansatz.params))
                 check_nans("analytic_params", A_ansatz.params, k)
+            elif A_ansatz is not None and isinstance(A_ansatz, HermiteAnsatz):
+                # For HermiteAnsatz, save the parameters as a dictionary
+                param_dict = A_ansatz.params
+                param_history.append(param_dict)
+                # Check for NaNs in both f_params and g_params
+                if param_dict['f_params'] is not None:
+                    check_nans("hermite_f_params", param_dict['f_params'], k)
+                check_nans("hermite_g_params", param_dict['g_params'], k)
 
             snapshots['detailed_energy_stats'] = detailed_energy_stats
             snapshots['detailed_times'] = detailed_times
@@ -171,7 +179,94 @@ def smc(
         # Update previous energy values for next iteration
         prev_H_vals = stats['H_vals']
         
-        # # 1. Run equilibration at current time (if enabled and taking snapshots)
+       
+            
+        
+        # Record parameters for counterdiabatic simulations (do this before potential equilibration)
+            
+        
+        # Use adaptive step size for time progression if enabled
+        # step_delta_t = current_delta_t if simulation_type == 'cd' and adaptive_step_size else delta_t
+        lam_k1 = float(lam_fn(t_k + current_delta_t))
+        dot_lam_k1 = float(dot_lam_fn(t_k + current_delta_t))
+        
+  
+        if A_ansatz is None:
+            step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t ,t: (make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t), in_axes=(0, 0, None, None, None, None, None, None))
+        # TODO vvv
+        # else:  # cd
+             # Compute adaptive step size for CD if enabled (at beginning of step)
+            #  current_delta_t = delta_t
+            # if adaptive_step_size:
+            #     var_A = stats['var_A']
+            #     if var_A > 0:
+            #         print("\n\nvar_A", var_A)
+            #         current_delta_t = K / jnp.sqrt(var_A).item()
+            #         # Bound the step size between 0.05 and 1.0 for stability
+            #         # current_delta_t = max(0.05, min(1.0, current_delta_t))
+            #         if k % 10 == 0:  # Print every 10 steps to avoid spam
+            #             print(f"  Step {k}: Var[A] = {var_A:.6f}, adaptive delta_t = {current_delta_t:.6f}")
+            #     else:
+            #         if k % 10 == 0:
+            #             print(f"  Step {k}: Var[A] = {var_A:.6f}, using fixed delta_t = {current_delta_t:.6f}")
+             
+            # Choose integrator based on integrator_type
+        elif integrator_type == "leapfrog":
+                step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t, t=t), in_axes=(0, 0, None, None, None, None, None, None))
+        elif integrator_type == "implicit_midpoint":
+                step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, t: (make_cd_implicit_midpoint_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next))(q=q, p=p, eps=delta_t, t=t), in_axes=(0, 0, None, None, None, None, None, None))
+        else:
+                raise ValueError(f"Unknown integrator type: {integrator_type}. Must be 'leapfrog' or 'implicit_midpoint'")
+        
+        q, p, step_weights = jax.jit(step)(q, p, lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t, t_k)
+
+        
+
+        if use_weights: 
+            log_weights += step_weights
+            weights = jnp.exp(normalize_log_weights(log_weights))
+            ess = jnp.sum(weights)**2 / jnp.sum(weights ** 2)
+             
+            # Resample if ESS falls below threshold
+            # if ess_threshold is not None: 
+            if False:
+            # and ess < ess_threshold:
+                 print(f"  Resampling at step {k} (ESS = {ess:.2f})")
+                 q, p, log_weights = multinomial_resample(q, p, log_weights, key, M)
+                 resampling_count += 1
+                 # Record the resampling event time
+                 snapshots['resampling_events'].append(t_k)
+
+        # refresh momentum
+        if k % momentum_refresh_interval == 0 and k > 0:
+        # if True:
+            # old_energy = jax.vmap(lambda qr, pr: make_T(lam_k)(pr) + make_V(lam_k)(qr))(q, p)
+            # first resample
+            
+            key, sub = jax.random.split(key)
+            q, p, log_weights = multinomial_resample(q, p, log_weights, sub, M)
+            key, sub = jax.random.split(key)
+            p = jax.random.normal(sub, (M, dim))
+            # new_energy = jax.vmap(lambda qr, pr: make_T(lam_k)(pr) + make_V(lam_k)(qr))(q, p)
+            # log_weights += old_energy - new_energy
+
+            T = make_T(lam_k)
+            V = make_V(lam_k)
+            prev_H_vals = jax.vmap(lambda qr, pr: T(pr) + V(qr))(q, p)
+
+             
+           
+         # Check for NaNs after step
+        if check_nans(f"q", q, k) or check_nans(f"p", p, k) or check_nans(f"log_weights", log_weights, k): raise Exception(f"  Stopping simulation due to NaNs in HMC at step {k}")
+         
+        
+        t_k += current_delta_t
+
+    return A_ansatz, snapshots, loss_histories, param_history
+
+
+
+ # # 1. Run equilibration at current time (if enabled and taking snapshots)
         # if equilibration_steps > 0 and k % snapshot_every == 0 and k < N_steps:
         #     # Store pre-equilibration particles
         #     pre_equil_q = np.array(q)
@@ -209,68 +304,3 @@ def smc(
         #         snapshots['post_equilibration'].append(post_equil_q)
         
         # 2. Save snapshot (after potential equilibration) - before evolution steps
-            
-        
-        # Record parameters for counterdiabatic simulations (do this before potential equilibration)
-            
-        
-        # Use adaptive step size for time progression if enabled
-        # step_delta_t = current_delta_t if simulation_type == 'cd' and adaptive_step_size else delta_t
-        lam_k1 = float(lam_fn(t_k + current_delta_t))
-        dot_lam_k1 = float(dot_lam_fn(t_k + current_delta_t))
-        print("delta t", t_k)
-        
-  
-        if A_ansatz is None:
-            step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t ,t: (make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t), in_axes=(0, 0, None, None, None, None, None, None))
-        # TODO vvv
-        # else:  # cd
-             # Compute adaptive step size for CD if enabled (at beginning of step)
-            #  current_delta_t = delta_t
-            # if adaptive_step_size:
-            #     var_A = stats['var_A']
-            #     if var_A > 0:
-            #         print("\n\nvar_A", var_A)
-            #         current_delta_t = K / jnp.sqrt(var_A).item()
-            #         # Bound the step size between 0.05 and 1.0 for stability
-            #         # current_delta_t = max(0.05, min(1.0, current_delta_t))
-            #         if k % 10 == 0:  # Print every 10 steps to avoid spam
-            #             print(f"  Step {k}: Var[A] = {var_A:.6f}, adaptive delta_t = {current_delta_t:.6f}")
-            #     else:
-            #         if k % 10 == 0:
-            #             print(f"  Step {k}: Var[A] = {var_A:.6f}, using fixed delta_t = {current_delta_t:.6f}")
-             
-            # Choose integrator based on integrator_type
-        elif integrator_type == "leapfrog":
-                step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t, t=t), in_axes=(0, 0, None, None, None, None, None, None))
-        elif integrator_type == "implicit_midpoint":
-                step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, t: (make_cd_implicit_midpoint_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next))(q=q, p=p, eps=delta_t, t=t), in_axes=(0, 0, None, None, None, None, None, None))
-        else:
-                raise ValueError(f"Unknown integrator type: {integrator_type}. Must be 'leapfrog' or 'implicit_midpoint'")
-        
-        q, p, step_weights = jax.jit(step)(q, p, lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t, t_k)
-
-        # refresh momentum
-        if k % momentum_refresh_interval == 0 and k > 0:
-            key, sub = jax.random.split(key)
-            p = jax.random.normal(sub, (M, dim))
-
-        if use_weights: 
-            log_weights += step_weights
-            weights = jnp.exp(normalize_log_weights(log_weights))
-            ess = jnp.sum(weights)**2 / jnp.sum(weights ** 2)
-             
-            # TODO vvv
-            if ess_threshold is not None:
-                 print(f"  Resampling at step {k} (ESS = {ess:.2f})")
-                 q, p, log_weights = multinomial_resample(q, p, log_weights, key, M)
-                 resampling_count += 1
-             
-           
-         # Check for NaNs after step
-        if check_nans(f"q", q, k) or check_nans(f"p", p, k) or check_nans(f"log_weights", log_weights, k): raise Exception(f"  Stopping simulation due to NaNs in HMC at step {k}")
-         
-        
-        t_k += current_delta_t
-
-    return A_ansatz, snapshots, loss_histories, param_history

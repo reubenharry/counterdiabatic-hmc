@@ -4,22 +4,18 @@ todo:
         
         why isn't the moving mean looking right?
 
+        generalize systems so that they all start with same gaussian
+
+        save hermite param history better
+
         add equilibration back
         get all the cases working again:
             double well quadrant
 
         check the weights
 
-        update the integrators
+        
 
-        why does the original and final histogram look slightly different for moving mean? should just be an exact shift, no?
-
-        why can't i normalize in log space?
-
-        you need to make sure with no Ansatz, the plot gets saved                                   (path_sampling) 
-
-
-    do H as splitting, around A
     better alternation of g and f updates
     try a schedule...
     try microcanonical ensemble
@@ -30,12 +26,6 @@ todo:
 
 can we use the adiabatic invariant \int pdq? e.g. if we're in microcanonical, we have a closed surface?
 
-application:
-
-    i think phi4 is actually quite nice, and other physics models of this kind
-
-for hamiltonian dynamics, work is an exact form, which means that it is path independent
-
 a second base manifold dimension: temperature?
     or a geometric mean involving a second quantity?
     ooh or make varying mass matrix the second dimension...
@@ -44,6 +34,13 @@ mass matrix: should make things a lot better, no?
 consider varying the kinetic energy! (mass matrix counts as this...)
 
 consider calculating the metric <dX(0)dX(t)>
+
+application:
+
+    i think phi4 is actually quite nice, and other physics models of this kind
+
+for hamiltonian dynamics, work is an exact form, which means that it is path independent
+
 
 work out the right integrator given the time varying hamiltonian A and H 
 
@@ -61,10 +58,6 @@ hannay angle
 the berry phase and hannay angle: lorentz force etc
 
 tensor network for the counterdiabatic term?
-
-read up on flow matching?
-
-why does energy spike after each momentum refresh?
 
 Resampling at step 0 (ESS = 820.63) ???
 
