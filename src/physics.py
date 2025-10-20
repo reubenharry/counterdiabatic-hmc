@@ -203,7 +203,8 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
     dA_dq_scalar = jax.grad(A_ansatz, argnums=0)
     dA_dp_scalar = jax.grad(A_ansatz, argnums=1)
     
-    def cd_leapfrog(q, p, eps, t=None):
+    def cd_leapfrog(q, p, eps):
+        
         
         
         q, p = leapfrog(make_p_update(make_V(lam)), make_x_update(make_T(lam)), eps/2, q, p)

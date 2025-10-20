@@ -41,6 +41,7 @@ def smc(
     dot_lam_fn, 
     key, 
     dim, 
+    final_time,
     A_ansatz=None, 
     fit_every=1, 
     num_iters=10000,
@@ -50,7 +51,7 @@ def smc(
     snapshot_every=1,
     adaptive_step_size=False, 
     integrator_type="leapfrog", 
-    equilibration_steps=0
+    equilibration_steps=0,
     ):
     """
     Unified simulation function that handles both naive HMC and counterdiabatic HMC.
@@ -88,7 +89,9 @@ def smc(
     
     snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, t_k, current_delta_t, log_weights, q, p = initialize(delta_t, M, make_T, make_V, key, dim, lam_fn)
     
-    for k in range(N_steps + 1):
+    for k in range(N_steps+1):
+
+    
            
         lam_k = float(lam_fn(t_k))
         dot_lam_k = float(dot_lam_fn(t_k))
@@ -105,19 +108,16 @@ def smc(
             check_nans("fitting_samples", samples, k)
             weights = jnp.exp(normalize_log_weights(log_weights))
             
-            A_ansatz, loss_history = fit_gauge_potential(lam_k, samples,
-                                        make_T=make_T, make_V=make_V,
-                                        A_ansatz=A_ansatz,  # Pass current ansatz for warm start
-                                        num_iters=num_iters, lr=learning_rate,
-                                        use_regularization=False, weights=weights)
+            A_ansatz, loss_history = fit_gauge_potential(
+                lam_k, samples,
+                make_T=make_T, make_V=make_V, A_ansatz=A_ansatz,  # Pass current ansatz for warm start
+                num_iters=num_iters, lr=learning_rate,
+                use_regularization=False, weights=weights)
             print(f"  Final loss: {loss_history[-1]:.6f}")
             if any(jnp.isnan(loss) for loss in loss_history):
                 print(f"⚠️  NaN detected in loss history at step {k}")
-                nan_indices = [i for i, loss in enumerate(loss_history) if jnp.isnan(loss)]
-                print(f"  NaN losses at iterations: {nan_indices}")
             
             loss_histories.append(loss_history)
-            print(A_ansatz.params)
         
         # Compute energy statistics at every timestep
         stats = compute_energy_stats(q, p, lam_k, make_T, make_V, A_ansatz, log_weights)
@@ -192,7 +192,7 @@ def smc(
         
   
         if A_ansatz is None:
-            step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t ,t: (make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t), in_axes=(0, 0, None, None, None, None, None, None))
+            step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t), in_axes=(0, 0, None, None, None, None, None))
         # TODO vvv
         # else:  # cd
              # Compute adaptive step size for CD if enabled (at beginning of step)
@@ -212,20 +212,37 @@ def smc(
              
             # Choose integrator based on integrator_type
         elif integrator_type == "leapfrog":
-                step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t, t=t), in_axes=(0, 0, None, None, None, None, None, None))
+                step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t), in_axes=(0, 0, None, None, None, None, None))
         elif integrator_type == "implicit_midpoint":
-                step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t, t: (make_cd_implicit_midpoint_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next))(q=q, p=p, eps=delta_t, t=t), in_axes=(0, 0, None, None, None, None, None, None))
+                step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_cd_implicit_midpoint_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next))(q=q, p=p, eps=delta_t), in_axes=(0, 0, None, None, None, None, None))
         else:
                 raise ValueError(f"Unknown integrator type: {integrator_type}. Must be 'leapfrog' or 'implicit_midpoint'")
+
+
+
+        while True:
         
-        q, p, step_weights = jax.jit(step)(q, p, lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t, t_k)
+            q_new, p_new, step_weights = jax.jit(step)(q, p, lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t)
+            avg_acc = jnp.mean(jnp.clip(jnp.exp(step_weights), 0, 1)).item()
+            # jax.debug.print("avg acc {x}", x=avg_acc)
+            print(f"  Step {k}: Avg acceptance = {avg_acc:.2f}")
+            # if avg_acc < 0.9:
+            if False:
+                print(f"  Step {k}: Acceptance rate too low, decreasing delta_t to {current_delta_t * 0.5:.6f}")
+                current_delta_t = current_delta_t * 0.9
+            else:
+                q,p = q_new, p_new
+                break
+
+
+        log_weights += step_weights
+        weights = jnp.exp(normalize_log_weights(log_weights))
+        ess = jnp.sum(weights)**2 / jnp.sum(weights ** 2)
+
 
         
 
         if use_weights: 
-            log_weights += step_weights
-            weights = jnp.exp(normalize_log_weights(log_weights))
-            ess = jnp.sum(weights)**2 / jnp.sum(weights ** 2)
              
             # Resample if ESS falls below threshold
             # if ess_threshold is not None: 
@@ -261,6 +278,8 @@ def smc(
          
         
         t_k += current_delta_t
+        if t_k >= final_time:
+            break
 
     return A_ansatz, snapshots, loss_histories, param_history
 

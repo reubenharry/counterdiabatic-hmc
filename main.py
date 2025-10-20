@@ -20,17 +20,18 @@ def main():
     
     # ===== CONFIGURATION =====
     # Choose your system
-    system_name = "gaussian_annealing"  # Options: see SYSTEMS in src/
+    system_name = "double_well"  # Options: see SYSTEMS in src/
     # ansatz_type = 'polynomial' # Options: "polynomial", "neural_network", "analytic", "hermite"
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
     ansatze = ['polynomial']
-    weightings = [False]
+    weightings = [True]
     
     # Simulation parameters
-    M = 4000  # Number of particles (reduced for testing)
-    N_steps = 20  # Number of simulation steps (reduced for testing)
-    delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
-    momentum_refresh_interval = 2  # Momentum refresh interval
+    M = 40000  # Number of particles (reduced for testing)
+    N_steps = 3  # Number of simulation steps (reduced for testing)
+    delta_t = 1/3  # Time step (eps = delta_t for this algorithm)
+    final_time = 4.0
+    momentum_refresh_interval = 1000  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
     num_iters = 100000  # Optimization iterations per step (reduced for testing)
     learning_rate = 1e-4  # Learning rate for optimization
@@ -80,6 +81,7 @@ def main():
         A_ansatz = ansatz_dict.get(ansatz_type)
         
         A_ansatz, snapshots, loss_histories, param_history = smc(
+            final_time=final_time,
             M=M, 
             N_steps=N_steps, 
             delta_t=delta_t, 
