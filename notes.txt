@@ -1,5 +1,13 @@
 todo:
 
+    stop using multinomial! resample each time!
+
+    consider stabilization by removing mean
+
+    quandry: i'm evolving with A, but only the *weighted* particles are in equilibrium, not the particles themselves, so what does this actually mean? should I be resampling?
+
+    a bug has emerged where if I initialize with a variance of 4 gaussian, the weighting and loss breaks
+
     clean up: fitting in the classes
         
         why isn't the moving mean looking right?

@@ -73,7 +73,7 @@ def compute_expectation_over_equilibrium(values, log_weights):
     weights = jnp.exp(normalize_log_weights(log_weights))
     return jnp.sum(values * weights)
 
-def generate_initial_samples(M, make_T, make_V, lam, key, dim, variance=None):
+def generate_initial_samples(M, make_T, make_V, lam, key, dim, initial_sigma=1.0):
     """Generate M samples from a Gaussian distribution with variance matching the potential.
     
     Args:
@@ -86,20 +86,22 @@ def generate_initial_samples(M, make_T, make_V, lam, key, dim, variance=None):
         variance: Variance of the Gaussian distribution (if None, computed from potential)
     """
     # If variance is not provided, compute it from the potential
-    if variance is None:
-        # For a potential V(q) = 0.5 * k * q², the variance is 1/k
-        # We can compute this by evaluating the potential at a test point
-        test_q = jnp.ones(dim)
-        V = make_V(lam)
-        potential_value = V(test_q)
-        # V(q) = 0.5 * k * ||q||², so k = 2 * V(q) / ||q||²
-        k = 2.0 * potential_value / jnp.sum(test_q ** 2)
-        variance = 1.0 / k
-        print(f"Computed variance from potential: {variance:.3f} (k = {k:.3f})")
+    # if variance is None:
+    #     # For a potential V(q) = 0.5 * k * q², the variance is 1/k
+    #     # We can compute this by evaluating the potential at a test point
+    #     test_q = jnp.ones(dim)
+    #     V = make_V(lam)
+    #     potential_value = V(test_q)
+    #     # V(q) = 0.5 * k * ||q||², so k = 2 * V(q) / ||q||²
+    #     k = 2.0 * potential_value / jnp.sum(test_q ** 2)
+    #     variance = 1.0 / k
+    #     print(f"Computed variance from potential: {variance:.3f} (k = {k:.3f})")
+
+    # variance = 2.0 ** 2
     
     # Draw independent samples from Gaussian with given variance
     key, sub = jax.random.split(key)
-    q = jax.random.normal(sub, (M, dim)) * jnp.sqrt(variance)
+    q = jax.random.normal(sub, (M, dim)) * initial_sigma
     key, sub = jax.random.split(key)
     p = jax.random.normal(sub, (M, dim))
     

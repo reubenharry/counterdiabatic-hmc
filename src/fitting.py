@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import optax
 import equinox as eqx
-from src.ansatze import AnalyticAnsatz
+from src.ansatze import AnalyticAnsatz, PolynomialAnsatz
 from .physics import poisson_bracket_fn
 from .utils import check_nans, normalize_log_weights, print_tridiagonal_matrix_info, print_optimization_summary
 import scipy.linalg
@@ -21,15 +21,18 @@ def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_r
     H_fixed = H(lam)
     dH_fixed = lambda q, p: (jax.grad(lambda q, p, lam: H(lam)(q, p), argnums=2)(q, p, lam))
 
-    def R(A_ansatz, q, p):
-        return poisson_bracket_fn(A_ansatz, H_fixed)(q, p) - dH_fixed(q, p)
-
     qs = qp_batch[:, :dim]  # First dim columns
     ps = qp_batch[:, dim:]  # Last dim columns
+    dH_fixed_avg = 0 #  (jax.vmap(dH_fixed, in_axes=(0, 0))(qs, ps)).mean()
+
+    def R(A_ansatz, q, p):
+        return poisson_bracket_fn(A_ansatz, H_fixed)(q, p) - (dH_fixed(q, p) - dH_fixed_avg)
+
     
     R_vals = jax.vmap(lambda qr, pr, A_ansatz: R(A_ansatz, qr, pr), in_axes=(0, 0, None))(qs, ps, A_ansatz)
     
     main_loss = jnp.sum(jnp.exp(normalize_log_weights(weights)) * (R_vals ** 2))
+    # main_loss = jnp.mean((R_vals ** 2))
     
     # Add weight regularization to prevent large weights (optional)
     reg_loss = 0.0
@@ -130,6 +133,12 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
             break
 
     print(f"Fitting completed after {len(loss_history)} iterations")
+    # if polynomial, print the coefficients
+    # if isinstance(A_ansatz, PolynomialAnsatz):
+    #     print(A_ansatz.params, "A_ansatz.params")
+    # import matplotlib.pyplot as plt
+    # plt.plot(loss_history)
+    # plt.show()
     return A_ansatz, loss_history
 
 def fit_hermite_ansatz_optimize(lam, samples, make_T, make_V, hermite_ansatz, num_iters, lr, use_regularization=False, weights=None):

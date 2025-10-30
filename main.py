@@ -20,7 +20,7 @@ def main():
     
     # ===== CONFIGURATION =====
     # Choose your system
-    system_name = "double_well"  # Options: see SYSTEMS in src/
+    system_name = "gaussian_annealing"  # Options: see SYSTEMS in src/
     # ansatz_type = 'polynomial' # Options: "polynomial", "neural_network", "analytic", "hermite"
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
     ansatze = ['polynomial']
@@ -28,9 +28,9 @@ def main():
     
     # Simulation parameters
     M = 40000  # Number of particles (reduced for testing)
-    N_steps = 3  # Number of simulation steps (reduced for testing)
-    delta_t = 1/3  # Time step (eps = delta_t for this algorithm)
-    final_time = 4.0
+    N_steps = 10  # Number of simulation steps (reduced for testing)
+    delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
+    final_time = 2.0
     momentum_refresh_interval = 1000  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
     num_iters = 100000  # Optimization iterations per step (reduced for testing)
@@ -46,14 +46,14 @@ def main():
     
     # ===== SYSTEM SETUP =====
     # Get system from systems.py
-    make_T, make_V, system_description, dim = get_system(system_name)
+    make_T, make_V, system_description, dim, initial_sigma = get_system(system_name)
     print(f"Using system: {system_name}")
     print(f"Description: {system_description}")
     print(f"Dimension: {dim}")
     
     # Define lambda functions
     v = 0.5
-    max_lam = 2.0
+    max_lam = 1.0
     lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
     dot_lam_fn = jax.grad(lam_fn)
     
@@ -70,7 +70,7 @@ def main():
     )
 
     ansatz_dict = {
-        "polynomial": PolynomialAnsatz(max_degree=5, dim=dim),
+        "polynomial": PolynomialAnsatz(max_degree=4, dim=dim),
         "neural_network": NeuralNetworkAnsatz(dims=[2*dim, 32, 32, 1], key=jax.random.PRNGKey(42), dim=dim),
         "analytic": AnalyticAnsatz(),
         "hermite": hermite_ansatz
@@ -100,7 +100,8 @@ def main():
             snapshot_every=snapshot_every, 
             equilibration_steps=equilibration_steps,
             use_weights=use_weights,
-            integrator_type=integrator_type
+            integrator_type=integrator_type,
+            initial_sigma=initial_sigma
             )
 
         # save simulation data

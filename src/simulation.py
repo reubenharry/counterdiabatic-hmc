@@ -2,13 +2,14 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import equinox as eqx
-from src.utils import check_nans, compute_energy_stats, compute_expectation_over_equilibrium, compute_expectation_over_particles, generate_initial_samples, multinomial_resample, normalize_log_weights
+from src.utils import check_nans, compute_energy_stats, compute_expectation_over_equilibrium, compute_expectation_over_particles, generate_initial_samples, normalize_log_weights
 
 from .physics import make_cd_leapfrog_step, make_cd_implicit_midpoint_step, make_leapfrog_step, make_cd_euler_step, partially_refresh_momentum, with_maruyama
 from .fitting import fit_gauge_potential, calculate_gauge_potential_loss
 from .ansatze import AnalyticAnsatz, PolynomialAnsatz, NeuralNetworkAnsatz, HermiteAnsatz
+import blackjax
 
-def initialize(delta_t, M, make_T, make_V, key, dim, lam_fn):
+def initialize(delta_t, M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
     snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': []}
     snapshots['pre_equilibration'] = []
     resampling_count = 0
@@ -21,7 +22,7 @@ def initialize(delta_t, M, make_T, make_V, key, dim, lam_fn):
     current_delta_t = delta_t
     log_weights = jnp.zeros(M)
     initial_lam = float(lam_fn(0.0))
-    q, p = generate_initial_samples(M, make_T, make_V, initial_lam, key, dim)
+    q, p = generate_initial_samples(M, make_T, make_V, initial_lam, key, dim, initial_sigma)
     # Check initial samples
     check_nans(f"initial_q", q)
     check_nans(f"initial_p", p)
@@ -52,6 +53,8 @@ def smc(
     adaptive_step_size=False, 
     integrator_type="leapfrog", 
     equilibration_steps=0,
+    initial_sigma=1.0,
+    resample_fn=blackjax.smc.resampling.systematic,
     ):
     """
     Unified simulation function that handles both naive HMC and counterdiabatic HMC.
@@ -87,9 +90,9 @@ def smc(
     
     
     
-    snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, t_k, current_delta_t, log_weights, q, p = initialize(delta_t, M, make_T, make_V, key, dim, lam_fn)
+    snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, t_k, current_delta_t, log_weights, q, p = initialize(delta_t, M, make_T, make_V, key, dim, lam_fn, initial_sigma)
     
-    for k in range(N_steps+1):
+    for k in range(N_steps):
 
     
            
@@ -101,7 +104,7 @@ def smc(
         
             
         # Handle ansatz fitting and loss calculation
-        if A_ansatz is not None and (k % fit_every == 0) and (k < N_steps):
+        if A_ansatz is not None and (k % fit_every == 0):
             print(f"Fitting ansatz at step {k} with λ = {lam_k}")
 
             samples = np.concatenate([np.array(q), np.array(p)], axis=1)
@@ -223,9 +226,13 @@ def smc(
         while True:
         
             q_new, p_new, step_weights = jax.jit(step)(q, p, lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t)
-            avg_acc = jnp.mean(jnp.clip(jnp.exp(step_weights), 0, 1)).item()
+            # avg_acc = jnp.mean(jnp.clip(jnp.exp(step_weights), 0, 1)).item()
             # jax.debug.print("avg acc {x}", x=avg_acc)
-            print(f"  Step {k}: Avg acceptance = {avg_acc:.2f}")
+            # print(f"  Step {k}: Avg acceptance = {avg_acc:.2f}")
+            # print(f'energy change: {-step_weights}')
+            # import matplotlib.pyplot as plt
+            # plt.hist(-step_weights, bins=100)
+            # plt.show()
             # if avg_acc < 0.9:
             if False:
                 print(f"  Step {k}: Acceptance rate too low, decreasing delta_t to {current_delta_t * 0.5:.6f}")
@@ -233,6 +240,8 @@ def smc(
             else:
                 q,p = q_new, p_new
                 break
+
+        print("next iter")
 
 
         log_weights += step_weights
@@ -249,7 +258,7 @@ def smc(
             if False:
             # and ess < ess_threshold:
                  print(f"  Resampling at step {k} (ESS = {ess:.2f})")
-                 q, p, log_weights = multinomial_resample(q, p, log_weights, key, M)
+                 q, p, log_weights = resample_fn(q, p, log_weights, key, M)
                  resampling_count += 1
                  # Record the resampling event time
                  snapshots['resampling_events'].append(t_k)
@@ -261,7 +270,7 @@ def smc(
             # first resample
             
             key, sub = jax.random.split(key)
-            q, p, log_weights = multinomial_resample(q, p, log_weights, sub, M)
+            q, p, log_weights = resample_fn(q, p, log_weights, sub, M)
             key, sub = jax.random.split(key)
             p = jax.random.normal(sub, (M, dim))
             # new_energy = jax.vmap(lambda qr, pr: make_T(lam_k)(pr) + make_V(lam_k)(qr))(q, p)
