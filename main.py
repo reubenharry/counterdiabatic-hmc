@@ -27,8 +27,8 @@ def main():
     weightings = [True]
     
     # Simulation parameters
-    M = 40000  # Number of particles (reduced for testing)
-    N_steps = 10  # Number of simulation steps (reduced for testing)
+    M = 4000  # Number of particles (reduced for testing)
+    N_steps = 11  # Number of simulation steps (reduced for testing)
     delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
     final_time = 2.0
     momentum_refresh_interval = 1000  # Momentum refresh interval
