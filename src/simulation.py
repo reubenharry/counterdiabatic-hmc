@@ -2,12 +2,11 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import equinox as eqx
-from src.utils import check_nans, compute_energy_stats, compute_expectation_over_equilibrium, compute_expectation_over_particles, generate_initial_samples, normalize_log_weights
+from src.utils import check_nans, compute_energy_stats, compute_expectation_over_equilibrium, compute_expectation_over_particles, generate_initial_samples, normalize_log_weights, systematic_resample
 
 from .physics import make_cd_leapfrog_step, make_cd_implicit_midpoint_step, make_leapfrog_step, make_cd_euler_step, partially_refresh_momentum, with_maruyama
 from .fitting import fit_gauge_potential, calculate_gauge_potential_loss
 from .ansatze import AnalyticAnsatz, PolynomialAnsatz, NeuralNetworkAnsatz, HermiteAnsatz
-import blackjax
 
 def initialize(delta_t, M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
     snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': []}
@@ -54,7 +53,7 @@ def smc(
     integrator_type="leapfrog", 
     equilibration_steps=0,
     initial_sigma=1.0,
-    resample_fn=blackjax.smc.resampling.systematic,
+    resample_fn=systematic_resample,
     ):
     """
     Unified simulation function that handles both naive HMC and counterdiabatic HMC.
@@ -255,7 +254,7 @@ def smc(
              
             # Resample if ESS falls below threshold
             # if ess_threshold is not None: 
-            if False:
+            if True:
             # and ess < ess_threshold:
                  print(f"  Resampling at step {k} (ESS = {ess:.2f})")
                  q, p, log_weights = resample_fn(q, p, log_weights, key, M)

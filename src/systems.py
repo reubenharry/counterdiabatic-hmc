@@ -77,10 +77,10 @@ SYSTEMS = {
     },
     'double_well': {
         'make_T': make_T_standard,
-        'make_V': make_V_geometric_potential(final_potential=double_well_potential, initial_sigma=2.0),
+        'make_V': make_V_geometric_potential(final_potential=double_well_potential, initial_sigma=1.0),
         'description': 'Double well potential V(q) = (1-λ)*0.5*q² + λ*(q² - 3)²',
         'dim': 1,
-        'initial_sigma': 2.0
+        'initial_sigma': 1.0
     },
     '2d_gaussian_moving_mean': {
         'make_T': make_T_standard,

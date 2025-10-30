@@ -20,7 +20,7 @@ def main():
     
     # ===== CONFIGURATION =====
     # Choose your system
-    system_name = "gaussian_annealing"  # Options: see SYSTEMS in src/
+    system_name = "double_well"  # Options: see SYSTEMS in src/
     # ansatz_type = 'polynomial' # Options: "polynomial", "neural_network", "analytic", "hermite"
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
     ansatze = ['polynomial']
@@ -28,11 +28,11 @@ def main():
     
     # Simulation parameters
     M = 4000  # Number of particles (reduced for testing)
-    N_steps = 11  # Number of simulation steps (reduced for testing)
-    delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
+    N_steps = 101  # Number of simulation steps (reduced for testing)
+    delta_t = 0.02  # Time step (eps = delta_t for this algorithm)
     final_time = 2.0
-    momentum_refresh_interval = 1000  # Momentum refresh interval
-    fit_every = 1  # Fit ansatz every N steps
+    momentum_refresh_interval = 1  # Momentum refresh interval
+    fit_every = 100  # Fit ansatz every N steps
     num_iters = 100000  # Optimization iterations per step (reduced for testing)
     learning_rate = 1e-4  # Learning rate for optimization
     equilibration_steps = 0  # Equilibration steps after each CD step (reduced for testing)
@@ -42,7 +42,7 @@ def main():
     adaptive_step_size = False  # Set to True to enable adaptive delta_t = K/sqrt(Var[A])
     
     # Simulation settings
-    snapshot_every = 1  # Record snapshots every N steps
+    snapshot_every = 10  # Record snapshots every N steps
     
     # ===== SYSTEM SETUP =====
     # Get system from systems.py

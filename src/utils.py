@@ -4,6 +4,7 @@ Utility functions for the counterdiabatic project.
 
 import jax.numpy as jnp
 import jax
+import blackjax
 
 
 # def normalize(weights):
@@ -44,6 +45,15 @@ def compute_ess(log_weights):
 
 def normalize_log_weights(log_weights):
     return log_weights - jax.scipy.special.logsumexp(log_weights)
+
+def systematic_resample(q, p, log_weights, rng_key, M):
+    weights = jnp.exp(normalize_log_weights(log_weights))
+    N = q.shape[0]
+    indices = blackjax.smc.resampling.systematic(rng_key, weights, N)
+    q_resampled = q[indices]
+    p_resampled = p[indices]
+    log_weights_reset = jnp.zeros(M)
+    return q_resampled, p_resampled, log_weights_reset
 
 def multinomial_resample(q, p, log_weights, rng_key, M):
     """Perform multinomial resampling and reset weights to uniform."""
