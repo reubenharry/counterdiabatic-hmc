@@ -9,7 +9,7 @@ from .fitting import fit_gauge_potential, calculate_gauge_potential_loss
 from .ansatze import AnalyticAnsatz, PolynomialAnsatz, NeuralNetworkAnsatz, HermiteAnsatz
 
 def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
-    snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': []}
+    snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': [], 'weights_before_resampling': [], 'particles_before_resampling': []}
     snapshots['pre_equilibration'] = []
     resampling_count = 0
     loss_histories = []
@@ -21,6 +21,8 @@ def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
     log_weights = jnp.zeros(M)
     initial_lam = float(lam_fn(0.0))
     q, p = generate_initial_samples(M, make_T, make_V, initial_lam, key, dim, initial_sigma)
+    snapshots['weights_before_resampling'].append(np.array(log_weights))
+    snapshots['particles_before_resampling'].append(np.array(q))
     # Check initial samples
     check_nans(f"initial_q", q)
     check_nans(f"initial_p", p)
@@ -250,6 +252,9 @@ def smc(
             if True:
             # and ess < ess_threshold:
                  print(f"  Resampling at step {k} (ESS = {ess:.2f})")
+                 if snapshot_every > 0 and k % snapshot_every == 0:
+                    snapshots['weights_before_resampling'].append(np.array(log_weights))
+                    snapshots['particles_before_resampling'].append(np.array(q))
                  q, p, log_weights = resample_fn(q, p, log_weights, key, M)
                  resampling_count += 1
                  # Record the resampling event time

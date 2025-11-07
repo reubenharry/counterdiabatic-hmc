@@ -25,7 +25,7 @@ def main():
     # ansatz_type = 'polynomial' # Options: "polynomial", "neural_network", "analytic", "hermite"
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
     ansatze = ['polynomial']
-    weightings = [True]
+    weightings = [False]
     
     # Simulation parameters
     M = 4000  # Number of particles (reduced for testing)

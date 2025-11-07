@@ -2,6 +2,11 @@ todo:
 
     consider stabilization by removing mean
 
+    write cdhmc as a kernel, so it's cleaner:
+        takes state,
+
+    work out how to limit the step size in a clean way: multiple steps, but then how to change H...
+
     align the plain SMC and counterdiabatic behavior on gaussian mixture: this shouldn't be so difficult: first start by copying the schedule, without driving, then add driving, then accelerate the schedule...
 
     a bug has emerged where if I initialize with a variance of 4 gaussian, the weighting and loss breaks
