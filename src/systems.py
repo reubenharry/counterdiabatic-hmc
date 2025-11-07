@@ -1,9 +1,54 @@
+from functools import partial
 import math
 import jax
 import jax.numpy as jnp
-
+from jax.scipy.special import logsumexp
+import jax.numpy as jnp
 
 m = 1.0
+
+def neg_mixture_logdensity(x, mu1, mu2, sigma1, sigma2, alpha):
+    """
+    Compute the negative log-density of a mixture of two 1D Gaussians at x.
+
+    Parameters
+    ----------
+    x : array-like
+        Points at which to evaluate, shape (...,) or (..., 1)
+    mu1, mu2 : float
+        Means of the two Gaussian components
+    sigma1, sigma2 : float
+        Standard deviations of the two Gaussian components
+    alpha : float
+        Mixture weight for the first component (0 <= alpha <= 1)
+
+    Returns
+    -------
+    Negative log likelihood for x under the mixture
+    """
+    
+
+    x = jnp.atleast_1d(x)
+    # Drop last dimension if shape (...,1)
+    if x.shape[-1] == 1:
+        x = jnp.squeeze(x, axis=-1)
+
+    logN1 = -0.5 * jnp.log(2 * jnp.pi * sigma1**2) - 0.5 * ((x - mu1) ** 2) / sigma1**2
+    logN2 = -0.5 * jnp.log(2 * jnp.pi * sigma2**2) - 0.5 * ((x - mu2) ** 2) / sigma2**2
+    log_mix = logsumexp(
+        jnp.stack([jnp.log(alpha) + logN1, jnp.log(1 - alpha) + logN2], axis=0),
+        axis=0,
+    )
+    return -log_mix
+
+# alpha = 0.2
+# mu1 = -1
+# mu2 = 1
+# sigma1 = 0.2
+# sigma2 = 0.2
+
+mixture = partial(neg_mixture_logdensity, mu1=-1, mu2=1, sigma1=0.2, sigma2=0.2, alpha=0.2)
+
 
 def make_T_standard(lam):
     """Standard kinetic energy: T(p) = p^2 / (2m)"""
@@ -57,6 +102,8 @@ def make_V_2d_rosenbrock(lam):
     """2D Rosenbrock potential: V(q) = (1-λ)*0.5*||q||^2 + λ*((1-q_0)^2 + 100*(q_1-q_0^2)^2)"""
     return lambda q: jnp.sum((1-lam)*0.5*(q**2) + 0.5*(lam*((q[0]-1)**2 + ((q[0]**2) - q[1])**2)))
 
+
+
 # Dictionary of available systems
 SYSTEMS = {
     'gaussian_moving_mean': {
@@ -79,6 +126,13 @@ SYSTEMS = {
         'make_T': make_T_standard,
         'make_V': make_V_geometric_potential(final_potential=double_well_potential, initial_sigma=1.0),
         'description': 'Double well potential V(q) = (1-λ)*0.5*q² + λ*(q² - 3)²',
+        'dim': 1,
+        'initial_sigma': 1.0
+    },
+    'mixture': {
+        'make_T': make_T_standard,
+        'make_V': make_V_geometric_potential(final_potential=mixture, initial_sigma=1.0),
+        'description': 'Mixture of two Gaussians V(q) = -log(α*N(q; -1, 0.2) + (1-α)*N(q; 1, 0.2))',
         'dim': 1,
         'initial_sigma': 1.0
     },

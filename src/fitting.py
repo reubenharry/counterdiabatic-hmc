@@ -23,7 +23,7 @@ def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_r
 
     qs = qp_batch[:, :dim]  # First dim columns
     ps = qp_batch[:, dim:]  # Last dim columns
-    dH_fixed_avg = 0 #  (jax.vmap(dH_fixed, in_axes=(0, 0))(qs, ps)).mean()
+    dH_fixed_avg = (jax.vmap(dH_fixed, in_axes=(0, 0))(qs, ps)).mean()
 
     def R(A_ansatz, q, p):
         return poisson_bracket_fn(A_ansatz, H_fixed)(q, p) - (dH_fixed(q, p) - dH_fixed_avg)

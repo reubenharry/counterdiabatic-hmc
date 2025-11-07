@@ -284,15 +284,13 @@ def print_coefficients_summary(alpha_coeffs, max_order):
 
 
 
-def save_simulation_data(snapshots, system_name, method_name, delta_t, lam_fn, ansatz_params=None, loss_histories=None, param_history=None, ansatz_type=None, integrator_type=None):
+def save_simulation_data(snapshots, system_name, method_name, ansatz_params=None, loss_histories=None, param_history=None, ansatz_type=None, integrator_type=None):
     """Save simulation data to a pickle file.
     
     Args:
         snapshots: Dictionary containing simulation snapshots
         system_name: Name of the system (e.g., "double_well")
         method_name: Name of the method (e.g., "cd_unweighted")
-        delta_t: Time step
-        lam_fn: Lambda function
         ansatz_params: Ansatz parameters (optional)
         loss_histories: Loss histories (optional)
         param_history: Parameter history (optional)
@@ -317,7 +315,6 @@ def save_simulation_data(snapshots, system_name, method_name, delta_t, lam_fn, a
         'snapshots': snapshots,
         'system_name': system_name,
         'method_name': method_name,
-        'delta_t': delta_t,
         'ansatz_params': ansatz_params,
         'loss_histories': loss_histories,
         'param_history': param_history

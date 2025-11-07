@@ -8,7 +8,7 @@ from .physics import make_cd_leapfrog_step, make_cd_implicit_midpoint_step, make
 from .fitting import fit_gauge_potential, calculate_gauge_potential_loss
 from .ansatze import AnalyticAnsatz, PolynomialAnsatz, NeuralNetworkAnsatz, HermiteAnsatz
 
-def initialize(delta_t, M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
+def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
     snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': []}
     snapshots['pre_equilibration'] = []
     resampling_count = 0
@@ -18,14 +18,13 @@ def initialize(delta_t, M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
     detailed_energy_stats = []
     detailed_times = []
     t_k = 0.0
-    current_delta_t = delta_t
     log_weights = jnp.zeros(M)
     initial_lam = float(lam_fn(0.0))
     q, p = generate_initial_samples(M, make_T, make_V, initial_lam, key, dim, initial_sigma)
     # Check initial samples
     check_nans(f"initial_q", q)
     check_nans(f"initial_p", p)
-    return snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, t_k, current_delta_t, log_weights, q, p
+    return snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, t_k, log_weights, q, p
 
 # =============================================================================
 # UNIFIED SIMULATION FUNCTION
@@ -33,7 +32,6 @@ def initialize(delta_t, M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
 def smc(
     M, 
     N_steps, 
-    delta_t, 
     momentum_refresh_interval, 
     make_T, 
     make_V, 
@@ -54,6 +52,7 @@ def smc(
     equilibration_steps=0,
     initial_sigma=1.0,
     resample_fn=systematic_resample,
+    next_time=lambda t, k: t + 0.2,
     ):
     """
     Unified simulation function that handles both naive HMC and counterdiabatic HMC.
@@ -61,7 +60,6 @@ def smc(
     Args:
         M: Number of particles
         N_steps: Number of simulation steps
-        delta_t: Time step
         eps: HMC step size
         momentum_refresh_interval: Momentum refresh interval
         make_T: Function to create kinetic energy
@@ -89,7 +87,7 @@ def smc(
     
     
     
-    snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, t_k, current_delta_t, log_weights, q, p = initialize(delta_t, M, make_T, make_V, key, dim, lam_fn, initial_sigma)
+    snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, t_k, log_weights, q, p = initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma)
     
     for k in range(N_steps):
 
@@ -185,12 +183,15 @@ def smc(
             
         
         # Record parameters for counterdiabatic simulations (do this before potential equilibration)
+
+        t_k1 = next_time(t_k, k)
+        current_delta_t = t_k1 - t_k
             
         
         # Use adaptive step size for time progression if enabled
         # step_delta_t = current_delta_t if simulation_type == 'cd' and adaptive_step_size else delta_t
-        lam_k1 = float(lam_fn(t_k + current_delta_t))
-        dot_lam_k1 = float(dot_lam_fn(t_k + current_delta_t))
+        lam_k1 = float(lam_fn(t_k1))
+        dot_lam_k1 = float(dot_lam_fn(t_k1))
         
   
         if A_ansatz is None:
@@ -225,14 +226,6 @@ def smc(
         while True:
         
             q_new, p_new, step_weights = jax.jit(step)(q, p, lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t)
-            # avg_acc = jnp.mean(jnp.clip(jnp.exp(step_weights), 0, 1)).item()
-            # jax.debug.print("avg acc {x}", x=avg_acc)
-            # print(f"  Step {k}: Avg acceptance = {avg_acc:.2f}")
-            # print(f'energy change: {-step_weights}')
-            # import matplotlib.pyplot as plt
-            # plt.hist(-step_weights, bins=100)
-            # plt.show()
-            # if avg_acc < 0.9:
             if False:
                 print(f"  Step {k}: Acceptance rate too low, decreasing delta_t to {current_delta_t * 0.5:.6f}")
                 current_delta_t = current_delta_t * 0.9
@@ -284,9 +277,12 @@ def smc(
          # Check for NaNs after step
         if check_nans(f"q", q, k) or check_nans(f"p", p, k) or check_nans(f"log_weights", log_weights, k): raise Exception(f"  Stopping simulation due to NaNs in HMC at step {k}")
          
+
+        t_k = next_time(t_k, k)
+        print(f"t_k: {t_k}")
         
-        t_k += current_delta_t
-        if t_k >= final_time:
+        # t_k += current_delta_t
+        if t_k > final_time:
             break
 
     return A_ansatz, snapshots, loss_histories, param_history
