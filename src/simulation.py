@@ -8,7 +8,9 @@ from .physics import make_cd_leapfrog_step, make_cd_implicit_midpoint_step, make
 from .fitting import fit_gauge_potential, calculate_gauge_potential_loss
 from .ansatze import AnalyticAnsatz, PolynomialAnsatz, NeuralNetworkAnsatz, HermiteAnsatz
 from blackjax.smc.base import SMCState
-
+import blackjax.smc.resampling as resampling
+import blackjax.smc.base as base
+import blackjax
 
 def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
     snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': [], 'weights_before_resampling': [], 'particles_before_resampling': []}
@@ -29,6 +31,36 @@ def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
     check_nans(f"initial_q", q)
     check_nans(f"initial_p", p)
     return snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, SMCState(particles={'q': q, 'p': p}, weights=jnp.exp(log_weights), update_parameters={'time': t_k})
+
+def make_cdhmc_kernel(make_T, make_V, A_ansatz, time_next, lam_fn, dot_lam_fn):
+
+    # if A_ansatz is None:
+    #     step = lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn)(q, p, delta_t)
+    step = make_cd_leapfrog_step
+
+    def cdhmc_kernel(state, key):
+        time = state.update_parameters['time']
+        lam = lam_fn(time)
+        lam_next = lam_fn(time_next)
+        dot_lam = dot_lam_fn(time)
+        dot_lam_next = dot_lam_fn(time_next)
+
+
+
+        delta_t = time_next - time
+        # delta_t = 0.2
+        def update_fn(k, p, u): 
+            q, p, weight = jax.vmap(lambda ks, particles, update_parameters: (step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=particles['q'], p=particles['p'], eps=delta_t), in_axes=(0, 0, None))(k, p, u)
+            return {'q': q, 'p': p}, weight
+        H = lambda lam: lambda q, p: make_T(lam)(p) + make_V(lam)(q)
+        weight_fn = lambda particles : H(lam)(state.particles['q'], state.particles['p']) - H(lam_next)(particles['q'], particles['p']) 
+        new_state, info = blackjax.smc.base.step(key, state = state, update_fn = update_fn, weight_fn = weight_fn, resample_fn = resampling.systematic )
+
+        # new_state, info = blackjax_kernel(key, state)
+        # print(new_state.weights)
+        return new_state, info
+        # raise Exception("ran blackjax kernel")
+    return cdhmc_kernel
 
 # =============================================================================
 # UNIFIED SIMULATION FUNCTION
@@ -92,13 +124,10 @@ def smc(
     
     
     snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, state = initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma)
-
-    # q, p = state.particles['q'], state.particles['p']
     
     
     for k in range(N_steps):
 
-    
            
         lam_k = float(lam_fn(state.update_parameters['time']))
         dot_lam_k = float(dot_lam_fn(state.update_parameters['time']))
@@ -245,8 +274,11 @@ def smc(
 
 
         state = state._replace(weights=jnp.exp(jnp.log(state.weights) + step_weights))
-        weights = jnp.exp(normalize_log_weights(jnp.log(state.weights)))
-        ess = jnp.sum(weights)**2 / jnp.sum(weights ** 2)
+        # weights = jnp.exp(normalize_log_weights(jnp.log(state.weights)))
+        # ess = jnp.sum(weights)**2 / jnp.sum(weights ** 2)
+
+        # kernel = make_cdhmc_kernel(make_T, make_V, A_ansatz, t_k1, lam_fn, dot_lam_fn)
+        # state, _ = kernel(state, key)
 
 
         
@@ -257,7 +289,7 @@ def smc(
             # if ess_threshold is not None: 
             if True:
             # and ess < ess_threshold:
-                 print(f"  Resampling at step {k} (ESS = {ess:.2f})")
+                #  print(f"  Resampling at step {k} (ESS = {ess:.2f})")
                  if snapshot_every > 0 and k % snapshot_every == 0:
                     snapshots['weights_before_resampling'].append(np.array(jnp.log(state.weights)))
                     snapshots['particles_before_resampling'].append(np.array(state.particles['q']))
