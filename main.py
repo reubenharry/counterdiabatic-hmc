@@ -25,7 +25,7 @@ def main():
     # ansatz_type = 'polynomial' # Options: "polynomial", "neural_network", "analytic", "hermite"
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
     ansatze = ['polynomial']
-    weightings = [False]
+    weightings = [True]
     
     # Simulation parameters
     M = 4000  # Number of particles (reduced for testing)
@@ -89,7 +89,7 @@ def main():
             else:
                 return 1000.0
         
-        A_ansatz, snapshots, loss_histories, param_history = smc(
+        A_ansatz, snapshots, loss_histories, param_history, state = smc(
             final_time=final_time,
             M=M, 
             N_steps=N_steps, 
@@ -110,7 +110,7 @@ def main():
             use_weights=use_weights,
             integrator_type=integrator_type,
             initial_sigma=initial_sigma,
-            next_time = next_time
+            # next_time = next_time
             )
 
         # save simulation data
