@@ -4,7 +4,7 @@ import numpy as np
 import equinox as eqx
 from src.utils import check_nans, compute_energy_stats, compute_expectation_over_equilibrium, compute_expectation_over_particles, generate_initial_samples, normalize_log_weights, systematic_resample
 
-from .physics import make_cd_leapfrog_step, make_cd_implicit_midpoint_step, make_leapfrog_step, make_cd_euler_step, partially_refresh_momentum, with_maruyama
+from .physics import compute_counterdiabatic_work, make_cd_leapfrog_step, make_cd_implicit_midpoint_step, make_leapfrog_step, make_cd_euler_step, partially_refresh_momentum, with_maruyama
 from .fitting import fit_gauge_potential, calculate_gauge_potential_loss
 from .ansatze import AnalyticAnsatz, PolynomialAnsatz, NeuralNetworkAnsatz, HermiteAnsatz
 from blackjax.smc.base import SMCState
@@ -13,8 +13,8 @@ import blackjax.smc.base as base
 import blackjax
 
 
-get_q = lambda qp: qp[:, :qp.shape[1]//2]
-get_p = lambda qp: qp[:, qp.shape[1]//2:]
+get_qs = lambda qp: qp[:, :qp.shape[1]//2]
+get_ps = lambda qp: qp[:, qp.shape[1]//2:]
 get_particles = lambda q, p: jnp.concatenate([q, p], axis=1)
 
 def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
@@ -35,7 +35,7 @@ def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
     # Check initial samples
     check_nans(f"initial_q", q)
     check_nans(f"initial_p", p)
-    return snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, SMCState(particles=get_particles(q, p), weights=jnp.exp(log_weights), update_parameters={'time': t_k})
+    return snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, SMCState(particles=get_particles(q, p), weights=jnp.exp(normalize_log_weights(log_weights)), update_parameters={'time': t_k})
 
 
 
@@ -54,16 +54,25 @@ def make_cdhmc_kernel(make_T, make_V, A_ansatz, time_next, lam_fn, dot_lam_fn):
         dot_lam = dot_lam_fn(time)
         dot_lam_next = dot_lam_fn(time_next)
 
+        print("weights", state.weights)
 
+        # state = state._replace(weights=state.weights/jnp.sum(state.weights))
+
+
+        # new_qs, new_ps, new_log_weights = systematic_resample(get_qs(state.particles), get_ps(state.particles), jnp.log(state.weights), key, state.particles.shape[0])
+        # state = state._replace(particles=get_particles(new_qs, new_ps))
+        # state = state._replace(weights=jnp.exp(new_log_weights))
 
         delta_t = time_next - time
         # delta_t = 0.2
-        def update_fn(k, p, u): 
-            q, p, _ = jax.vmap(lambda ks, particles, update_parameters: (step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=get_q(particles), p=get_p(particles), eps=delta_t), in_axes=(0, 0, None))(k, p, u)
-            return jnp.concatenate([q, p], axis=1), None
-        H = lambda lam: lambda q, p: make_T(lam)(p) + make_V(lam)(q)
-        weight_fn = lambda particles : H(lam)(get_q(state.particles), get_p(state.particles)) - H(lam_next)(get_q(particles), get_p(particles)) 
-        new_state, info = blackjax.smc.base.step(key, state = state, update_fn = update_fn, weight_fn = weight_fn, resample_fn = resampling.systematic )
+        def update_fn(k, p, u):
+            print(p.shape, "p.shape")
+            dim = p.shape[-1] // 2
+            qs, ps, _ = jax.vmap(lambda _, particle, update_parameters: (step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=particle[:dim], p=particle[dim:], eps=delta_t), in_axes=(0, 0, None))(k, p, u)
+            return get_particles(qs, ps), None
+        H = lambda lam: jax.vmap(lambda q, p: make_T(lam)(p) + make_V(lam)(q))
+        weight_fn = (lambda particles : H(lam)(get_qs(state.particles), get_ps(state.particles)) - H(lam_next)(get_qs(particles), get_ps(particles)))
+        new_state, info = blackjax.smc.base.step(key, state = state, update_fn = update_fn, weight_fn = weight_fn, resample_fn = resampling.systematic)
 
         # new_state, info = blackjax_kernel(key, state)
         # print(new_state.weights)
@@ -165,7 +174,7 @@ def smc(
             loss_histories.append(loss_history)
         
         # Compute energy statistics at every timestep
-        stats = compute_energy_stats(get_q(state.particles), get_p(state.particles), lam_k, make_T, make_V, A_ansatz, jnp.log(state.weights))
+        stats = compute_energy_stats(get_qs(state.particles), get_ps(state.particles), lam_k, make_T, make_V, A_ansatz, jnp.log(state.weights))
         
         # Compute energy changes if we have previous values
         if k % snapshot_every == 0:
@@ -188,7 +197,7 @@ def smc(
             detailed_energy_stats.append(stats)
             detailed_times.append(state.update_parameters['time'])
 
-            snapshots['particles'].append(np.array(get_q(state.particles)))
+            snapshots['particles'].append(np.array(get_qs(state.particles)))
             snapshots['weights'].append(np.array(jnp.log(state.weights)))
             snapshots['lam'].append(lam_k)
             snapshots['times'].append(state.update_parameters['time'])
@@ -252,7 +261,14 @@ def smc(
 
             while True:
             
-                q_new, p_new, step_weights = jax.jit(step)(get_q(state.particles), get_p(state.particles), lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t)
+                q_new, p_new, step_weights = jax.jit(step)(get_qs(state.particles), get_ps(state.particles), lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t)
+
+                kernel = make_cdhmc_kernel(make_T, make_V, A_ansatz, t_k1, lam_fn, dot_lam_fn)
+                key, sub = jax.random.split(key)
+                new_state, _ = kernel(state, sub)
+                q_new, p_new = get_qs(new_state.particles), get_ps(new_state.particles)
+                # step_weights = jax.vmap(compute_counterdiabatic_work, in_axes=(0, 0, 0, 0, None, None, None, None, None))(get_qs(state.particles), get_ps(state.particles), q_new, p_new, lam_k, lam_k1, A_ansatz, make_T, make_V)
+                step_weights = new_state.weights
                 if False:
                     print(f"  Step {k}: Acceptance rate too low, decreasing delta_t to {current_delta_t * 0.5:.6f}")
                     current_delta_t = current_delta_t * 0.9
@@ -261,7 +277,7 @@ def smc(
                     state = state._replace(particles=get_particles(q_new, p_new))
                     break
 
-            state = state._replace(weights=jnp.exp(jnp.log(state.weights) + step_weights))
+            state = state._replace(weights=step_weights)
             
             if use_weights: 
                 
@@ -272,9 +288,9 @@ def smc(
                     #  print(f"  Resampling at step {k} (ESS = {ess:.2f})")
                     if snapshot_every > 0 and k % snapshot_every == 0:
                         snapshots['weights_before_resampling'].append(np.array(jnp.log(state.weights)))
-                        snapshots['particles_before_resampling'].append(np.array(get_q(state.particles)))
-                    q, p, log_weights = resample_fn(get_q(state.particles), get_p(state.particles), jnp.log(state.weights), key, M)
-                    state = state._replace(weights=jnp.exp(log_weights))
+                        snapshots['particles_before_resampling'].append(np.array(get_qs(state.particles)))
+                    q, p, log_weights = resample_fn(get_qs(state.particles), get_ps(state.particles), jnp.log(state.weights), key, M)
+                    state = state._replace(weights=jnp.exp(normalize_log_weights(log_weights)))
                     resampling_count += 1
                     state = state._replace(particles=get_particles(q, p))
                     # Record the resampling event time
@@ -298,18 +314,18 @@ def smc(
             # state = state._replace(particles={'q': q, 'p': p})
             key, sub = jax.random.split(key)
             p = jax.random.normal(sub, (M, dim))
-            state = state._replace(particles=get_particles(get_q(state.particles), p))
+            state = state._replace(particles=get_particles(get_qs(state.particles), p))
             # new_energy = jax.vmap(lambda qr, pr: make_T(lam_k)(pr) + make_V(lam_k)(qr))(q, p)
             # log_weights += old_energy - new_energy
 
             T = make_T(lam_k)
             V = make_V(lam_k)
-            prev_H_vals = jax.vmap(lambda qr, pr: T(pr) + V(qr))(get_q(state.particles), get_p(state.particles))
+            prev_H_vals = jax.vmap(lambda qr, pr: T(pr) + V(qr))(get_qs(state.particles), get_ps(state.particles))
 
              
            
          # Check for NaNs after step
-        if check_nans(f"q", get_q(state.particles), k) or check_nans(f"p", get_p(state.particles), k) or check_nans(f"log_weights", jnp.log(state.weights), k): raise Exception(f"  Stopping simulation due to NaNs in HMC at step {k}")
+        if check_nans(f"q", get_qs(state.particles), k) or check_nans(f"p", get_ps(state.particles), k) or check_nans(f"log_weights", jnp.log(state.weights), k): raise Exception(f"  Stopping simulation due to NaNs in HMC at step {k}")
          
 
         state = state._replace(update_parameters={'time': next_time(state.update_parameters['time'], k)})
