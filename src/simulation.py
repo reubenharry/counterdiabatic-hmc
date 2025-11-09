@@ -12,6 +12,11 @@ import blackjax.smc.resampling as resampling
 import blackjax.smc.base as base
 import blackjax
 
+
+get_q = lambda qp: qp[:, :qp.shape[1]//2]
+get_p = lambda qp: qp[:, qp.shape[1]//2:]
+get_particles = lambda q, p: jnp.concatenate([q, p], axis=1)
+
 def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
     snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': [], 'weights_before_resampling': [], 'particles_before_resampling': []}
     snapshots['pre_equilibration'] = []
@@ -30,9 +35,13 @@ def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
     # Check initial samples
     check_nans(f"initial_q", q)
     check_nans(f"initial_p", p)
-    return snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, SMCState(particles={'q': q, 'p': p}, weights=jnp.exp(log_weights), update_parameters={'time': t_k})
+    return snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, SMCState(particles=get_particles(q, p), weights=jnp.exp(log_weights), update_parameters={'time': t_k})
+
+
 
 def make_cdhmc_kernel(make_T, make_V, A_ansatz, time_next, lam_fn, dot_lam_fn):
+
+
 
     # if A_ansatz is None:
     #     step = lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn)(q, p, delta_t)
@@ -50,10 +59,10 @@ def make_cdhmc_kernel(make_T, make_V, A_ansatz, time_next, lam_fn, dot_lam_fn):
         delta_t = time_next - time
         # delta_t = 0.2
         def update_fn(k, p, u): 
-            q, p, weight = jax.vmap(lambda ks, particles, update_parameters: (step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=particles['q'], p=particles['p'], eps=delta_t), in_axes=(0, 0, None))(k, p, u)
-            return {'q': q, 'p': p}, weight
+            q, p, _ = jax.vmap(lambda ks, particles, update_parameters: (step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=get_q(particles), p=get_p(particles), eps=delta_t), in_axes=(0, 0, None))(k, p, u)
+            return jnp.concatenate([q, p], axis=1), None
         H = lambda lam: lambda q, p: make_T(lam)(p) + make_V(lam)(q)
-        weight_fn = lambda particles : H(lam)(state.particles['q'], state.particles['p']) - H(lam_next)(particles['q'], particles['p']) 
+        weight_fn = lambda particles : H(lam)(get_q(state.particles), get_p(state.particles)) - H(lam_next)(get_q(particles), get_p(particles)) 
         new_state, info = blackjax.smc.base.step(key, state = state, update_fn = update_fn, weight_fn = weight_fn, resample_fn = resampling.systematic )
 
         # new_state, info = blackjax_kernel(key, state)
@@ -140,7 +149,7 @@ def smc(
         if A_ansatz is not None and (k % fit_every == 0):
             print(f"Fitting ansatz at step {k} with λ = {lam_k}")
 
-            samples = np.concatenate([np.array(state.particles['q']), np.array(state.particles['p'])], axis=1)
+            samples = np.array(state.particles)
             check_nans("fitting_samples", samples, k)
             weights = jnp.exp(normalize_log_weights(jnp.log(state.weights)))
             
@@ -156,7 +165,7 @@ def smc(
             loss_histories.append(loss_history)
         
         # Compute energy statistics at every timestep
-        stats = compute_energy_stats(state.particles['q'], state.particles['p'], lam_k, make_T, make_V, A_ansatz, jnp.log(state.weights))
+        stats = compute_energy_stats(get_q(state.particles), get_p(state.particles), lam_k, make_T, make_V, A_ansatz, jnp.log(state.weights))
         
         # Compute energy changes if we have previous values
         if k % snapshot_every == 0:
@@ -179,7 +188,7 @@ def smc(
             detailed_energy_stats.append(stats)
             detailed_times.append(state.update_parameters['time'])
 
-            snapshots['particles'].append(np.array(state.particles['q']))
+            snapshots['particles'].append(np.array(get_q(state.particles)))
             snapshots['weights'].append(np.array(jnp.log(state.weights)))
             snapshots['lam'].append(lam_k)
             snapshots['times'].append(state.update_parameters['time'])
@@ -223,82 +232,59 @@ def smc(
         t_k1 = next_time(state.update_parameters['time'], k)
         current_delta_t = t_k1 - state.update_parameters['time']
             
-        
-        # Use adaptive step size for time progression if enabled
-        # step_delta_t = current_delta_t if simulation_type == 'cd' and adaptive_step_size else delta_t
-        lam_k1 = float(lam_fn(t_k1))
-        dot_lam_k1 = float(dot_lam_fn(t_k1))
-        
-    
-        if A_ansatz is None:
-            step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t), in_axes=(0, 0, None, None, None, None, None))
-        # TODO vvv
-        # else:  # cd
-             # Compute adaptive step size for CD if enabled (at beginning of step)
-            #  current_delta_t = delta_t
-            # if adaptive_step_size:
-            #     var_A = stats['var_A']
-            #     if var_A > 0:
-            #         print("\n\nvar_A", var_A)
-            #         current_delta_t = K / jnp.sqrt(var_A).item()
-            #         # Bound the step size between 0.05 and 1.0 for stability
-            #         # current_delta_t = max(0.05, min(1.0, current_delta_t))
-            #         if k % 10 == 0:  # Print every 10 steps to avoid spam
-            #             print(f"  Step {k}: Var[A] = {var_A:.6f}, adaptive delta_t = {current_delta_t:.6f}")
-            #     else:
-            #         if k % 10 == 0:
-            #             print(f"  Step {k}: Var[A] = {var_A:.6f}, using fixed delta_t = {current_delta_t:.6f}")
-             
-            # Choose integrator based on integrator_type
-        elif integrator_type == "leapfrog":
-                step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t), in_axes=(0, 0, None, None, None, None, None))
-        elif integrator_type == "implicit_midpoint":
-                step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_cd_implicit_midpoint_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next))(q=q, p=p, eps=delta_t), in_axes=(0, 0, None, None, None, None, None))
-        else:
-                raise ValueError(f"Unknown integrator type: {integrator_type}. Must be 'leapfrog' or 'implicit_midpoint'")
-
-
-
-        while True:
-        
-            q_new, p_new, step_weights = jax.jit(step)(state.particles['q'], state.particles['p'], lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t)
-            if False:
-                print(f"  Step {k}: Acceptance rate too low, decreasing delta_t to {current_delta_t * 0.5:.6f}")
-                current_delta_t = current_delta_t * 0.9
+        if True:
+            # Use adaptive step size for time progression if enabled
+            # step_delta_t = current_delta_t if simulation_type == 'cd' and adaptive_step_size else delta_t
+            lam_k1 = float(lam_fn(t_k1))
+            dot_lam_k1 = float(dot_lam_fn(t_k1))
+            
+            if A_ansatz is None:
+                step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t), in_axes=(0, 0, None, None, None, None, None))       
+                # Choose integrator based on integrator_type
+            elif integrator_type == "leapfrog":
+                    step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t), in_axes=(0, 0, None, None, None, None, None))
+            elif integrator_type == "implicit_midpoint":
+                    step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_cd_implicit_midpoint_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next))(q=q, p=p, eps=delta_t), in_axes=(0, 0, None, None, None, None, None))
             else:
-                # q,p = q_new, p_new
-                state = state._replace(particles={'q': q_new, 'p': p_new})
-                break
-
-        print("next iter")
+                    raise ValueError(f"Unknown integrator type: {integrator_type}. Must be 'leapfrog' or 'implicit_midpoint'")
 
 
-        state = state._replace(weights=jnp.exp(jnp.log(state.weights) + step_weights))
-        # weights = jnp.exp(normalize_log_weights(jnp.log(state.weights)))
-        # ess = jnp.sum(weights)**2 / jnp.sum(weights ** 2)
 
-        # kernel = make_cdhmc_kernel(make_T, make_V, A_ansatz, t_k1, lam_fn, dot_lam_fn)
-        # state, _ = kernel(state, key)
+            while True:
+            
+                q_new, p_new, step_weights = jax.jit(step)(get_q(state.particles), get_p(state.particles), lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t)
+                if False:
+                    print(f"  Step {k}: Acceptance rate too low, decreasing delta_t to {current_delta_t * 0.5:.6f}")
+                    current_delta_t = current_delta_t * 0.9
+                else:
+                    # q,p = q_new, p_new
+                    state = state._replace(particles=get_particles(q_new, p_new))
+                    break
 
+            state = state._replace(weights=jnp.exp(jnp.log(state.weights) + step_weights))
+            
+            if use_weights: 
+                
+                # Resample if ESS falls below threshold
+                # if ess_threshold is not None: 
+                if True:
+                # and ess < ess_threshold:
+                    #  print(f"  Resampling at step {k} (ESS = {ess:.2f})")
+                    if snapshot_every > 0 and k % snapshot_every == 0:
+                        snapshots['weights_before_resampling'].append(np.array(jnp.log(state.weights)))
+                        snapshots['particles_before_resampling'].append(np.array(get_q(state.particles)))
+                    q, p, log_weights = resample_fn(get_q(state.particles), get_p(state.particles), jnp.log(state.weights), key, M)
+                    state = state._replace(weights=jnp.exp(log_weights))
+                    resampling_count += 1
+                    state = state._replace(particles=get_particles(q, p))
+                    # Record the resampling event time
+                    snapshots['resampling_events'].append(state.update_parameters['time'])
 
-        
+        else:
+            kernel = make_cdhmc_kernel(make_T, make_V, A_ansatz, t_k1, lam_fn, dot_lam_fn)
+            key, sub = jax.random.split(key)
+            state, _ = kernel(state, sub)
 
-        if use_weights: 
-             
-            # Resample if ESS falls below threshold
-            # if ess_threshold is not None: 
-            if True:
-            # and ess < ess_threshold:
-                #  print(f"  Resampling at step {k} (ESS = {ess:.2f})")
-                 if snapshot_every > 0 and k % snapshot_every == 0:
-                    snapshots['weights_before_resampling'].append(np.array(jnp.log(state.weights)))
-                    snapshots['particles_before_resampling'].append(np.array(state.particles['q']))
-                 q, p, log_weights = resample_fn(state.particles['q'], state.particles['p'], jnp.log(state.weights), key, M)
-                 state = state._replace(weights=jnp.exp(log_weights))
-                 resampling_count += 1
-                 state = state._replace(particles={'q': q, 'p': p})
-                 # Record the resampling event time
-                 snapshots['resampling_events'].append(state.update_parameters['time'])
 
         # refresh momentum
         if k % momentum_refresh_interval == 0 and k > 0:
@@ -306,24 +292,24 @@ def smc(
             # old_energy = jax.vmap(lambda qr, pr: make_T(lam_k)(pr) + make_V(lam_k)(qr))(q, p)
             # first resample
             
-            key, sub = jax.random.split(key)
-            q, p, log_weights = resample_fn(state.particles['q'], state.particles['p'], jnp.log(state.weights), sub, M)
-            state = state._replace(weights=jnp.exp(log_weights))
-            state = state._replace(particles={'q': q, 'p': p})
+            # key, sub = jax.random.split(key)
+            # q, p, log_weights = resample_fn(state.particles['q'], state.particles['p'], jnp.log(state.weights), sub, M)
+            # state = state._replace(weights=jnp.exp(log_weights))
+            # state = state._replace(particles={'q': q, 'p': p})
             key, sub = jax.random.split(key)
             p = jax.random.normal(sub, (M, dim))
-            state = state._replace(particles={'q': q, 'p': p})
+            state = state._replace(particles=get_particles(get_q(state.particles), p))
             # new_energy = jax.vmap(lambda qr, pr: make_T(lam_k)(pr) + make_V(lam_k)(qr))(q, p)
             # log_weights += old_energy - new_energy
 
             T = make_T(lam_k)
             V = make_V(lam_k)
-            prev_H_vals = jax.vmap(lambda qr, pr: T(pr) + V(qr))(state.particles['q'], state.particles['p'])
+            prev_H_vals = jax.vmap(lambda qr, pr: T(pr) + V(qr))(get_q(state.particles), get_p(state.particles))
 
              
            
          # Check for NaNs after step
-        if check_nans(f"q", state.particles['q'], k) or check_nans(f"p", state.particles['p'], k) or check_nans(f"log_weights", jnp.log(state.weights), k): raise Exception(f"  Stopping simulation due to NaNs in HMC at step {k}")
+        if check_nans(f"q", get_q(state.particles), k) or check_nans(f"p", get_p(state.particles), k) or check_nans(f"log_weights", jnp.log(state.weights), k): raise Exception(f"  Stopping simulation due to NaNs in HMC at step {k}")
          
 
         state = state._replace(update_parameters={'time': next_time(state.update_parameters['time'], k)})
