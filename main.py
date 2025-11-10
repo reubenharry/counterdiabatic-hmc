@@ -24,7 +24,7 @@ def main():
     system_name = "mixture"  # Options: see SYSTEMS in src/
     # ansatz_type = 'polynomial' # Options: "polynomial", "neural_network", "analytic", "hermite"
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
-    ansatze = ['hermite']
+    ansatze = ['polynomial']
     weightings = [True]
     
     # Simulation parameters
@@ -55,7 +55,13 @@ def main():
     # Define lambda functions
     v = 1.0
     max_lam = 1.0
-    lam_fn = lambda t: jnp.array([jnp.where(v*t < max_lam, v * t, max_lam)])
+
+    def lam_fn(t):
+        """Schedule moving along the diagonal from [0, 0] to [1, 1] in the upper half-plane."""
+        s = jnp.clip(v * t, a_min=0.0, a_max=max_lam)
+        return jnp.stack([s, s])
+
+    lam_dim = lam_fn(0.0).shape[0]
     dot_lam_fn = jax.jacobian(lam_fn)
     
     # ===== ANSATZ SETUP =====
@@ -67,12 +73,13 @@ def main():
     hermite_ansatz = HermiteAnsatz(
         f_ansatz=f_ansatz,  # Parameterized ansatz for f(q)
         max_order=5,  # Use Hermite polynomials up to order 5 (odd indices: 1, 3, 5)
-        dim=dim
+        dim=dim,
+        output_dim=lam_dim
     )
 
     ansatz_dict = {
-        "polynomial": PolynomialAnsatz(max_degree=4, dim=dim),
-        "neural_network": NeuralNetworkAnsatz(dims=[2*dim, 32, 32, 1], key=jax.random.PRNGKey(42), dim=dim),
+        "polynomial": PolynomialAnsatz(max_degree=4, dim=dim, output_dim=lam_dim),
+        "neural_network": NeuralNetworkAnsatz(dims=[2*dim, 32, 32, lam_dim], key=jax.random.PRNGKey(42), dim=dim),
         "analytic": AnalyticAnsatz(),
         "hermite": hermite_ansatz
     }

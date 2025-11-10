@@ -79,31 +79,31 @@ class PolynomialAnsatz(A_ansatz):
     terms: list = eqx.static_field()
     ansatz_type: str = eqx.static_field()
     dim: int = eqx.static_field()
+    output_dim: int = eqx.static_field()
 
-    def __init__(self, max_degree, dim=1, key=jr.PRNGKey(42)):
-        
-        
+    def __init__(self, max_degree, dim=1, output_dim=1, key=jr.PRNGKey(42)):
         self.dim = dim
+        self.output_dim = output_dim
         self.terms = generate_polynomial_terms(max_degree, dim)
-    
-        # Initialize parameters with small random values
-        key, self.params = initialize_params(key, (len(self.terms),))
+
+        # Initialize parameters with small random values for each output dimension
+        key, self.params = initialize_params(key, (self.output_dim, len(self.terms)))
         self.ansatz_type = 'polynomial'
 
     def __call__(self, q, p):
         q = jnp.atleast_1d(q)
         p = jnp.atleast_1d(p)
-        result = jnp.array([0.0])
-        for i, (_, q_powers, p_powers) in enumerate(self.terms):
-            term = self.params[i]
-            # Compute q^q_powers * p^p_powers
+
+        result = jnp.zeros(self.output_dim, dtype=self.params.dtype)
+        for term_idx, (_, q_powers, p_powers) in enumerate(self.terms):
+            basis_val = jnp.array(1.0, dtype=self.params.dtype)
             for d in range(self.dim):
                 if q_powers[d] > 0:
-                    term = term * (q[d] ** q_powers[d])
+                    basis_val = basis_val * (q[d] ** q_powers[d])
                 if p_powers[d] > 0:
-                    term = term * (p[d] ** p_powers[d])
-            result += term
-        
+                    basis_val = basis_val * (p[d] ** p_powers[d])
+            result = result + self.params[:, term_idx] * basis_val
+
         return result
 
     def get_term_description(self):
@@ -376,8 +376,9 @@ class HermiteAnsatz(A_ansatz):
     max_order: int = eqx.static_field()
     ansatz_type: str = eqx.static_field()
     dim: int = eqx.static_field()
+    output_dim: int = eqx.static_field()
     
-    def __init__(self, f_ansatz, max_order=5, dim=1, key=jr.PRNGKey(42)):
+    def __init__(self, f_ansatz, max_order=5, dim=1, output_dim=1, key=jr.PRNGKey(42)):
         """
         Initialize the Hermite ansatz.
         
@@ -390,6 +391,7 @@ class HermiteAnsatz(A_ansatz):
         import jax.random as jr
         
         self.dim = dim
+        self.output_dim = output_dim
         self.max_order = max_order
         self.ansatz_type = 'hermite'
         self.f_ansatz = f_ansatz  # Assume f_ansatz is already properly initialized
@@ -421,7 +423,8 @@ class HermiteAnsatz(A_ansatz):
         # Compute g(p) using the global evaluate_g function
         g_p = evaluate_g(p, self.alpha_coeffs, self.max_order)
         
-        return jnp.array([f_q * g_p])
+        value = f_q * g_p
+        return jnp.full((self.output_dim,), value)
     
     def get_params_for_saving(self):
         """

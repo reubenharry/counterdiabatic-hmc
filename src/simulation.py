@@ -103,7 +103,7 @@ def counterdiabatic_smc(
            
         lam_k = (lam_fn(state.update_parameters['time']))
         dot_lam_k = (dot_lam_fn(state.update_parameters['time']))
-        if jnp.isnan(lam_k) or jnp.isnan(dot_lam_k): raise Exception()
+        if jnp.any(jnp.isnan(lam_k)) or jnp.any(jnp.isnan(dot_lam_k)): raise Exception()
             
         # Handle ansatz fitting and loss calculation
         if A_ansatz is not None and (k % fit_every == 0):

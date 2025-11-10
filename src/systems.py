@@ -68,7 +68,7 @@ def make_V_gaussian_annealing(lam):
 def make_V_geometric_potential(final_potential, initial_sigma):
     log_normal_pdf = lambda x, mu, sigma: jnp.sum(0.5*((x/sigma)**2))
     def make_V(lam):
-        return lambda q: log_normal_pdf(q, 0, (initial_sigma)) * (1-lam[0]) + final_potential(q) * lam[0]
+        return lambda q: (log_normal_pdf(q, 0, (initial_sigma)) * (1-lam[0]) + final_potential(q) * lam[0])
 
     return make_V
 
