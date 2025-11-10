@@ -27,15 +27,20 @@ def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
     detailed_energy_stats = []
     detailed_times = []
     t_k = 0.0
-    log_weights = jnp.zeros(M)
+    log_weights = normalize_log_weights(jnp.zeros(M))
     initial_lam = float(lam_fn(0.0))
     q, p = generate_initial_samples(M, make_T, make_V, initial_lam, key, dim, initial_sigma)
-    snapshots['weights_before_resampling'].append(np.array(log_weights))
-    snapshots['particles_before_resampling'].append(np.array(q))
+    # snapshots['weights_before_resampling'].append(np.array(log_weights))
+    # snapshots['particles_before_resampling'].append(np.array(q))
+    snapshots['particles'].append(q)
+    snapshots['weights'].append(log_weights)
+    snapshots['times'].append(0.0)
+    snapshots['lam'].append(float(initial_lam))
+    # snapshots['times'].append(0.0)
     # Check initial samples
     check_nans(f"initial_q", q)
     check_nans(f"initial_p", p)
-    return snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, SMCState(particles=get_particles(q, p), weights=jnp.exp(normalize_log_weights(log_weights)), update_parameters={'time': t_k})
+    return snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, SMCState(particles=get_particles(q, p), weights=jnp.exp((log_weights)), update_parameters={'time': t_k})
 
 
 
@@ -185,64 +190,64 @@ def smc(
             loss_histories.append(loss_history)
         
         # Compute energy statistics at every timestep
-        stats = compute_energy_stats(get_qs(state.particles), get_ps(state.particles), lam_k, make_T, make_V, A_ansatz, jnp.log(state.weights))
+        # stats = compute_energy_stats(get_qs(state.particles), get_ps(state.particles), lam_k, make_T, make_V, A_ansatz, jnp.log(state.weights))
         
-        # Compute energy changes if we have previous values
-        if k % snapshot_every == 0:
-            if prev_H_vals is not None:
-                # Compute individual particle energy changes
-                delta_H_vals = stats['H_vals'] - prev_H_vals
+        # # Compute energy changes if we have previous values
+        # if k % snapshot_every == 0:
+        #     if prev_H_vals is not None:
+        #         # Compute individual particle energy changes
+        #         delta_H_vals = stats['H_vals'] - prev_H_vals
                 
-                # Compute expectations of energy changes
-                E_p_delta_H = compute_expectation_over_particles(delta_H_vals)
-                E_p_delta_H_sq = compute_expectation_over_particles(delta_H_vals ** 2)
+        #         # Compute expectations of energy changes
+        #         E_p_delta_H = compute_expectation_over_particles(delta_H_vals)
+        #         E_p_delta_H_sq = compute_expectation_over_particles(delta_H_vals ** 2)
                 
-                # Add change statistics to the stats dictionaries
-                stats['E_p_delta_H'] = float(E_p_delta_H)
-                stats['E_p_delta_H_sq'] = float(E_p_delta_H_sq)
-            else:
-                # First timestep - no change to compute
-                stats['E_p_delta_H'] = 0.0
-                stats['E_p_delta_H_sq'] = 0.0
+        #         # Add change statistics to the stats dictionaries
+        #         stats['E_p_delta_H'] = float(E_p_delta_H)
+        #         stats['E_p_delta_H_sq'] = float(E_p_delta_H_sq)
+        #     else:
+        #         # First timestep - no change to compute
+        #         stats['E_p_delta_H'] = 0.0
+        #         stats['E_p_delta_H_sq'] = 0.0
 
-            detailed_energy_stats.append(stats)
-            detailed_times.append(state.update_parameters['time'])
+        #     detailed_energy_stats.append(stats)
+        #     detailed_times.append(state.update_parameters['time'])
 
-            snapshots['particles'].append(np.array(get_qs(state.particles)))
-            snapshots['weights'].append(np.array(jnp.log(state.weights)))
-            snapshots['lam'].append(lam_k)
-            snapshots['times'].append(state.update_parameters['time'])
+        #     snapshots['particles'].append(np.array(get_qs(state.particles)))
+        #     snapshots['weights'].append(np.array(jnp.log(state.weights)))
+        #     snapshots['lam'].append(lam_k)
+        #     snapshots['times'].append(state.update_parameters['time'])
 
-            if A_ansatz is not None and isinstance(A_ansatz, PolynomialAnsatz):
-                param_history.append(np.array(A_ansatz.params))
-                check_nans("polynomial_params", A_ansatz.params, k)
-            elif A_ansatz is not None and isinstance(A_ansatz, NeuralNetworkAnsatz):
-                # Store just the parameters as a tuple of arrays
-                params = []
-                for layer in A_ansatz.layers:
-                    if isinstance(layer, eqx.nn.Linear):
-                        params.append(np.array(layer.weight))
-                        params.append(np.array(layer.bias))
-                param_history.append(tuple(params))
-            elif A_ansatz is not None and isinstance(A_ansatz, AnalyticAnsatz):
-                param_history.append(np.array(A_ansatz.params))
-                check_nans("analytic_params", A_ansatz.params, k)
-            elif A_ansatz is not None and isinstance(A_ansatz, HermiteAnsatz):
-                # For HermiteAnsatz, save the parameters as a dictionary
-                param_dict = A_ansatz.params
-                param_history.append(param_dict)
-                # Check for NaNs in both f_params and g_params
-                if param_dict['f_params'] is not None:
-                    check_nans("hermite_f_params", param_dict['f_params'], k)
-                check_nans("hermite_g_params", param_dict['g_params'], k)
+        #     if A_ansatz is not None and isinstance(A_ansatz, PolynomialAnsatz):
+        #         param_history.append(np.array(A_ansatz.params))
+        #         check_nans("polynomial_params", A_ansatz.params, k)
+        #     elif A_ansatz is not None and isinstance(A_ansatz, NeuralNetworkAnsatz):
+        #         # Store just the parameters as a tuple of arrays
+        #         params = []
+        #         for layer in A_ansatz.layers:
+        #             if isinstance(layer, eqx.nn.Linear):
+        #                 params.append(np.array(layer.weight))
+        #                 params.append(np.array(layer.bias))
+        #         param_history.append(tuple(params))
+        #     elif A_ansatz is not None and isinstance(A_ansatz, AnalyticAnsatz):
+        #         param_history.append(np.array(A_ansatz.params))
+        #         check_nans("analytic_params", A_ansatz.params, k)
+        #     elif A_ansatz is not None and isinstance(A_ansatz, HermiteAnsatz):
+        #         # For HermiteAnsatz, save the parameters as a dictionary
+        #         param_dict = A_ansatz.params
+        #         param_history.append(param_dict)
+        #         # Check for NaNs in both f_params and g_params
+        #         if param_dict['f_params'] is not None:
+        #             check_nans("hermite_f_params", param_dict['f_params'], k)
+        #         check_nans("hermite_g_params", param_dict['g_params'], k)
 
-            snapshots['detailed_energy_stats'] = detailed_energy_stats
-            snapshots['detailed_times'] = detailed_times
+        #     snapshots['detailed_energy_stats'] = detailed_energy_stats
+        #     snapshots['detailed_times'] = detailed_times
             
             
         
         # Update previous energy values for next iteration
-        prev_H_vals = stats['H_vals']
+        # prev_H_vals = stats['H_vals']
         
        
             
@@ -299,23 +304,28 @@ def smc(
             kernel = make_cdhmc_kernel(make_T, make_V, A_ansatz, t_k1, lam_fn, dot_lam_fn)
             key, sub = jax.random.split(key)
             state, _ = kernel(state, sub)
+
+            snapshots['particles'].append(np.array(get_qs(state.particles)))
+            snapshots['weights'].append(np.array(jnp.log(state.weights)))
+            snapshots['lam'].append(float(lam_fn(t_k1)))
+            snapshots['times'].append((t_k1))
             
-            if use_weights: 
+            # if use_weights: 
                 
-                # Resample if ESS falls below threshold
-                # if ess_threshold is not None: 
-                if True:
-                # and ess < ess_threshold:
-                    #  print(f"  Resampling at step {k} (ESS = {ess:.2f})")
-                    if snapshot_every > 0 and k % snapshot_every == 0:
-                        snapshots['weights_before_resampling'].append(np.array(jnp.log(state.weights)))
-                        snapshots['particles_before_resampling'].append(np.array(get_qs(state.particles)))
-                    q, p, log_weights = resample_fn(get_qs(state.particles), get_ps(state.particles), jnp.log(state.weights), key, M)
-                    # state = state._replace(weights=jnp.exp(normalize_log_weights(log_weights)))
-                    resampling_count += 1
-                    # state = state._replace(particles=get_particles(q, p))
-                    # Record the resampling event time
-                    snapshots['resampling_events'].append(state.update_parameters['time'])
+            #     # Resample if ESS falls below threshold
+            #     # if ess_threshold is not None: 
+            #     if True:
+            #     # and ess < ess_threshold:
+            #         #  print(f"  Resampling at step {k} (ESS = {ess:.2f})")
+            #         if snapshot_every > 0 and k % snapshot_every == 0:
+            #             snapshots['weights_before_resampling'].append(np.array(jnp.log(state.weights)))
+            #             snapshots['particles_before_resampling'].append(np.array(get_qs(state.particles)))
+            #         q, p, log_weights = resample_fn(get_qs(state.particles), get_ps(state.particles), jnp.log(state.weights), key, M)
+            #         # state = state._replace(weights=jnp.exp(normalize_log_weights(log_weights)))
+            #         resampling_count += 1
+            #         # state = state._replace(particles=get_particles(q, p))
+            #         # Record the resampling event time
+            #         snapshots['resampling_events'].append(state.update_parameters['time'])
 
         else:
             kernel = make_cdhmc_kernel(make_T, make_V, A_ansatz, t_k1, lam_fn, dot_lam_fn)
