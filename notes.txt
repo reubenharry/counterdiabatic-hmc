@@ -1,36 +1,23 @@
 todo:
 
-    consider stabilization by removing mean
+    restore metadata saving
+    restore different kinds of step function
 
-    write cdhmc as a kernel, so it's cleaner:
-        takes state,
+    generalize to multidimensional base manifold
 
-    you need to make sure snapsotting works after refactor!
+    try microcanonical setting
 
     work out how to limit the step size in a clean way: multiple steps, but then how to change H...
 
     align the plain SMC and counterdiabatic behavior on gaussian mixture: this shouldn't be so difficult: first start by copying the schedule, without driving, then add driving, then accelerate the schedule...
 
-    a bug has emerged where if I initialize with a variance of 4 gaussian, the weighting and loss breaks
-
     clean up: fitting in the classes
         
-        why isn't the moving mean looking right?
-
-        generalize systems so that they all start with same gaussian
-
         save hermite param history better
 
-        add equilibration back
-        get all the cases working again:
-            double well quadrant
-
-        check the weights
-
-        
+       
 
     better alternation of g and f updates
-    try a schedule...
     try microcanonical ensemble
     try implementing a second dimension of lambda:
         requires A_1 and A_2
