@@ -24,7 +24,7 @@ def main():
     system_name = "mixture"  # Options: see SYSTEMS in src/
     # ansatz_type = 'polynomial' # Options: "polynomial", "neural_network", "analytic", "hermite"
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
-    ansatze = ['polynomial']
+    ansatze = ['hermite']
     weightings = [True]
     
     # Simulation parameters

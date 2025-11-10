@@ -421,7 +421,7 @@ class HermiteAnsatz(A_ansatz):
         # Compute g(p) using the global evaluate_g function
         g_p = evaluate_g(p, self.alpha_coeffs, self.max_order)
         
-        return f_q * g_p
+        return jnp.array([f_q * g_p])
     
     def get_params_for_saving(self):
         """

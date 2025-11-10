@@ -69,8 +69,8 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
     # Check if this is a HermiteAnsatz and use special fitting
     if A_ansatz.ansatz_type == 'hermite':
         print(A_ansatz.f_ansatz(jnp.array([1.0])), "A_ansatz.f_ansatz 1 orig")
-        return fit_hermite_ansatz(
-            lam=lam[0], samples=samples, make_T=make_T, make_V=make_V, hermite_ansatz=A_ansatz, num_iters=50, lr=lr, use_regularization=use_regularization, weights=weights)
+        return fit_hermite_ansatz_optimize(
+            lam=lam, samples=samples, make_T=make_T, make_V=make_V, hermite_ansatz=A_ansatz, num_iters=50, lr=lr, use_regularization=use_regularization, weights=weights)
     
     check_nans("input_samples", samples)
     

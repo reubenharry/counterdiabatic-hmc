@@ -2,7 +2,9 @@ todo:
 
     restore metadata saving
 
-    generalize to multidimensional base manifold
+    get hermite working again
+
+    generalize to multidimensional base manifold: ok, a second polynomial and it should work, no?
 
     try microcanonical setting
 
