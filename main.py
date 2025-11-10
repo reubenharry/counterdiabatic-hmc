@@ -77,9 +77,9 @@ def main():
         "hermite": hermite_ansatz
     }
 
-    _, plain_smc_snapshots = smc_adjusted_hmc(4000, SYSTEMS[system_name]['make_V'], jax.random.PRNGKey(0), threshold=0.5)
-    save_simulation_data(plain_smc_snapshots, system_name, 'smc_adjusted_hmc')
-    schedule = [t for t in plain_smc_snapshots['times']]
+    # _, plain_smc_snapshots = smc_adjusted_hmc(4000, SYSTEMS[system_name]['make_V'], jax.random.PRNGKey(0), threshold=0.5)
+    # save_simulation_data(plain_smc_snapshots, system_name, 'smc_adjusted_hmc')
+    # schedule = [t for t in plain_smc_snapshots['times']]
 
     for ansatz_type, use_weights in itertools.product(ansatze, weightings):
         A_ansatz = ansatz_dict.get(ansatz_type)

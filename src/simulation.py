@@ -54,6 +54,9 @@ def make_cdhmc_kernel(make_T, make_V, A_ansatz, time_next, lam_fn, dot_lam_fn):
         dot_lam = dot_lam_fn(time)
         dot_lam_next = dot_lam_fn(time_next)
 
+        # q, p, log_weights = systematic_resample(get_qs(state.particles), get_ps(state.particles), jnp.log(state.weights), key, state.particles.shape[0])
+        # state = state._replace(particles=get_particles(q, p))
+
         print("weights", state.weights)
 
         # state = state._replace(weights=state.weights/jnp.sum(state.weights))
@@ -71,7 +74,15 @@ def make_cdhmc_kernel(make_T, make_V, A_ansatz, time_next, lam_fn, dot_lam_fn):
             qs, ps, _ = jax.vmap(lambda _, particle, update_parameters: (step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=particle[:dim], p=particle[dim:], eps=delta_t), in_axes=(0, 0, None))(k, p, u)
             return get_particles(qs, ps), None
         H = lambda lam: jax.vmap(lambda q, p: make_T(lam)(p) + make_V(lam)(q))
-        weight_fn = (lambda particles : H(lam)(get_qs(state.particles), get_ps(state.particles)) - H(lam_next)(get_qs(particles), get_ps(particles)))
+
+        # def log_weights_fn(particle ) -> float:
+        #     return delta_t * (
+        #         -(H)(1.0)(particle) + (H)(0.0)(particle)
+        #     )
+        weight_fn = lambda old_particles, particles : H(lam)(get_qs(old_particles), get_ps(old_particles)) - H(lam_next)(get_qs(particles), get_ps(particles))
+        # indices = resampling.systematic(key, state.weights, state.particles.shape[0])
+        # particles = jax.tree.map(lambda x: x[indices], state.particles)
+        # state = state._replace(particles=particles)
         new_state, info = blackjax.smc.base.step(key, state = state, update_fn = update_fn, weight_fn = weight_fn, resample_fn = resampling.systematic)
 
         # new_state, info = blackjax_kernel(key, state)
@@ -240,68 +251,7 @@ def smc(
 
         t_k1 = next_time(state.update_parameters['time'], k)
         current_delta_t = t_k1 - state.update_parameters['time']
-            
-        if True:
-            # Use adaptive step size for time progression if enabled
-            # step_delta_t = current_delta_t if simulation_type == 'cd' and adaptive_step_size else delta_t
-            lam_k1 = float(lam_fn(t_k1))
-            dot_lam_k1 = float(dot_lam_fn(t_k1))
-            
-            if A_ansatz is None:
-                step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t), in_axes=(0, 0, None, None, None, None, None))       
-                # Choose integrator based on integrator_type
-            elif integrator_type == "leapfrog":
-                    step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t), in_axes=(0, 0, None, None, None, None, None))
-            elif integrator_type == "implicit_midpoint":
-                    step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_cd_implicit_midpoint_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next))(q=q, p=p, eps=delta_t), in_axes=(0, 0, None, None, None, None, None))
-            else:
-                    raise ValueError(f"Unknown integrator type: {integrator_type}. Must be 'leapfrog' or 'implicit_midpoint'")
-
-
-
-            while True:
-            
-                q_new, p_new, step_weights = jax.jit(step)(get_qs(state.particles), get_ps(state.particles), lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t)
-
-                kernel = make_cdhmc_kernel(make_T, make_V, A_ansatz, t_k1, lam_fn, dot_lam_fn)
-                key, sub = jax.random.split(key)
-                new_state, _ = kernel(state, sub)
-                q_new, p_new = get_qs(new_state.particles), get_ps(new_state.particles)
-                # step_weights = jax.vmap(compute_counterdiabatic_work, in_axes=(0, 0, 0, 0, None, None, None, None, None))(get_qs(state.particles), get_ps(state.particles), q_new, p_new, lam_k, lam_k1, A_ansatz, make_T, make_V)
-                step_weights = new_state.weights
-                if False:
-                    print(f"  Step {k}: Acceptance rate too low, decreasing delta_t to {current_delta_t * 0.5:.6f}")
-                    current_delta_t = current_delta_t * 0.9
-                else:
-                    # q,p = q_new, p_new
-                    state = state._replace(particles=get_particles(q_new, p_new))
-                    break
-
-            state = state._replace(weights=step_weights)
-            
-            if use_weights: 
-                
-                # Resample if ESS falls below threshold
-                # if ess_threshold is not None: 
-                if True:
-                # and ess < ess_threshold:
-                    #  print(f"  Resampling at step {k} (ESS = {ess:.2f})")
-                    if snapshot_every > 0 and k % snapshot_every == 0:
-                        snapshots['weights_before_resampling'].append(np.array(jnp.log(state.weights)))
-                        snapshots['particles_before_resampling'].append(np.array(get_qs(state.particles)))
-                    q, p, log_weights = resample_fn(get_qs(state.particles), get_ps(state.particles), jnp.log(state.weights), key, M)
-                    state = state._replace(weights=jnp.exp(normalize_log_weights(log_weights)))
-                    resampling_count += 1
-                    state = state._replace(particles=get_particles(q, p))
-                    # Record the resampling event time
-                    snapshots['resampling_events'].append(state.update_parameters['time'])
-
-        else:
-            kernel = make_cdhmc_kernel(make_T, make_V, A_ansatz, t_k1, lam_fn, dot_lam_fn)
-            key, sub = jax.random.split(key)
-            state, _ = kernel(state, sub)
-
-
+        
         # refresh momentum
         if k % momentum_refresh_interval == 0 and k > 0:
         # if True:
@@ -323,6 +273,56 @@ def smc(
             prev_H_vals = jax.vmap(lambda qr, pr: T(pr) + V(qr))(get_qs(state.particles), get_ps(state.particles))
 
              
+            
+        if True:
+            # # Use adaptive step size for time progression if enabled
+            # # step_delta_t = current_delta_t if simulation_type == 'cd' and adaptive_step_size else delta_t
+            # lam_k1 = float(lam_fn(t_k1))
+            # dot_lam_k1 = float(dot_lam_fn(t_k1))
+            
+            # if A_ansatz is None:
+            #     step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t), in_axes=(0, 0, None, None, None, None, None))       
+            #     # Choose integrator based on integrator_type
+            # elif integrator_type == "leapfrog":
+            #         step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next, lam_fn, dot_lam_fn))(q=q, p=p, eps=delta_t), in_axes=(0, 0, None, None, None, None, None))
+            # elif integrator_type == "implicit_midpoint":
+            #         step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_cd_implicit_midpoint_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next))(q=q, p=p, eps=delta_t), in_axes=(0, 0, None, None, None, None, None))
+            # else:
+            #         raise ValueError(f"Unknown integrator type: {integrator_type}. Must be 'leapfrog' or 'implicit_midpoint'")
+
+
+
+            # while True:
+            
+            # q_new, p_new, step_weights = jax.jit(step)(get_qs(state.particles), get_ps(state.particles), lam_k, lam_k1, dot_lam_k, dot_lam_k1, current_delta_t)
+
+            kernel = make_cdhmc_kernel(make_T, make_V, A_ansatz, t_k1, lam_fn, dot_lam_fn)
+            key, sub = jax.random.split(key)
+            state, _ = kernel(state, sub)
+            
+            if use_weights: 
+                
+                # Resample if ESS falls below threshold
+                # if ess_threshold is not None: 
+                if True:
+                # and ess < ess_threshold:
+                    #  print(f"  Resampling at step {k} (ESS = {ess:.2f})")
+                    if snapshot_every > 0 and k % snapshot_every == 0:
+                        snapshots['weights_before_resampling'].append(np.array(jnp.log(state.weights)))
+                        snapshots['particles_before_resampling'].append(np.array(get_qs(state.particles)))
+                    q, p, log_weights = resample_fn(get_qs(state.particles), get_ps(state.particles), jnp.log(state.weights), key, M)
+                    # state = state._replace(weights=jnp.exp(normalize_log_weights(log_weights)))
+                    resampling_count += 1
+                    # state = state._replace(particles=get_particles(q, p))
+                    # Record the resampling event time
+                    snapshots['resampling_events'].append(state.update_parameters['time'])
+
+        else:
+            kernel = make_cdhmc_kernel(make_T, make_V, A_ansatz, t_k1, lam_fn, dot_lam_fn)
+            key, sub = jax.random.split(key)
+            state, _ = kernel(state, sub)
+
+
            
          # Check for NaNs after step
         if check_nans(f"q", get_qs(state.particles), k) or check_nans(f"p", get_ps(state.particles), k) or check_nans(f"log_weights", jnp.log(state.weights), k): raise Exception(f"  Stopping simulation due to NaNs in HMC at step {k}")
