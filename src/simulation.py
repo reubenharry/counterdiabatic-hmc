@@ -13,34 +13,6 @@ import blackjax.smc.base as base
 import blackjax
 
 
-get_particles = lambda q, p: {'q': q, 'p': p}
-
-def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
-    snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': [], 'weights_before_resampling': [], 'particles_before_resampling': []}
-    snapshots['pre_equilibration'] = []
-    resampling_count = 0
-    loss_histories = []
-    param_history = []
-    prev_H_vals = None
-    detailed_energy_stats = []
-    detailed_times = []
-    t_k = 0.0
-    log_weights = normalize_log_weights(jnp.zeros(M))
-    initial_lam = float(lam_fn(0.0))
-    q, p = generate_initial_samples(M, make_T, make_V, initial_lam, key, dim, initial_sigma)
-    # snapshots['weights_before_resampling'].append(np.array(log_weights))
-    # snapshots['particles_before_resampling'].append(np.array(q))
-    snapshots['particles'].append(q)
-    snapshots['weights'].append(log_weights)
-    snapshots['times'].append(0.0)
-    snapshots['lam'].append(float(initial_lam))
-    # snapshots['times'].append(0.0)
-    # Check initial samples
-    check_nans(f"initial_q", q)
-    check_nans(f"initial_p", p)
-    return snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, SMCState(particles=get_particles(q, p), weights=jnp.exp((log_weights)), update_parameters={'time': t_k})
-
-
 
 def make_cdhmc_kernel(make_T, make_V, A_ansatz, time_next, lam_fn, dot_lam_fn, integrator_type="leapfrog"):
       
@@ -77,7 +49,7 @@ def make_cdhmc_kernel(make_T, make_V, A_ansatz, time_next, lam_fn, dot_lam_fn, i
 # =============================================================================
 # UNIFIED SIMULATION FUNCTION
 # =============================================================================
-def smc(
+def counterdiabatic_smc(
     M, 
     N_steps, 
     momentum_refresh_interval, 
@@ -123,13 +95,9 @@ def smc(
         ess_threshold: Effective sample size threshold for resampling
         snapshot_every: Rate at which snapshots are taken
         equilibration_steps: Number of equilibration HMC steps after each CD step
-        
-    Returns:
-        For 'naive' type: snapshots
-        For 'cd' type: (A_ansatz, snapshots, loss_histories, param_history)
     """
     
-    snapshots, resampling_count, loss_histories, param_history, prev_H_vals, detailed_energy_stats, detailed_times, state = initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma)
+    snapshots, param_history, prev_H_vals, detailed_energy_stats, detailed_times, state = initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma)
     
     for k in range(N_steps):
            
@@ -153,7 +121,6 @@ def smc(
             if any(jnp.isnan(loss) for loss in loss_history):
                 print(f"⚠️  NaN detected in loss history at step {k}")
             
-            loss_histories.append(loss_history)
         
         t_k1 = next_time(state.update_parameters['time'], k)
         
@@ -170,23 +137,49 @@ def smc(
         key, sub = jax.random.split(key)
         state, _ = kernel(state, sub)
 
-        if k % snapshot_every == 0: update_snapshots(snapshots, state, lam_next, t_k1)
-            
+        if k % snapshot_every == 0: update_snapshots(snapshots, state, lam_next, t_k1, loss_history)  
 
         if check_nans(f"q", state.particles['q'], k) or check_nans(f"p", state.particles['p'], k) or check_nans(f"log_weights", jnp.log(state.weights), k): raise Exception(f"  Stopping simulation due to NaNs in HMC at step {k}")
          
         state = state._replace(update_parameters={'time': t_k1})        
-        if state.update_parameters['time'] > final_time:
-            break
+        if state.update_parameters['time'] > final_time: break
 
-    return A_ansatz, snapshots, loss_histories, param_history, state
+    return A_ansatz, snapshots, param_history, state
 
 
-def update_snapshots(snapshots, state, lam_next, t_k1):
+
+get_particles = lambda q, p: {'q': q, 'p': p}
+
+def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
+    snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': [], 'weights_before_resampling': [], 'particles_before_resampling': [], 'loss_history': []}
+    param_history = []
+    prev_H_vals = None
+    detailed_energy_stats = []
+    detailed_times = []
+    t_k = 0.0
+    log_weights = normalize_log_weights(jnp.zeros(M))
+    initial_lam = float(lam_fn(0.0))
+    q, p = generate_initial_samples(M, make_T, make_V, initial_lam, key, dim, initial_sigma)
+    # snapshots['weights_before_resampling'].append(np.array(log_weights))
+    # snapshots['particles_before_resampling'].append(np.array(q))
+    snapshots['particles'].append(q)
+    snapshots['weights'].append(log_weights)
+    snapshots['times'].append(0.0)
+    snapshots['lam'].append(float(initial_lam))
+    # snapshots['times'].append(0.0)
+    # Check initial samples
+    check_nans(f"initial_q", q)
+    check_nans(f"initial_p", p)
+    return snapshots, param_history, prev_H_vals, detailed_energy_stats, detailed_times, SMCState(particles=get_particles(q, p), weights=jnp.exp((log_weights)), update_parameters={'time': t_k})
+
+
+
+def update_snapshots(snapshots, state, lam_next, t_k1, loss_history):
     snapshots['particles'].append(state.particles['q'])
     snapshots['weights'].append(state.weights)
     snapshots['lam'].append(float(lam_next))
     snapshots['times'].append(t_k1)
+    snapshots['loss_history'].append(loss_history)
 
 
  # # 1. Run equilibration at current time (if enabled and taking snapshots)

@@ -284,7 +284,7 @@ def print_coefficients_summary(alpha_coeffs, max_order):
 
 
 
-def save_simulation_data(snapshots, system_name, method_name, ansatz_params=None, loss_histories=None, param_history=None, ansatz_type=None, integrator_type=None):
+def save_simulation_data(snapshots, system_name, method_name, ansatz_params=None, param_history=None, ansatz_type=None, integrator_type=None):
     """Save simulation data to a pickle file.
     
     Args:
@@ -292,7 +292,6 @@ def save_simulation_data(snapshots, system_name, method_name, ansatz_params=None
         system_name: Name of the system (e.g., "double_well")
         method_name: Name of the method (e.g., "cd_unweighted")
         ansatz_params: Ansatz parameters (optional)
-        loss_histories: Loss histories (optional)
         param_history: Parameter history (optional)
         ansatz_type: Type of ansatz (e.g., "polynomial", "neural_network") - for directory organization
         integrator_type: Type of integrator (e.g., "leapfrog", "implicit_midpoint") - for directory organization
@@ -316,7 +315,6 @@ def save_simulation_data(snapshots, system_name, method_name, ansatz_params=None
         'system_name': system_name,
         'method_name': method_name,
         'ansatz_params': ansatz_params,
-        'loss_histories': loss_histories,
         'param_history': param_history
     }
     

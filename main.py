@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import equinox as eqx
 from src.blackjax_smc import smc_adjusted_hmc
-from src.simulation import smc
+from src.simulation import counterdiabatic_smc
 from src.ansatze import PolynomialAnsatz, NeuralNetworkAnsatz, AnalyticAnsatz, HermiteAnsatz, PolynomialFAnsatz
 from src.systems import SYSTEMS, get_system
 from src.plotting import create_all_plots
@@ -89,7 +89,7 @@ def main():
             else:
                 return 1000.0
         
-        A_ansatz, snapshots, loss_histories, param_history, state = smc(
+        A_ansatz, snapshots, param_history, state = counterdiabatic_smc(
             final_time=final_time,
             M=M, 
             N_steps=N_steps, 
@@ -120,7 +120,6 @@ def main():
             system_name, 
             f'{"cd" if A_ansatz is not None else "naive"}_{"weighted" if use_weights else "unweighted"}', 
             ansatz_params, 
-            loss_histories, 
             param_history,
             ansatz_type="naive" if A_ansatz is None else ansatz_type,
             integrator_type=integrator_type
