@@ -70,8 +70,8 @@ def smc_adjusted_hmc(M, make_V, rng_key, threshold):
 
     inv_mass_matrix = jnp.eye(1)
 
-    loglikelihood = lambda x: -SYSTEMS['mixture']['make_V'](1.0)(x)
-    prior_log_prob = lambda x: -SYSTEMS['mixture']['make_V'](0.0)(x)
+    loglikelihood = lambda x: -SYSTEMS['mixture']['make_V'](jnp.array([1.0]))(x)
+    prior_log_prob = lambda x: -SYSTEMS['mixture']['make_V'](jnp.array([0.0]))(x)
 
 
     hmc_parameters = dict(

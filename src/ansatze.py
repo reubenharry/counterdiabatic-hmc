@@ -93,7 +93,7 @@ class PolynomialAnsatz(A_ansatz):
     def __call__(self, q, p):
         q = jnp.atleast_1d(q)
         p = jnp.atleast_1d(p)
-        result = 0.0
+        result = jnp.array([0.0])
         for i, (_, q_powers, p_powers) in enumerate(self.terms):
             term = self.params[i]
             # Compute q^q_powers * p^p_powers

@@ -101,8 +101,8 @@ def counterdiabatic_smc(
     
     for k in range(N_steps):
            
-        lam_k = float(lam_fn(state.update_parameters['time']))
-        dot_lam_k = float(dot_lam_fn(state.update_parameters['time']))
+        lam_k = (lam_fn(state.update_parameters['time']))
+        dot_lam_k = (dot_lam_fn(state.update_parameters['time']))
         if jnp.isnan(lam_k) or jnp.isnan(dot_lam_k): raise Exception()
             
         # Handle ansatz fitting and loss calculation
@@ -158,14 +158,14 @@ def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
     detailed_times = []
     t_k = 0.0
     log_weights = normalize_log_weights(jnp.zeros(M))
-    initial_lam = float(lam_fn(0.0))
+    initial_lam = (lam_fn(0.0))
     q, p = generate_initial_samples(M, make_T, make_V, initial_lam, key, dim, initial_sigma)
     # snapshots['weights_before_resampling'].append(np.array(log_weights))
     # snapshots['particles_before_resampling'].append(np.array(q))
     snapshots['particles'].append(q)
     snapshots['weights'].append(log_weights)
     snapshots['times'].append(0.0)
-    snapshots['lam'].append(float(initial_lam))
+    snapshots['lam'].append((initial_lam))
     # snapshots['times'].append(0.0)
     # Check initial samples
     check_nans(f"initial_q", q)
@@ -177,7 +177,7 @@ def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
 def update_snapshots(snapshots, state, lam_next, t_k1, loss_history):
     snapshots['particles'].append(state.particles['q'])
     snapshots['weights'].append(state.weights)
-    snapshots['lam'].append(float(lam_next))
+    snapshots['lam'].append((lam_next))
     snapshots['times'].append(t_k1)
     snapshots['loss_history'].append(loss_history)
 

@@ -200,8 +200,8 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
     Note: Consider updating lambda to lam_next at the midpoint of the step
     for better accuracy, i.e., use (lam + lam_next)/2 and (dot_lam + dot_lam_next)/2.
     """
-    dA_dq_scalar = jax.grad(A_ansatz, argnums=0)
-    dA_dp_scalar = jax.grad(A_ansatz, argnums=1)
+    dA_dq_scalar = jax.jacobian(A_ansatz, argnums=0)
+    dA_dp_scalar = jax.jacobian(A_ansatz, argnums=1)
     
     def cd_leapfrog(q, p, eps):
         
@@ -210,9 +210,12 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
         q, p = leapfrog(make_p_update(make_V(lam)), make_x_update(make_T(lam)), eps/2, q, p)
         # return q, p, 0
 
-        q_half = q + 0.5 * eps * (dot_lam * jnp.clip(dA_dp_scalar(q, p), -clip_value, clip_value))
-        p_new = p - eps * (dot_lam * jnp.clip(dA_dq_scalar(q_half, p), -clip_value, clip_value))
-        q_new = q_half + 0.5 * eps * (dot_lam * jnp.clip(dA_dp_scalar(q_half, p_new), -clip_value, clip_value))
+        print("dot lam shape", dot_lam.shape)
+        
+
+        q_half = q + 0.5 * eps * (dot_lam.dot(jnp.clip(dA_dp_scalar(q, p), -clip_value, clip_value)))
+        p_new = p - eps * (dot_lam.dot(jnp.clip(dA_dq_scalar(q_half, p), -clip_value, clip_value)))
+        q_new = q_half + 0.5 * eps * (dot_lam.dot(jnp.clip(dA_dp_scalar(q_half, p_new), -clip_value, clip_value)))
 
         q_new, p_new = leapfrog(make_p_update(make_V(lam_next)), make_x_update(make_T(lam_next)), eps/2, q_new, p_new)
         

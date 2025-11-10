@@ -1,7 +1,6 @@
 todo:
 
     restore metadata saving
-    restore different kinds of step function
 
     generalize to multidimensional base manifold
 

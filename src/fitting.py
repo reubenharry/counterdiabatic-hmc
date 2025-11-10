@@ -19,14 +19,18 @@ def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_r
 
     H = lambda lam: lambda q, p: make_T(lam)(p) + make_V(lam)(q)
     H_fixed = H(lam)
-    dH_fixed = lambda q, p: (jax.grad(lambda q, p, lam: H(lam)(q, p), argnums=2)(q, p, lam))
+    # dH_fixed = lambda q, p: (jax.grad(lambda q, p, lam: H(jnp.array([lam]))(q, p), argnums=2)(q, p, lam[0]))
+    dH_fixed = lambda q, p : jax.grad(lambda lam: make_T(lam)(p) + make_V(lam)(q))(lam)
 
     qs = qp_batch[:, :dim]  # First dim columns
     ps = qp_batch[:, dim:]  # Last dim columns
-    dH_fixed_avg = (jax.vmap(dH_fixed, in_axes=(0, 0))(qs, ps)).mean()
+    dH_fixed_avg = (jax.vmap(dH_fixed, in_axes=(0, 0))(qs, ps)).mean(axis=0)
+
+    proj = lambda f, i: lambda p,q: f(p, q)[i]
 
     def R(A_ansatz, q, p):
-        return poisson_bracket_fn(A_ansatz, H_fixed)(q, p) - (dH_fixed(q, p) - dH_fixed_avg)
+        # return poisson_bracket_fn(proj(A_ansatz, 0), H_fixed)(q, p) - (dH_fixed(q, p) - dH_fixed_avg)
+        return jnp.sum(jnp.array([poisson_bracket_fn(proj(A_ansatz, i), H_fixed)(q, p) - (dH_fixed(q, p)[i] - dH_fixed_avg[i] ) for i in range(lam.shape[0])]))
 
     
     R_vals = jax.vmap(lambda qr, pr, A_ansatz: R(A_ansatz, qr, pr), in_axes=(0, 0, None))(qs, ps, A_ansatz)
@@ -57,7 +61,7 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
         return [], None
 
     if isinstance(A_ansatz, AnalyticAnsatz):
-        A_ansatz = eqx.tree_at(lambda m: m.params, A_ansatz, jnp.array([lam]))
+        A_ansatz = eqx.tree_at(lambda m: m.params, A_ansatz, lam)
         loss = calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, 
                                                         use_regularization=False, weights=weights)
         return A_ansatz, [loss]
@@ -66,15 +70,13 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
     if A_ansatz.ansatz_type == 'hermite':
         print(A_ansatz.f_ansatz(jnp.array([1.0])), "A_ansatz.f_ansatz 1 orig")
         return fit_hermite_ansatz(
-            lam=lam, samples=samples, make_T=make_T, make_V=make_V, hermite_ansatz=A_ansatz, num_iters=50, lr=lr, use_regularization=use_regularization, weights=weights)
+            lam=lam[0], samples=samples, make_T=make_T, make_V=make_V, hermite_ansatz=A_ansatz, num_iters=50, lr=lr, use_regularization=use_regularization, weights=weights)
     
-    # Check input samples for NaNs
     check_nans("input_samples", samples)
     
     qp_batch = jnp.array(samples)  # shape (N, 2*dim)
 
     def loss_fn(A_ansatz, qp_batch):
-        # Use the reusable loss calculation function
         return calculate_gauge_potential_loss(lam, qp_batch, make_T, make_V, A_ansatz, use_regularization, weights)
 
     # Use gradient clipping to prevent exploding gradients

@@ -55,8 +55,8 @@ def main():
     # Define lambda functions
     v = 1.0
     max_lam = 1.0
-    lam_fn = lambda t: jnp.where(v*t < max_lam, v * t, max_lam)
-    dot_lam_fn = jax.grad(lam_fn)
+    lam_fn = lambda t: jnp.array([jnp.where(v*t < max_lam, v * t, max_lam)])
+    dot_lam_fn = jax.jacobian(lam_fn)
     
     # ===== ANSATZ SETUP =====
     # Hermite ansatz: A(q,p) = f(q) * g(p) where g(p) = Σ_{i odd} α̃ᵢ φᵢ(p)
