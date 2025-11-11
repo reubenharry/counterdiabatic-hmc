@@ -27,9 +27,14 @@ def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_r
     dH_fixed_avg = (jax.vmap(dH_fixed, in_axes=(0, 0))(qs, ps)).mean(axis=0)
 
     proj = lambda f, i: lambda p,q: f(p, q)[i]
+    print(lam.shape[0], "lam.shape[0]")
 
     def R(A_ansatz, q, p):
-        # return poisson_bracket_fn(proj(A_ansatz, 0), H_fixed)(q, p) - (dH_fixed(q, p) - dH_fixed_avg)
+        # R_val = 0.0
+        # for i in range(lam.shape[0]):
+        #     R_val += poisson_bracket_fn(proj(A_ansatz, i), H_fixed)(q, p) - (dH_fixed(q, p)[i] - dH_fixed_avg[i])
+        # return R_val
+        # return poisson_bracket_fn(proj(A_ansatz, 0), H_fixed)(q, p) - (dH_fixed(q, p)[0] - dH_fixed_avg[0])
         return jnp.sum(jnp.array([poisson_bracket_fn(proj(A_ansatz, i), H_fixed)(q, p) - (dH_fixed(q, p)[i] - dH_fixed_avg[i] ) for i in range(lam.shape[0])]))
 
     
@@ -104,6 +109,7 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
             clipped_grads = jax.tree_map(lambda g: jnp.clip(g, -10.0, 10.0), grad_arrays)
             updates, opt_state = optimizer.update(clipped_grads, opt_state)
             A_ansatz = eqx.apply_updates(A_ansatz, updates)
+
         
         return A_ansatz, opt_state, loss
 
@@ -141,6 +147,11 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
     # import matplotlib.pyplot as plt
     # plt.plot(loss_history)
     # plt.show()
+    # print coefficients of A_ansatz
+    if isinstance(A_ansatz, PolynomialAnsatz):
+        jax.debug.print("A_ansatz.params: {x}", x=A_ansatz.params)
+        jax.debug.print("A_ansatz(1.0, 1.0): {x}", x=A_ansatz(jnp.array([1.0]), jnp.array([1.0])))
+        
     return A_ansatz, loss_history
 
 def fit_hermite_ansatz_optimize(lam, samples, make_T, make_V, hermite_ansatz, num_iters, lr, use_regularization=False, weights=None):

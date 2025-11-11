@@ -26,23 +26,19 @@ def main():
     # ansatz_type = 'polynomial' # Options: "polynomial", "neural_network", "analytic", "hermite"
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
     ansatze = ['polynomial']
-    weightings = [True]
+    weightings = [False]
     
     # Simulation parameters
     M = 4000  # Number of particles (reduced for testing)
     N_steps = 100  # Number of simulation steps (reduced for testing)
     # delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
     final_time = 1.0
-    momentum_refresh_interval = 1  # Momentum refresh interval
+    momentum_refresh_interval = 3  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
-    num_iters = 1000  # Optimization iterations per step (reduced for testing)
+    num_iters = 100000  # Optimization iterations per step (reduced for testing)
     learning_rate = 1e-4  # Learning rate for optimization
-    equilibration_steps = 0  # Equilibration steps after each CD step (reduced for testing)
     ess_threshold = None  # Effective sample size threshold for resampling
-    
-    # Adaptive step size settings (for CD simulations only)
-    adaptive_step_size = False  # Set to True to enable adaptive delta_t = K/sqrt(Var[A])
-    
+        
     # Simulation settings
     snapshot_every = 1  # Record snapshots every N steps
     
@@ -57,17 +53,23 @@ def main():
     v = 1.0
     max_lam = 1.0
 
-    def lam_fn(t):
-        """Schedule moving along the diagonal from [0, 0] to [1, 1] in the upper half-plane."""
-        s = jnp.clip(v * t, a_min=0.0, a_max=max_lam)
-        return jnp.stack([s, 2*s])
+    # 1D lam_fn
+    lam_fn = lambda t: jnp.array([t]) # jnp.array([jnp.clip(t, a_min=0.0, a_max=max_lam)])
+
+    # def lam_fn(t):
+    #     """Schedule moving along the diagonal from [0, 0] to [1, 1] in the upper half-plane."""
+    #     s = jnp.clip(v * t, a_min=0.0, a_max=max_lam)
+    #     return jnp.stack([s, 2*s])
 
     lam_dim = lam_fn(0.0).shape[0]
     dot_lam_fn = jax.jacobian(lam_fn)
+
+    # print(dot_lam_fn(jnp.array(1.0)), "dot_lam_fn(0.0)")
+    # raise Exception()
     
     # ===== ANSATZ SETUP =====
     # Hermite ansatz: A(q,p) = f(q) * g(p) where g(p) = Σ_{i odd} α̃ᵢ φᵢ(p)
-    f_ansatz = PolynomialFAnsatz(max_degree=0, dim=dim)
+    f_ansatz = PolynomialFAnsatz(max_degree=5, dim=dim)
     # print(f_ansatz(jnp.array([1.0])), f_ansatz(jnp.array([2.0])))
     # Set the constant term to 1 (f(q) = 1)
     f_ansatz = eqx.tree_at(lambda m: m.params, f_ansatz, f_ansatz.params.at[0].set(1.0))
@@ -79,23 +81,23 @@ def main():
     )
 
     ansatz_dict = {
-        "polynomial": PolynomialAnsatz(max_degree=4, dim=dim, output_dim=lam_dim),
+        "polynomial": PolynomialAnsatz(max_degree=5, dim=dim, output_dim=lam_dim),
         "neural_network": NeuralNetworkAnsatz(dims=[2*dim, 32, 32, lam_dim], key=jax.random.PRNGKey(42), dim=dim),
         "analytic": AnalyticAnsatz(),
         "hermite": hermite_ansatz
     }
 
-    _, plain_smc_snapshots = smc_adjusted_hmc(4000, SYSTEMS[system_name]['make_V'], jax.random.PRNGKey(0), threshold=0.5)
-    save_simulation_data(plain_smc_snapshots, system_name, 'smc_adjusted_hmc')
-    schedule = [t for t in plain_smc_snapshots['times']]
+    # _, plain_smc_snapshots = smc_adjusted_hmc(4000, SYSTEMS[system_name]['make_V'], jax.random.PRNGKey(0), threshold=0.5)
+    # save_simulation_data(plain_smc_snapshots, system_name, 'smc_adjusted_hmc')
+    # schedule = [t for t in plain_smc_snapshots['times']]
+    # def next_time(t, k):
+    #     if k < len(schedule) - 1:
+    #         return schedule[k+1]
+    #     else:
+    #         return 1000.0
 
     for ansatz_type, use_weights in itertools.product(ansatze, weightings):
         A_ansatz = ansatz_dict.get(ansatz_type)
-        def next_time(t, k):
-            if k < len(schedule) - 1:
-                return schedule[k+1]
-            else:
-                return 1000.0
         
         A_ansatz, snapshots, param_history, state = counterdiabatic_smc(
             final_time=final_time,
@@ -118,6 +120,7 @@ def main():
             integrator_type=integrator_type,
             initial_sigma=initial_sigma,
             # next_time = next_time
+            next_time=lambda t, k: t + 0.2,
             )
 
         # save simulation data

@@ -145,6 +145,7 @@ def make_V_2d_rosenbrock(lam):
 SYSTEMS = {
     'gaussian_moving_mean': {
         'make_T': make_T_standard,
+        # 'make_T': make_T_microcanonical,
         'make_V': make_V_gaussian_moving_mean,
         'description': 'Gaussian potential with moving mean V(q) = 0.5 * (q - λ)²',
         'dim': 1,
@@ -167,8 +168,8 @@ SYSTEMS = {
         'initial_sigma': 1.0
     },
     'mixture': {
-        # 'make_T': make_T_standard,
-        'make_T': make_T_microcanonical,
+        'make_T': make_T_standard,
+        # 'make_T': make_T_microcanonical,
         'make_V': make_V_geometric_potential(final_potential=mixture, initial_sigma=1.0),
         'description': 'Mixture of two Gaussians V(q) = -log(α*N(q; -1, 0.2) + (1-α)*N(q; 1, 0.2))',
         'dim': 1,

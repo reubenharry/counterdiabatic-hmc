@@ -202,22 +202,31 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
     """
     dA_dq_scalar = jax.jacobian(A_ansatz, argnums=0)
     dA_dp_scalar = jax.jacobian(A_ansatz, argnums=1)
+    # dA_dq_scalar = jax.grad(lambda q, p: A_ansatz(q, p)[0], argnums=0)
+    # dA_dp_scalar = jax.grad(lambda q, p: A_ansatz(q, p)[0], argnums=1)
     
     def cd_leapfrog(q, p, eps):
+        # jax.debug.print("dA_dq_scalar shape: {x}", x=dA_dq_scalar_jac(q,p).shape)
+
+        # jax.debug.print("lam dot {x}", x=dot_lam)
         
         
         
-        q, p = leapfrog(make_p_update(make_V(lam)), make_x_update(make_T(lam)), eps/2, q, p)
+        # q, p = leapfrog(make_p_update(make_V(lam)), make_x_update(make_T(lam)), eps/2, q, p)
         # return q, p, 0
 
-        print("dot lam shape", dot_lam.shape)
+        # print("dot lam shape", dot_lam.shape)
         
 
-        q_half = q + 0.5 * eps * (dot_lam.dot(jnp.clip(dA_dp_scalar(q, p), -clip_value, clip_value)))
-        p_new = p - eps * (dot_lam.dot(jnp.clip(dA_dq_scalar(q_half, p), -clip_value, clip_value)))
-        q_new = q_half + 0.5 * eps * (dot_lam.dot(jnp.clip(dA_dp_scalar(q_half, p_new), -clip_value, clip_value)))
+        q_half = q + 0.5 * eps * jnp.sum(jnp.expand_dims(dot_lam, axis=1)*(jnp.clip(dA_dp_scalar(q, p), -clip_value, clip_value)), axis=0)
+        p_new = p - eps * jnp.sum(jnp.expand_dims(dot_lam, axis=1)*(jnp.clip(dA_dq_scalar(q_half, p), -clip_value, clip_value)), axis=0)
+        q_new = q_half + 0.5 * eps * jnp.sum(jnp.expand_dims(dot_lam, axis=1)*(jnp.clip(dA_dp_scalar(q_half, p_new), -clip_value, clip_value)), axis=0)
+        
+        # q_half = q + 0.5 * eps * (jnp.clip(dA_dp_scalar(q, p)[0][0], -clip_value, clip_value))
+        # p_new = p - eps * (jnp.clip(dA_dq_scalar(q_half, p)[0][0], -clip_value, clip_value))
+        # q_new = q_half + 0.5 * eps * (jnp.clip(dA_dp_scalar(q_half, p_new)[0][0], -clip_value, clip_value))
 
-        q_new, p_new = leapfrog(make_p_update(make_V(lam_next)), make_x_update(make_T(lam_next)), eps/2, q_new, p_new)
+        # q_new, p_new = leapfrog(make_p_update(make_V(lam_next)), make_x_update(make_T(lam_next)), eps/2, q_new, p_new)
         
         log_weight = compute_counterdiabatic_work(q, p, q_new, p_new, lam, lam_next, A_ansatz, make_T, make_V)
 

@@ -104,6 +104,7 @@ class PolynomialAnsatz(A_ansatz):
                     basis_val = basis_val * (p[d] ** p_powers[d])
             result = result + self.params[:, term_idx] * basis_val
 
+
         return result
 
     def get_term_description(self):
@@ -214,13 +215,13 @@ class AnalyticAnsatz(A_ansatz):
     ansatz_type: str = eqx.static_field()
 
     def __init__(self):
-        self.params = jnp.array([0.0])  # Initialize with schedule lambda = 0
+        self.params = jnp.array([0.0, 0.0])  # Initialize with schedule lambda = 0
         self.ansatz_type = 'analytic'
 
     def __call__(self, q, p):
         lam_schedule = self.params[0]  # Get current schedule lambda value
 
-        return p[0]
+        return jnp.concatenate([p, p], axis=0)
         
         # Ensure q and p are arrays and handle different shapes
         q = jnp.atleast_1d(q)

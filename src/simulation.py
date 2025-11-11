@@ -14,9 +14,10 @@ import blackjax
 
 
 
-def make_cdhmc_kernel(make_T, make_V, A_ansatz, time_next, lam_fn, dot_lam_fn, integrator_type="leapfrog"):
+def make_cdhmc_kernel(make_T, make_V, A_ansatz, time_next, lam_fn, dot_lam_fn, integrator_type="leapfrog", use_weights=True):
       
     if A_ansatz is None:
+        raise ValueError("A_ansatz is None")
         step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t), in_axes=(0, 0, None, None, None, None, None))       
         # Choose integrator based on integrator_type
     elif integrator_type == "leapfrog":
@@ -35,6 +36,7 @@ def make_cdhmc_kernel(make_T, make_V, A_ansatz, time_next, lam_fn, dot_lam_fn, i
         lam = lam_fn(time)
         dot_lam = dot_lam_fn(time)
         delta_t = time_next - time
+        print(delta_t, "delta_t")
     
         def update_fn(k, particles, u):
             qs, ps, _ = step(particles['q'], particles['p'], lam, lam_next, dot_lam, dot_lam_next, delta_t)
@@ -42,7 +44,11 @@ def make_cdhmc_kernel(make_T, make_V, A_ansatz, time_next, lam_fn, dot_lam_fn, i
 
         H = lambda lam: jax.vmap(lambda q, p: make_T(lam)(p) + make_V(lam)(q))
         weight_fn = lambda old_particles, particles : H(lam)(old_particles['q'], old_particles['p']) - H(lam_next)(particles['q'], particles['p'])
-        new_state, info = blackjax.smc.base.step(key, state = state, update_fn = update_fn, weight_fn = weight_fn, resample_fn = resampling.systematic)
+        if use_weights:
+            resample_fn = resampling.systematic
+        else:
+            resample_fn = lambda a,b,M : jnp.arange(M)  
+        new_state, info = blackjax.smc.base.step(key, state = state, update_fn = update_fn, weight_fn = weight_fn, resample_fn = resample_fn)
         return new_state, info
     return cdhmc_kernel, lam_next, dot_lam_next
 
@@ -133,16 +139,20 @@ def counterdiabatic_smc(
             # V = make_V(lam_k)
             # prev_H_vals = jax.vmap(lambda qr, pr: T(pr) + V(qr))(get_qs(state.particles), get_ps(state.particles))
 
-        kernel, lam_next, dot_lam_next = make_cdhmc_kernel(make_T, make_V, A_ansatz, t_k1, lam_fn, dot_lam_fn)
+        kernel, lam_next, dot_lam_next = make_cdhmc_kernel(make_T, make_V, A_ansatz, t_k1, lam_fn, dot_lam_fn, integrator_type, use_weights)
         key, sub = jax.random.split(key)
+        print(state.particles['q'].mean(), f"before {k}")
         state, _ = kernel(state, sub)
+        print(state.particles['q'].mean(), f"after {k}")
 
-        if k % snapshot_every == 0: update_snapshots(snapshots, state, lam_next, t_k1, loss_history)  
+
+        if k % snapshot_every == 0: snapshots = update_snapshots(snapshots, state, lam_next, t_k1, loss_history)  
 
         if check_nans(f"q", state.particles['q'], k) or check_nans(f"p", state.particles['p'], k) or check_nans(f"log_weights", jnp.log(state.weights), k): raise Exception(f"  Stopping simulation due to NaNs in HMC at step {k}")
          
+        # print(t_k1, state.update_parameters['time'], final_time, state.update_parameters['time'] >= final_time)
+        if t_k1 >= final_time: break
         state = state._replace(update_parameters={'time': t_k1})        
-        if state.update_parameters['time'] > final_time: break
 
     return A_ansatz, snapshots, param_history, state
 
@@ -182,6 +192,7 @@ def update_snapshots(snapshots, state, lam_next, t_k1, loss_history):
     snapshots['lam'].append((lam_next))
     snapshots['times'].append(t_k1)
     snapshots['loss_history'].append(loss_history)
+    return snapshots
 
 
  # # 1. Run equilibration at current time (if enabled and taking snapshots)
