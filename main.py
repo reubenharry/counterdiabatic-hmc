@@ -21,7 +21,8 @@ def main():
     
     # ===== CONFIGURATION =====
     # Choose your system
-    system_name = "mixture"  # Options: see SYSTEMS in src/
+    # system_name = "geometric_two_target"  # Options: see SYSTEMS in src/
+    system_name = "gaussian_moving_mean"  # Options: see SYSTEMS in src/
     # ansatz_type = 'polynomial' # Options: "polynomial", "neural_network", "analytic", "hermite"
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
     ansatze = ['polynomial']
@@ -34,7 +35,7 @@ def main():
     final_time = 1.0
     momentum_refresh_interval = 1  # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
-    num_iters = 100000  # Optimization iterations per step (reduced for testing)
+    num_iters = 1000  # Optimization iterations per step (reduced for testing)
     learning_rate = 1e-4  # Learning rate for optimization
     equilibration_steps = 0  # Equilibration steps after each CD step (reduced for testing)
     ess_threshold = None  # Effective sample size threshold for resampling
@@ -59,7 +60,7 @@ def main():
     def lam_fn(t):
         """Schedule moving along the diagonal from [0, 0] to [1, 1] in the upper half-plane."""
         s = jnp.clip(v * t, a_min=0.0, a_max=max_lam)
-        return jnp.stack([s, s])
+        return jnp.stack([s, 2*s])
 
     lam_dim = lam_fn(0.0).shape[0]
     dot_lam_fn = jax.jacobian(lam_fn)

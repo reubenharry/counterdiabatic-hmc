@@ -54,6 +54,11 @@ def make_T_standard(lam):
     """Standard kinetic energy: T(p) = p^2 / (2m)"""
     return lambda p: 0.5 * jnp.sum(p ** 2) / m
 
+def make_T_microcanonical(lam):
+    """Microcanonical kinetic energy: T(p) = 0"""
+    # return log of norm of p
+    return lambda p: jnp.log(jnp.linalg.norm(p))
+
 def make_V_gaussian_moving_mean(lam):
     """Gaussian potential with moving mean: V(q) = 0.5 * (q - λ)^2"""
     return lambda q: 0.5 * jnp.sum((q - lam[0]) ** 2)
@@ -66,9 +71,43 @@ def make_V_gaussian_annealing(lam):
 
 # construct a geometric interpolation between a gaussian and a final potential
 def make_V_geometric_potential(final_potential, initial_sigma):
-    log_normal_pdf = lambda x, mu, sigma: jnp.sum(0.5*((x/sigma)**2))
+    log_normal_pdf = lambda x, mu, sigma: jnp.sum(0.5 * ((x / sigma) ** 2))
+
     def make_V(lam):
-        return lambda q: (log_normal_pdf(q, 0, (initial_sigma)) * (1-lam[0]) + final_potential(q) * lam[0])
+        lam = jnp.atleast_1d(lam)
+        progress = jnp.clip(lam[0], 0.0, 1.0)
+        alt_progress = progress if lam.shape[0] == 1 else jnp.clip(lam[1], 0.0, 1.0)
+        blend = progress + (alt_progress - progress) * progress * (1.0 - progress)
+        blend = jnp.clip(blend, 0.0, 1.0)
+
+        def potential(q):
+            initial_val = log_normal_pdf(q, 0, initial_sigma)
+            final_val = final_potential(q)
+            return (1.0 - blend) * initial_val + blend * final_val
+
+        return potential
+
+    return make_V
+
+# construct a geometric interpolation between an initial Gaussian and two target potentials
+def make_V_geometric_two_target_potential(final_potential_a, final_potential_b, initial_sigma):
+    log_normal_pdf = lambda x, mu, sigma: jnp.sum(0.5 * ((x / sigma) ** 2))
+
+    def make_V(lam):
+        lam = jnp.atleast_1d(lam)
+        progress = jnp.clip(lam[0], 0.0, 1.0)
+        target_interp = 0.0
+        if lam.shape[0] >= 2:
+            target_interp = jnp.clip(lam[1], 0.0, 1.0)
+
+        def potential(q):
+            initial_val = log_normal_pdf(q, 0, initial_sigma)
+            target_a_val = final_potential_a(q)
+            target_b_val = final_potential_b(q)
+            target_val = (1.0 - target_interp) * target_a_val + target_interp * target_b_val
+            return (1.0 - progress) * initial_val + progress * target_val
+
+        return potential
 
     return make_V
 
@@ -128,9 +167,21 @@ SYSTEMS = {
         'initial_sigma': 1.0
     },
     'mixture': {
-        'make_T': make_T_standard,
+        # 'make_T': make_T_standard,
+        'make_T': make_T_microcanonical,
         'make_V': make_V_geometric_potential(final_potential=mixture, initial_sigma=1.0),
         'description': 'Mixture of two Gaussians V(q) = -log(α*N(q; -1, 0.2) + (1-α)*N(q; 1, 0.2))',
+        'dim': 1,
+        'initial_sigma': 1.0
+    },
+    'geometric_two_target': {
+        'make_T': make_T_standard,
+        'make_V': make_V_geometric_two_target_potential(
+            final_potential_a=mixture,
+            final_potential_b=double_well_potential,
+            initial_sigma=1.0
+        ),
+        'description': 'Geometric interpolation: initial Gaussian → blend of mixture and double well controlled by λ components',
         'dim': 1,
         'initial_sigma': 1.0
     },

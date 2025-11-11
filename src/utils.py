@@ -83,7 +83,18 @@ def compute_expectation_over_equilibrium(values, log_weights):
     weights = jnp.exp(normalize_log_weights(log_weights))
     return jnp.sum(values * weights)
 
-def generate_initial_samples(M, make_T, make_V, lam, key, dim, initial_sigma=1.0):
+def draw_microcanonical_gaussian(M, key):
+
+    # draw 100 variables x from gaussian
+    x = jax.random.normal(key, (M,))
+    # draw 1000 bernoulli variables y with probability 0.5
+    key, sub = jax.random.split(key)
+    y = jax.random.bernoulli(sub, 0.5, (M,))
+    # p is \pm exp(1-0.5x^2)
+    p = jnp.where(y == 0, jnp.exp(1-0.5*x**2), -jnp.exp(1-0.5*x**2))
+    return jnp.expand_dims(x, axis=1), jnp.expand_dims(p, axis=1)
+
+def generate_initial_samples(M, make_T, make_V, lam, key, dim, initial_sigma=1.0, microcanonical=False):
     """Generate M samples from a Gaussian distribution with variance matching the potential.
     
     Args:
@@ -108,17 +119,19 @@ def generate_initial_samples(M, make_T, make_V, lam, key, dim, initial_sigma=1.0
     #     print(f"Computed variance from potential: {variance:.3f} (k = {k:.3f})")
 
     # variance = 2.0 ** 2
-    
-    # Draw independent samples from Gaussian with given variance
-    key, sub = jax.random.split(key)
-    q = jax.random.normal(sub, (M, dim)) * initial_sigma
-    key, sub = jax.random.split(key)
-    p = jax.random.normal(sub, (M, dim))
-    
-    # Check initial samples for NaNs
-    check_nans("initial_q", jnp.concatenate([q, p], axis=1))
-    
-    return q, p
+    if microcanonical:
+        return draw_microcanonical_gaussian(M, key)
+    else:
+        # Draw independent samples from Gaussian with given variance
+        key, sub = jax.random.split(key)
+        q = jax.random.normal(sub, (M, dim)) * initial_sigma
+        key, sub = jax.random.split(key)
+        p = jax.random.normal(sub, (M, dim))
+        
+        # Check initial samples for NaNs
+        check_nans("initial_q", jnp.concatenate([q, p], axis=1))
+        
+        return q, p
 
 def compute_energy_stats(q, p, lam, make_T, make_V, A_ansatz=None, log_weights=None):
     """Compute average H, H², ∂H/∂λ, (∂H/∂λ)², and {A,H} over particles."""

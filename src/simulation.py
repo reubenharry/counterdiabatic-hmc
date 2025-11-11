@@ -151,7 +151,7 @@ def counterdiabatic_smc(
 get_particles = lambda q, p: {'q': q, 'p': p}
 
 def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
-    snapshots = {'particles': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': [], 'weights_before_resampling': [], 'particles_before_resampling': [], 'loss_history': []}
+    snapshots = {'qs': [], 'ps': [], 'weights': [], 'lam': [], 'resampling_events': [], 'times': [], 'loss_history': []}
     param_history = []
     prev_H_vals = None
     detailed_energy_stats = []
@@ -162,7 +162,8 @@ def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
     q, p = generate_initial_samples(M, make_T, make_V, initial_lam, key, dim, initial_sigma)
     # snapshots['weights_before_resampling'].append(np.array(log_weights))
     # snapshots['particles_before_resampling'].append(np.array(q))
-    snapshots['particles'].append(q)
+    snapshots['qs'].append(q)
+    snapshots['ps'].append(p)
     snapshots['weights'].append(log_weights)
     snapshots['times'].append(0.0)
     snapshots['lam'].append((initial_lam))
@@ -175,7 +176,8 @@ def initialize(M, make_T, make_V, key, dim, lam_fn, initial_sigma=1.0):
 
 
 def update_snapshots(snapshots, state, lam_next, t_k1, loss_history):
-    snapshots['particles'].append(state.particles['q'])
+    snapshots['qs'].append(state.particles['q'])
+    snapshots['ps'].append(state.particles['p'])
     snapshots['weights'].append(state.weights)
     snapshots['lam'].append((lam_next))
     snapshots['times'].append(t_k1)
