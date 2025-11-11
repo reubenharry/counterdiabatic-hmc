@@ -34,8 +34,9 @@ def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_r
         # for i in range(lam.shape[0]):
         #     R_val += poisson_bracket_fn(proj(A_ansatz, i), H_fixed)(q, p) - (dH_fixed(q, p)[i] - dH_fixed_avg[i])
         # return R_val
-        # return poisson_bracket_fn(proj(A_ansatz, 0), H_fixed)(q, p) - (dH_fixed(q, p)[0] - dH_fixed_avg[0])
-        return jnp.sum(jnp.array([poisson_bracket_fn(proj(A_ansatz, i), H_fixed)(q, p) - (dH_fixed(q, p)[i] - dH_fixed_avg[i] ) for i in range(lam.shape[0])]))
+        return poisson_bracket_fn(proj(A_ansatz, 0), H_fixed)(q, p) - (dH_fixed(q, p)[0] - dH_fixed_avg[0])
+        # return poisson_bracket_fn(proj(A_ansatz, 0), H_fixed)(q, p) - (dH_fixed(q, p)[0])
+        # return jnp.sum(jnp.array([poisson_bracket_fn(proj(A_ansatz, i), H_fixed)(q, p) - (dH_fixed(q, p)[i] - dH_fixed_avg[i] ) for i in range(lam.shape[0])]))
 
     
     R_vals = jax.vmap(lambda qr, pr, A_ansatz: R(A_ansatz, qr, pr), in_axes=(0, 0, None))(qs, ps, A_ansatz)
@@ -90,7 +91,7 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
         optax.adam(lr)
     )
     
-    if isinstance(A_ansatz.params, jnp.ndarray):
+    if hasattr(A_ansatz, "params") and isinstance(A_ansatz.params, jnp.ndarray):
         opt_state = optimizer.init(A_ansatz.params)
     else:
         opt_state = optimizer.init(eqx.filter(A_ansatz, eqx.is_array))
@@ -99,7 +100,7 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
     def update(A_ansatz, opt_state, qp_batch):
         loss, grads = jax.value_and_grad(loss_fn)(A_ansatz, qp_batch)
         
-        if isinstance(A_ansatz.params, jnp.ndarray): # PolynomialAnsatz case - handle params directly
+        if hasattr(A_ansatz, "params") and isinstance(A_ansatz.params, jnp.ndarray): # PolynomialAnsatz case - handle params directly
             param_grads = grads.params
             clipped_grads = jnp.clip(param_grads, -10.0, 10.0)
             updates, opt_state = optimizer.update(clipped_grads, opt_state)
@@ -136,7 +137,7 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
         else:
             patience_counter += 1
             
-        if patience_counter >= patience and iteration > 100:  # Wait at least 100 iterations
+        if patience_counter >= patience and iteration > 1000:  # Wait at least 100 iterations
             print(f"Early stopping at iteration {iteration} (loss: {loss:.6f})")
             break
 
@@ -149,7 +150,7 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
     # plt.show()
     # print coefficients of A_ansatz
     if isinstance(A_ansatz, PolynomialAnsatz):
-        jax.debug.print("A_ansatz.params: {x}", x=A_ansatz.params)
+        jax.debug.print("A_ansatz.params: {x}", x=A_ansatz.get_term_description())
         jax.debug.print("A_ansatz(1.0, 1.0): {x}", x=A_ansatz(jnp.array([1.0]), jnp.array([1.0])))
         
     return A_ansatz, loss_history

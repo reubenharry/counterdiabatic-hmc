@@ -22,21 +22,21 @@ def main():
     # ===== CONFIGURATION =====
     # Choose your system
     # system_name = "geometric_two_target"  # Options: see SYSTEMS in src/
-    system_name = "gaussian_moving_mean"  # Options: see SYSTEMS in src/
+    system_name = "mixture"  # Options: see SYSTEMS in src/
     # ansatz_type = 'polynomial' # Options: "polynomial", "neural_network", "analytic", "hermite"
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
-    ansatze = ['polynomial']
+    ansatze = ['neural_network']
     weightings = [False]
     
     # Simulation parameters
     M = 4000  # Number of particles (reduced for testing)
-    N_steps = 100  # Number of simulation steps (reduced for testing)
+    N_steps = 10  # Number of simulation steps (reduced for testing)
     # delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
     final_time = 1.0
-    momentum_refresh_interval = 3  # Momentum refresh interval
+    momentum_refresh_interval = 100 # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
     num_iters = 100000  # Optimization iterations per step (reduced for testing)
-    learning_rate = 1e-4  # Learning rate for optimization
+    learning_rate = 1e-3  # Learning rate for optimization
     ess_threshold = None  # Effective sample size threshold for resampling
         
     # Simulation settings
@@ -120,7 +120,7 @@ def main():
             integrator_type=integrator_type,
             initial_sigma=initial_sigma,
             # next_time = next_time
-            next_time=lambda t, k: t + 0.2,
+            next_time=lambda t, k: t + 0.01,
             )
 
         # save simulation data

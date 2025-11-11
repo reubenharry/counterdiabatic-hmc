@@ -154,7 +154,7 @@ SYSTEMS = {
     'gaussian_annealing': {
         'make_T': make_T_standard,
         'make_V': make_V_gaussian_annealing,
-        'make_V': make_V_geometric_potential(final_potential=make_V_gaussian_annealing(jnp.array([1.0])), initial_sigma=math.sqrt(2.0)),
+        # 'make_V': make_V_geometric_potential(final_potential=make_V_gaussian_annealing(jnp.array([1.0])), initial_sigma=math.sqrt(2.0)),
 
         'description': 'Gaussian potential with annealing temperature V(q) = 0.5 * k(λ) * q² where k interpolates from 1 (var=1) to 10 (var=0.1)',
         'dim': 1,

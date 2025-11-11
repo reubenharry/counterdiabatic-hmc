@@ -90,7 +90,7 @@ def with_maruyama(integrator):
         return q, p, weight
     return maruyama
 
-clip_value = jnp.inf
+clip_value = 100.0 # jnp.inf
 
 def make_cd_euler_step(T, V, A_ansatz, lam, lam_next, dot_lam, dot_lam_next):
     """Create a counterdiabatic Euler step function."""
@@ -209,6 +209,7 @@ def make_cd_leapfrog_step(make_T, make_V, A_ansatz, lam, lam_next, dot_lam, dot_
         # jax.debug.print("dA_dq_scalar shape: {x}", x=dA_dq_scalar_jac(q,p).shape)
 
         # jax.debug.print("lam dot {x}", x=dot_lam)
+        # eps*=100
         
         
         

@@ -110,7 +110,7 @@ class PolynomialAnsatz(A_ansatz):
     def get_term_description(self):
         """Return a description of what each parameter represents."""
         descriptions = []
-        for coeff_name, q_powers, p_powers in self.terms:
+        for term_idx, (_, q_powers, p_powers) in enumerate(self.terms):
             term_str = ""
             
             # Add q terms
@@ -130,8 +130,17 @@ class PolynomialAnsatz(A_ansatz):
             if not term_str:
                 term_str = "1"
             
-            descriptions.append(f"{coeff_name}: {term_str}")
-        return descriptions
+            coeff_values = self.params[:, term_idx]
+            if self.output_dim == 1:
+                coeff_repr = f"{float(coeff_values[0]):.6g}"
+            else:
+                coeff_repr = ", ".join(
+                    f"out[{i}]={float(val):.6g}" for i, val in enumerate(coeff_values)
+                )
+            max_abs_coeff = float(jnp.max(jnp.abs(coeff_values)))
+            descriptions.append((max_abs_coeff, f"{term_str} (coeff={coeff_repr})"))
+        descriptions.sort(key=lambda x: x[0], reverse=True)
+        return "\n".join(desc for _, desc in descriptions)
     
     def get_params_for_saving(self):
         """Return parameters in a format suitable for saving."""
@@ -280,7 +289,7 @@ class NeuralNetworkAnsatz(A_ansatz):
         final_layer = self.layers[-1]
         x = (final_layer)(x)
         
-        result = x.squeeze()
+        result = x
         
         return result
     
