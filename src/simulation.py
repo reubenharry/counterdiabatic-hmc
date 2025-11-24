@@ -17,7 +17,6 @@ import blackjax
 def make_cdhmc_kernel(make_T, make_V, A_ansatz, time_next, lam_fn, dot_lam_fn, integrator_type="leapfrog", use_weights=True):
       
     if A_ansatz is None:
-        raise ValueError("A_ansatz is None")
         step = jax.vmap(lambda q, p, lam, lam_next, dot_lam, dot_lam_next, delta_t: (make_leapfrog_step(make_T(lam), make_V(lam), make_T(lam_next), make_V(lam_next), lam_fn, dot_lam_fn))(q, p, delta_t), in_axes=(0, 0, None, None, None, None, None))       
         # Choose integrator based on integrator_type
     elif integrator_type == "leapfrog":
@@ -126,6 +125,8 @@ def counterdiabatic_smc(
             print(f"  Final loss: {loss_history[-1]:.6f}")
             if any(jnp.isnan(loss) for loss in loss_history):
                 print(f"⚠️  NaN detected in loss history at step {k}")
+        else:
+            loss_history = []
             
         
         t_k1 = next_time(state.update_parameters['time'], k)

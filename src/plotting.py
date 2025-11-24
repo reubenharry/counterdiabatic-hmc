@@ -214,7 +214,7 @@ def compute_weighted_kde(samples, weights=None, x_grid=None):
     
     return density
 
-def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ansatz_type="polynomial", plot_dir=None):
+def create_ridge_plot(snapshots, make_V, potential_name="harmonic", ansatz_type="polynomial", plot_dir=None, show=False):
     """Create a ridge plot showing the evolution of 1D distributions over time.
     
     Args:
@@ -243,18 +243,18 @@ def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ans
     # Get time points from snapshots
     if 'times' in snapshots and len(snapshots['times']) > 0:
         times = snapshots['times']
-    else:
-        times = np.arange(len(snapshots['particles'])) * delta_t  # Fallback
+    # else:
+    #     times = np.arange(len(snapshots['particles'])) * delta_t  # Fallback
     
     # For post-equilibration snapshots, the timing is different
     # They represent the state after CD step + re-equilibration, so they should be plotted
     # at the time after the CD step (i.e., at the next timestep)
-    if has_re_equil:
-        # Post-equilibration snapshots are stored at the end of timesteps
-        # So they should be plotted at the next timestep's time
-        post_equil_times = np.arange(1, len(snapshots['cd_post_equil']) + 1) * delta_t
-    else:
-        post_equil_times = np.array([])
+    # if has_re_equil:
+    #     # Post-equilibration snapshots are stored at the end of timesteps
+    #     # So they should be plotted at the next timestep's time
+    #     post_equil_times = np.arange(1, len(snapshots['cd_post_equil']) + 1) * delta_t
+    # else:
+    post_equil_times = np.array([])
     
     # Create figure with appropriate layout (simplified - only CD-HMC)
     if has_weights:
@@ -294,7 +294,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ans
         ax1_lambda.tick_params(axis='y', labelcolor='red')
     
     # Find global range for consistent x-axis
-    all_qs = np.concatenate(snapshots['particles']).flatten()
+    all_qs = np.concatenate(snapshots['qs']).flatten()
     x_min = np.min(all_qs) - 0.5
     x_max = np.max(all_qs) + 0.5
     
@@ -307,7 +307,7 @@ def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ans
     
     # Plot CD HMC distributions
     cd_ax = ax2 if has_weights else ax1  # Use appropriate axis based on layout
-    for i, (t, cd_snap, lam_val) in enumerate(zip(times, snapshots['particles'], snapshots['lam'])):
+    for i, (t, cd_snap, lam_val) in enumerate(zip(times, snapshots['qs'], snapshots['lam'])):
         # Compute KDE for smooth curve
         density = compute_weighted_kde(cd_snap.flatten(), weights=None, x_grid=x_grid)
         
@@ -365,10 +365,14 @@ def create_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ans
     if has_weights:
         ax2.plot([], [], 'k--', linewidth=1.5, label='True distribution')
         ax2.legend(loc='upper right')
+
+    # return plot
+    
     
     # Adjust layout and save
     plt.tight_layout()
-    plt.savefig(f"{ansatz_dir}/ridge_plot_{potential_name}.png", dpi=300, bbox_inches='tight')
+    if show: plt.show()
+    else: plt.savefig(f"{ansatz_dir}/ridge_plot_{potential_name}.png", dpi=300, bbox_inches='tight')
     plt.close()
 
 def create_overlay_ridge_plot(snapshots, delta_t, make_V, potential_name="harmonic", ansatz_type="polynomial", plot_dir=None):

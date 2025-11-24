@@ -22,21 +22,23 @@ def main():
     # ===== CONFIGURATION =====
     # Choose your system
     # system_name = "geometric_two_target"  # Options: see SYSTEMS in src/
-    system_name = "mixture"  # Options: see SYSTEMS in src/
+    system_name = "gaussian_moving_mean"  # Options: see SYSTEMS in src/
     # ansatz_type = 'polynomial' # Options: "polynomial", "neural_network", "analytic", "hermite"
     integrator_type = "leapfrog"  # Options: "leapfrog", "implicit_midpoint"
-    ansatze = ['neural_network']
+    # ansatze = ['neural_network']
+    ansatze = [None]
+    # ansatze = ['polynomial']
     weightings = [False]
     
     # Simulation parameters
-    M = 4000  # Number of particles (reduced for testing)
+    M = 5000  # Number of particles (reduced for testing)
     N_steps = 10  # Number of simulation steps (reduced for testing)
     # delta_t = 0.2  # Time step (eps = delta_t for this algorithm)
     final_time = 1.0
-    momentum_refresh_interval = 100 # Momentum refresh interval
+    momentum_refresh_interval = 1 # Momentum refresh interval
     fit_every = 1  # Fit ansatz every N steps
     num_iters = 100000  # Optimization iterations per step (reduced for testing)
-    learning_rate = 1e-3  # Learning rate for optimization
+    learning_rate = 1e-4  # Learning rate for optimization
     ess_threshold = None  # Effective sample size threshold for resampling
         
     # Simulation settings
@@ -50,11 +52,11 @@ def main():
     print(f"Dimension: {dim}")
     
     # Define lambda functions
-    v = 1.0
+    v = 2.0
     max_lam = 1.0
 
     # 1D lam_fn
-    lam_fn = lambda t: jnp.array([t]) # jnp.array([jnp.clip(t, a_min=0.0, a_max=max_lam)])
+    lam_fn = lambda t: jnp.array([v*t]) # jnp.array([jnp.clip(t, a_min=0.0, a_max=max_lam)])
 
     # def lam_fn(t):
     #     """Schedule moving along the diagonal from [0, 0] to [1, 1] in the upper half-plane."""
@@ -81,7 +83,7 @@ def main():
     )
 
     ansatz_dict = {
-        "polynomial": PolynomialAnsatz(max_degree=5, dim=dim, output_dim=lam_dim),
+        "polynomial": PolynomialAnsatz(max_degree=2, dim=dim, output_dim=lam_dim),
         "neural_network": NeuralNetworkAnsatz(dims=[2*dim, 32, 32, lam_dim], key=jax.random.PRNGKey(42), dim=dim),
         "analytic": AnalyticAnsatz(),
         "hermite": hermite_ansatz
@@ -120,7 +122,7 @@ def main():
             integrator_type=integrator_type,
             initial_sigma=initial_sigma,
             # next_time = next_time
-            next_time=lambda t, k: t + 0.01,
+            next_time=lambda t, k: t + 0.1,
             )
 
         # save simulation data
@@ -129,7 +131,7 @@ def main():
         save_simulation_data(
             snapshots, 
             system_name, 
-            f'{"cd" if A_ansatz is not None else "naive"}_{"weighted" if use_weights else "unweighted"}', 
+            f'{"weighted" if use_weights else "unweighted"}', 
             ansatz_params, 
             param_history,
             ansatz_type="naive" if A_ansatz is None else ansatz_type,

@@ -34,9 +34,9 @@ def calculate_gauge_potential_loss(lam, samples, make_T, make_V, A_ansatz, use_r
         # for i in range(lam.shape[0]):
         #     R_val += poisson_bracket_fn(proj(A_ansatz, i), H_fixed)(q, p) - (dH_fixed(q, p)[i] - dH_fixed_avg[i])
         # return R_val
-        return poisson_bracket_fn(proj(A_ansatz, 0), H_fixed)(q, p) - (dH_fixed(q, p)[0] - dH_fixed_avg[0])
+        # return poisson_bracket_fn(proj(A_ansatz, 0), H_fixed)(q, p) - (dH_fixed(q, p)[0] - dH_fixed_avg[0])
         # return poisson_bracket_fn(proj(A_ansatz, 0), H_fixed)(q, p) - (dH_fixed(q, p)[0])
-        # return jnp.sum(jnp.array([poisson_bracket_fn(proj(A_ansatz, i), H_fixed)(q, p) - (dH_fixed(q, p)[i] - dH_fixed_avg[i] ) for i in range(lam.shape[0])]))
+        return jnp.sum(jnp.array([poisson_bracket_fn(proj(A_ansatz, i), H_fixed)(q, p) - (dH_fixed(q, p)[i] - dH_fixed_avg[i] ) for i in range(lam.shape[0])]))
 
     
     R_vals = jax.vmap(lambda qr, pr, A_ansatz: R(A_ansatz, qr, pr), in_axes=(0, 0, None))(qs, ps, A_ansatz)
@@ -76,7 +76,7 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
     if A_ansatz.ansatz_type == 'hermite':
         print(A_ansatz.f_ansatz(jnp.array([1.0])), "A_ansatz.f_ansatz 1 orig")
         return fit_hermite_ansatz_optimize(
-            lam=lam, samples=samples, make_T=make_T, make_V=make_V, hermite_ansatz=A_ansatz, num_iters=50, lr=lr, use_regularization=use_regularization, weights=weights)
+            lam=lam, samples=samples, make_T=make_T, make_V=make_V, hermite_ansatz=A_ansatz, num_iters=5000, lr=lr, use_regularization=use_regularization, weights=weights)
     
     check_nans("input_samples", samples)
     
@@ -157,18 +157,15 @@ def fit_gauge_potential(lam, samples, make_T, make_V, A_ansatz, num_iters, lr, u
 
 def fit_hermite_ansatz_optimize(lam, samples, make_T, make_V, hermite_ansatz, num_iters, lr, use_regularization=False, weights=None):
 
-    print("  Using gradient descent for g(p) coefficients only (f(q) fixed)")
+    print("  Using joint gradient descent for f(q) parameters and g(p) coefficients")
     
     # Check input samples for NaNs
     check_nans("input_samples", samples)
     
     qp_batch = jnp.array(samples)  # shape (N, 2*dim)
 
-    def loss_fn(alpha_coeffs, qp_batch):
-        # Create a temporary ansatz with the given alpha_coeffs
-        temp_ansatz = hermite_ansatz
-        temp_ansatz = eqx.tree_at(lambda m: m.alpha_coeffs, temp_ansatz, alpha_coeffs)
-        return calculate_gauge_potential_loss(lam, qp_batch, make_T, make_V, temp_ansatz, use_regularization, weights)
+    def loss_fn(ansatz, qp_batch):
+        return calculate_gauge_potential_loss(lam, qp_batch, make_T, make_V, ansatz, use_regularization, weights)
 
     # Use gradient clipping to prevent exploding gradients
     optimizer = optax.chain(
@@ -176,23 +173,21 @@ def fit_hermite_ansatz_optimize(lam, samples, make_T, make_V, hermite_ansatz, nu
         optax.adam(lr)
     )
     
-    # Initialize optimizer with only alpha_coeffs
-    opt_state = optimizer.init(hermite_ansatz.alpha_coeffs)
+    # Initialize optimizer on all array-valued parameters
+    opt_state = optimizer.init(eqx.filter(hermite_ansatz, eqx.is_array))
 
     @jax.jit
-    def update(alpha_coeffs, opt_state, qp_batch):
-        loss, grads = jax.value_and_grad(loss_fn)(alpha_coeffs, qp_batch)
-        
-        # Clip gradients to prevent extreme values
-        clipped_grads = jnp.clip(grads, -10.0, 10.0)
+    def update(ansatz, opt_state, qp_batch):
+        loss, grads = jax.value_and_grad(loss_fn)(ansatz, qp_batch)
+        grad_arrays = eqx.filter(grads, eqx.is_array)
+        clipped_grads = jax.tree_map(lambda g: jnp.clip(g, -10.0, 10.0), grad_arrays)
         updates, opt_state = optimizer.update(clipped_grads, opt_state)
-        alpha_coeffs = alpha_coeffs + updates
-        
-        return alpha_coeffs, opt_state, loss
+        ansatz = eqx.apply_updates(ansatz, updates)
+        return ansatz, opt_state, loss
 
     loss_history = []
     best_loss = float('inf')
-    patience = 50  # Number of iterations to wait for improvement
+    patience = 100  # Number of iterations to wait for improvement
     patience_counter = 0
     
     # Initialize alpha_coeffs with small random values instead of zeros
@@ -201,10 +196,8 @@ def fit_hermite_ansatz_optimize(lam, samples, make_T, make_V, hermite_ansatz, nu
     hermite_ansatz = eqx.tree_at(lambda m: m.alpha_coeffs, hermite_ansatz, 0.01 * jr.normal(key, shape=hermite_ansatz.alpha_coeffs.shape))
     
     for iteration in range(num_iters):
-        new_alpha_coeffs, opt_state, loss = update(hermite_ansatz.alpha_coeffs, opt_state, qp_batch)
-        hermite_ansatz = eqx.tree_at(lambda m: m.alpha_coeffs, hermite_ansatz, new_alpha_coeffs)
+        hermite_ansatz, opt_state, loss = update(hermite_ansatz, opt_state, qp_batch)
         
-        # todo: this code is duplicated from the main fit_gauge_potential function
         if jnp.isnan(loss):
             print(f"⚠️  NaN detected in loss at iteration {iteration}")
             print(f"  Stopping optimization early due to NaN loss")
@@ -220,9 +213,9 @@ def fit_hermite_ansatz_optimize(lam, samples, make_T, make_V, hermite_ansatz, nu
             patience_counter += 1
             
         # Stop if loss hasn't improved for patience iterations
-        if patience_counter >= patience and iteration > 100:  # Wait at least 100 iterations
-            print(f"Early stopping at iteration {iteration} (loss: {loss:.6f})")
-            break
+        # if patience_counter >= patience and iteration > 100:  # Wait at least 100 iterations
+        #     print(f"Early stopping at iteration {iteration} (loss: {loss:.6f})")
+        #     break
 
     print(f"Fitting completed after {len(loss_history)} iterations")
     
